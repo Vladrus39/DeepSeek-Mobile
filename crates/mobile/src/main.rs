@@ -5,6 +5,7 @@ mod chat_attachment;
 mod cockpit_section_panel;
 mod document_picker;
 mod mobile_drawer;
+mod mobile_engine_runner;
 mod native_bridge;
 mod pc_pairing_manager;
 mod pc_pairing_panel;
@@ -15,10 +16,11 @@ use agent_timeline::MobileTimelineState;
 use agent_timeline_panel::agent_timeline_panel;
 use chat_attachment::ChatComposerState;
 use cockpit_section_panel::cockpit_section_panel;
-use deepseek_mobile_core::{AgentEvent, Config, DeepSeekCore, Message};
+use deepseek_mobile_core::{AgentEvent, Config, Message};
 use dioxus::prelude::*;
 use document_picker::{DocumentPickerRequest, DocumentPickerState, PickedDocument};
 use mobile_drawer::{mobile_drawer, CockpitSection};
+use mobile_engine_runner::run_mobile_turn;
 use native_bridge::{NativeBridgeState, NativeMobileCommand, NativeMobileEvent};
 use pc_pairing_state::PcPairingUiState;
 
@@ -259,7 +261,7 @@ fn app() -> Element {
                         let mut next_timeline = timeline();
                         next_timeline.push_user_message(prompt);
                         push_agent_event(&mut next_timeline, &AgentEvent::Started);
-                        push_agent_event(&mut next_timeline, &AgentEvent::Status("DeepSeek request started".to_string()));
+                        push_agent_event(&mut next_timeline, &AgentEvent::Status("MobileEngine turn started".to_string()));
                         timeline.set(next_timeline);
 
                         input.set(String::new());
@@ -268,20 +270,25 @@ fn app() -> Element {
 
                         spawn(async move {
                             let config = Config::default();
-                            let core = DeepSeekCore::new(config);
-                            
-                            let chat_messages: Vec<Message> = messages()
-                                .into_iter()
-                                .filter(|(role, _)| role != "system")
-                                .map(|(role, content)| Message { role, content })
-                                .collect();
-                            
-                            match core.process_with_messages(chat_messages).await {
-                                Ok(response) => {
-                                    messages.push(("assistant".to_string(), response.clone()));
+                            match run_mobile_turn(config, user_input).await {
+                                Ok(result) => {
+                                    if let Some(final_text) = result.final_text.clone() {
+                                        messages.push(("assistant".to_string(), final_text));
+                                    }
+
                                     let mut next_timeline = timeline();
-                                    push_agent_event(&mut next_timeline, &AgentEvent::TextDelta(response));
-                                    push_agent_event(&mut next_timeline, &AgentEvent::Finished);
+                                    for event in &result.events {
+                                        push_agent_event(&mut next_timeline, event);
+                                    }
+                                    if result.has_pending_approvals() {
+                                        push_agent_event(
+                                            &mut next_timeline,
+                                            &AgentEvent::Status(format!(
+                                                "Pending approvals: {}",
+                                                result.approval_card_count
+                                            )),
+                                        );
+                                    }
                                     timeline.set(next_timeline);
                                 }
                                 Err(e) => {
