@@ -11,6 +11,7 @@ mod mobile_engine_runner;
 mod mobile_runtime_config;
 mod native_bridge;
 mod native_document_picker;
+mod native_event_router;
 mod pc_pairing_manager;
 mod pc_pairing_panel;
 mod pc_pairing_state;
@@ -29,7 +30,7 @@ use mobile_drawer::{mobile_drawer, CockpitSection};
 use mobile_engine_runner::{
     continue_mobile_approval, load_default_mobile_approval_cards, run_mobile_turn_streaming,
 };
-use native_bridge::{NativeBridgeState, NativeMobileCommand, NativeMobileEvent};
+use native_bridge::{NativeBridgeState, NativeMobileCommand};
 use pc_pairing_state::PcPairingUiState;
 use saved_timeline_loader::load_default_saved_timeline;
 
