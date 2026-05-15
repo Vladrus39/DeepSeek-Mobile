@@ -1,4 +1,5 @@
 use crate::document_picker::PickedDocument;
+use deepseek_mobile_core::{UserAttachmentKind, UserAttachmentRef, UserChatInput};
 use std::path::PathBuf;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -52,6 +53,16 @@ impl ChatAttachmentKind {
             Self::Unknown
         }
     }
+
+    pub fn to_core_kind(&self) -> UserAttachmentKind {
+        match self {
+            Self::Document => UserAttachmentKind::Document,
+            Self::Image => UserAttachmentKind::Image,
+            Self::Archive => UserAttachmentKind::Archive,
+            Self::SourceFile => UserAttachmentKind::SourceFile,
+            Self::Unknown => UserAttachmentKind::Unknown,
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -91,6 +102,27 @@ impl ChatAttachmentDraft {
         }
     }
 
+    pub fn to_core_ref(&self) -> UserAttachmentRef {
+        let mut attachment = UserAttachmentRef::new(
+            self.id.clone(),
+            self.display_name.clone(),
+            self.kind.to_core_kind(),
+        );
+        if let Some(uri) = self.uri.as_ref() {
+            attachment = attachment.with_uri(uri.clone());
+        }
+        if let Some(path) = self.path.as_ref() {
+            attachment = attachment.with_path(path.to_string_lossy().to_string());
+        }
+        if let Some(mime_type) = self.mime_type.as_ref() {
+            attachment = attachment.with_mime_type(mime_type.clone());
+        }
+        if let Some(size_bytes) = self.size_bytes {
+            attachment = attachment.with_size_bytes(size_bytes);
+        }
+        attachment
+    }
+
     pub fn with_path(mut self, path: impl Into<PathBuf>) -> Self {
         self.path = Some(path.into());
         self
@@ -128,6 +160,15 @@ impl ChatComposerState {
         self.add_attachment(ChatAttachmentDraft::from_picked_document(document));
     }
 
+    pub fn to_core_input(&self) -> UserChatInput {
+        UserChatInput::new(self.draft_text.clone()).with_attachments(
+            self.attachments
+                .iter()
+                .map(ChatAttachmentDraft::to_core_ref)
+                .collect(),
+        )
+    }
+
     pub fn clear(&mut self) {
         self.draft_text.clear();
         self.attachments.clear();
@@ -150,6 +191,7 @@ impl ChatComposerState {
 mod tests {
     use super::{ChatAttachmentDraft, ChatAttachmentKind, ChatComposerState};
     use crate::document_picker::PickedDocument;
+    use deepseek_mobile_core::UserAttachmentKind;
 
     #[test]
     fn composer_detects_text_content() {
@@ -194,5 +236,20 @@ mod tests {
         assert_eq!(ChatAttachmentKind::from_mime_or_name(None, "main.rs"), ChatAttachmentKind::SourceFile);
         assert_eq!(ChatAttachmentKind::from_mime_or_name(Some("image/png"), "photo"), ChatAttachmentKind::Image);
         assert_eq!(ChatAttachmentKind::from_mime_or_name(Some("application/pdf"), "manual"), ChatAttachmentKind::Document);
+    }
+
+    #[test]
+    fn composer_exports_core_chat_input() {
+        let mut state = ChatComposerState::default();
+        state.draft_text = "Analyze".to_string();
+        state.add_picked_document(
+            PickedDocument::new("doc-1", "project.zip")
+                .with_mime_type("application/zip")
+                .with_uri("content://docs/project.zip"),
+        );
+        let input = state.to_core_input();
+        assert_eq!(input.text, "Analyze");
+        assert_eq!(input.attachments.len(), 1);
+        assert_eq!(input.attachments[0].kind, UserAttachmentKind::Archive);
     }
 }
