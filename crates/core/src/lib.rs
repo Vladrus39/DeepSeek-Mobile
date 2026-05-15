@@ -15,6 +15,7 @@ pub mod runtime_store;
 pub mod session;
 pub mod tool_call;
 pub mod tool_execution;
+pub mod tool_loop;
 pub mod tools;
 pub mod turn;
 pub mod workspace;
@@ -56,6 +57,9 @@ pub use runtime_store::{
 pub use session::Session;
 pub use tool_call::{parse_tool_calls_from_text, ToolCallParseResult, ToolCallRequest, ToolCallSource};
 pub use tool_execution::{ToolExecutionCoordinator, ToolExecutionRoute, ToolExecutionTarget};
+pub use tool_loop::{
+    execute_approved_call, process_model_text_with_tools, ToolLoopExecutionRecord, ToolLoopOutcome,
+};
 pub use tools::{ApprovalRequirement, ToolCapability, ToolContext, ToolRegistry, ToolResult, ToolSpec};
 pub use turn::{TokenUsage, TurnContext, TurnStatus, TurnToolCall};
 pub use workspace::{ExecutorKind, Workspace};
