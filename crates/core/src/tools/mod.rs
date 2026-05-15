@@ -204,6 +204,18 @@ impl Default for ToolRegistry {
     }
 }
 
+pub fn default_mobile_tool_registry() -> ToolRegistry {
+    let mut registry = ToolRegistry::new();
+    registry.register(Box::new(file_ops::ReadFileTool));
+    registry.register(Box::new(file_ops::WriteFileTool));
+    registry.register(Box::new(file_ops::ListDirTool));
+    registry.register(Box::new(file_ops::EditFileTool));
+    registry.register(Box::new(file_ops::FileOpsTool));
+    registry.register(Box::new(shell::ShellTool));
+    registry.register(Box::new(git::GitTool));
+    registry
+}
+
 pub fn required_str<'a>(input: &'a Value, key: &str) -> Result<&'a str> {
     input
         .get(key)
@@ -213,4 +225,21 @@ pub fn required_str<'a>(input: &'a Value, key: &str) -> Result<&'a str> {
 
 pub fn optional_str<'a>(input: &'a Value, key: &str) -> Option<&'a str> {
     input.get(key).and_then(Value::as_str)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::default_mobile_tool_registry;
+
+    #[test]
+    fn default_registry_contains_core_mobile_tools() {
+        let registry = default_mobile_tool_registry();
+        let names = registry.names();
+        assert!(names.contains(&"read_file".to_string()));
+        assert!(names.contains(&"write_file".to_string()));
+        assert!(names.contains(&"list_dir".to_string()));
+        assert!(names.contains(&"edit_file".to_string()));
+        assert!(names.contains(&"exec_shell".to_string()));
+        assert!(names.contains(&"git".to_string()));
+    }
 }
