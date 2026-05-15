@@ -1,18 +1,23 @@
 //! Mobile engine skeleton.
 //!
 //! This is the bridge between the Android UI and the reusable agent core. It
-//! already models turn lifecycle and event emission; the next step is to add
-//! streaming/tool-call orchestration on top of this skeleton.
+//! models turn lifecycle, event emission, routing, tool-call parsing, approval
+//! handoff and backend-aware tool execution.
 
 use crate::agent::DeepSeekAgent;
 use crate::api_client::Message;
+use crate::approval::ApprovalMode;
 use crate::config::Config;
 use crate::context::ContextManager;
 use crate::events::AgentEvent;
 use crate::model_router::ModelRouter;
+use crate::pc_gateway_client::PcGatewayClient;
 use crate::runtime_store::{RuntimeThreadStore, ThreadRecord, TurnRecord};
+use crate::tool_execution::ToolExecutionCoordinator;
+use crate::tool_loop::process_model_text_with_tools;
+use crate::tools::{default_mobile_tool_registry, ToolContext};
 use crate::turn::{TurnContext, TurnStatus};
-use crate::workspace::Workspace;
+use crate::workspace::{ExecutorKind, Workspace};
 use crate::workspace_connection::WorkspaceConnectionManager;
 use anyhow::Result;
 use std::path::PathBuf;
@@ -28,10 +33,17 @@ pub struct MobileEngine {
     workspace: PathBuf,
     active_workspace: Option<Workspace>,
     connection_manager: Option<WorkspaceConnectionManager>,
+    pc_gateway_client: Option<PcGatewayClient>,
+    approval_mode: ApprovalMode,
 }
 
 impl MobileEngine {
     pub fn new(config: Config) -> Self {
+        let approval_mode = if config.auto_mode {
+            ApprovalMode::Auto
+        } else {
+            ApprovalMode::Suggest
+        };
         Self {
             agent: DeepSeekAgent::new(config.clone()),
             router: ModelRouter::new(config.clone()),
@@ -43,6 +55,8 @@ impl MobileEngine {
             workspace: PathBuf::from("."),
             active_workspace: None,
             connection_manager: None,
+            pc_gateway_client: None,
+            approval_mode,
         }
     }
 
@@ -81,12 +95,30 @@ impl MobileEngine {
         self
     }
 
+    pub fn with_pc_gateway_client(mut self, client: PcGatewayClient) -> Self {
+        self.pc_gateway_client = Some(client);
+        self
+    }
+
+    pub fn with_approval_mode(mut self, mode: ApprovalMode) -> Self {
+        self.approval_mode = mode;
+        self
+    }
+
     pub fn active_workspace(&self) -> Option<&Workspace> {
         self.active_workspace.as_ref()
     }
 
     pub fn connection_manager(&self) -> Option<&WorkspaceConnectionManager> {
         self.connection_manager.as_ref()
+    }
+
+    pub fn pc_gateway_client(&self) -> Option<&PcGatewayClient> {
+        self.pc_gateway_client.as_ref()
+    }
+
+    pub fn approval_mode(&self) -> &ApprovalMode {
+        &self.approval_mode
     }
 
     pub async fn run_turn(&self, user_input: String) -> Result<EngineTurnResult> {
@@ -167,6 +199,33 @@ impl MobileEngine {
                     Some(&turn.id),
                     AgentEvent::MessageFinished { index: 0 },
                 )?;
+
+                let tool_loop = self.process_tools_if_requested(&text, &mut turn).await?;
+                for event in tool_loop.events {
+                    self.push_event(&mut events, Some(&turn.id), event)?;
+                }
+
+                if tool_loop.requires_user_input {
+                    self.push_event(
+                        &mut events,
+                        Some(&turn.id),
+                        AgentEvent::TurnFinished {
+                            turn_id: turn.id.clone(),
+                            status: TurnStatus::WaitingForApproval,
+                            usage: turn.usage.clone(),
+                            error: None,
+                        },
+                    )?;
+                    if let Some(store) = self.runtime_store.as_ref() {
+                        store.save_turn(&TurnRecord::from_context(&thread.id, &user_input, &turn))?;
+                    }
+                    return Ok(EngineTurnResult {
+                        turn,
+                        events,
+                        final_text: Some(tool_loop.final_text),
+                    });
+                }
+
                 turn.complete();
 
                 if let Some(store) = self.runtime_store.as_ref() {
@@ -187,7 +246,7 @@ impl MobileEngine {
                 Ok(EngineTurnResult {
                     turn,
                     events,
-                    final_text: Some(text),
+                    final_text: Some(tool_loop.final_text),
                 })
             }
             Err(error) => {
@@ -220,6 +279,38 @@ impl MobileEngine {
 
     pub fn config(&self) -> &Config {
         &self.config
+    }
+
+    async fn process_tools_if_requested(
+        &self,
+        model_text: &str,
+        turn: &mut TurnContext,
+    ) -> Result<crate::tool_loop::ToolLoopOutcome> {
+        let workspace = self.active_workspace.clone().unwrap_or_else(|| {
+            Workspace::new(
+                "default",
+                "Default workspace",
+                self.workspace.clone(),
+                ExecutorKind::LocalAndroid,
+            )
+        });
+        let registry = default_mobile_tool_registry();
+        let mut coordinator = ToolExecutionCoordinator::new(&registry);
+        if let Some(client) = self.pc_gateway_client.as_ref() {
+            coordinator = coordinator.with_pc_gateway(client);
+        }
+        let context = ToolContext::new(workspace)
+            .with_external_access(self.config.external_access.clone())
+            .with_auto_approve(matches!(self.approval_mode, ApprovalMode::Never));
+        process_model_text_with_tools(
+            model_text,
+            &registry,
+            &coordinator,
+            &context,
+            &self.approval_mode,
+            turn,
+        )
+        .await
     }
 
     fn push_event(
