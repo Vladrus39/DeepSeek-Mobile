@@ -6,7 +6,7 @@
 
 use crate::agent::DeepSeekAgent;
 use crate::api_client::Message;
-use crate::approval::ApprovalMode;
+use crate::approval::{ApprovalMode, ReviewDecision};
 use crate::config::Config;
 use crate::context::ContextManager;
 use crate::events::AgentEvent;
@@ -14,7 +14,7 @@ use crate::model_router::ModelRouter;
 use crate::pc_gateway_client::PcGatewayClient;
 use crate::runtime_store::{RuntimeThreadStore, ThreadRecord, TurnRecord};
 use crate::tool_execution::ToolExecutionCoordinator;
-use crate::tool_loop::process_model_text_with_tools;
+use crate::tool_loop::{continue_pending_tool_approval, process_model_text_with_tools, PendingToolCallApproval};
 use crate::tools::{default_mobile_tool_registry, ToolContext};
 use crate::turn::{TurnContext, TurnStatus};
 use crate::workspace::{ExecutorKind, Workspace};
@@ -277,6 +277,70 @@ impl MobileEngine {
         }
     }
 
+    pub async fn continue_after_approval(
+        &self,
+        pending: PendingToolCallApproval,
+        decision: ReviewDecision,
+        mut turn: TurnContext,
+    ) -> Result<EngineApprovalContinuationResult> {
+        let mut events = Vec::new();
+        let registry = default_mobile_tool_registry();
+        let mut coordinator = ToolExecutionCoordinator::new(&registry);
+        if let Some(client) = self.pc_gateway_client.as_ref() {
+            coordinator = coordinator.with_pc_gateway(client);
+        }
+        let context = self.tool_context();
+        let outcome = continue_pending_tool_approval(
+            &pending,
+            &decision,
+            &coordinator,
+            &context,
+            &mut turn,
+        )
+        .await?;
+
+        for event in outcome.events {
+            self.push_event(&mut events, Some(&turn.id), event)?;
+        }
+
+        let completed = !matches!(turn.status, TurnStatus::Cancelled) && !outcome.requires_user_input;
+        if completed {
+            turn.complete();
+            self.push_event(
+                &mut events,
+                Some(&turn.id),
+                AgentEvent::TurnFinished {
+                    turn_id: turn.id.clone(),
+                    status: TurnStatus::Completed,
+                    usage: turn.usage.clone(),
+                    error: None,
+                },
+            )?;
+            self.push_event(&mut events, Some(&turn.id), AgentEvent::Finished)?;
+        } else if matches!(turn.status, TurnStatus::Cancelled) {
+            self.push_event(
+                &mut events,
+                Some(&turn.id),
+                AgentEvent::TurnFinished {
+                    turn_id: turn.id.clone(),
+                    status: TurnStatus::Cancelled,
+                    usage: turn.usage.clone(),
+                    error: turn.error.clone(),
+                },
+            )?;
+        }
+
+        if let Some(store) = self.runtime_store.as_ref() {
+            store.save_turn(&TurnRecord::from_context(&self.thread_id, "approval-continuation", &turn))?;
+        }
+
+        Ok(EngineApprovalContinuationResult {
+            turn,
+            events,
+            executed: outcome.executed,
+        })
+    }
+
     pub fn config(&self) -> &Config {
         &self.config
     }
@@ -286,22 +350,12 @@ impl MobileEngine {
         model_text: &str,
         turn: &mut TurnContext,
     ) -> Result<crate::tool_loop::ToolLoopOutcome> {
-        let workspace = self.active_workspace.clone().unwrap_or_else(|| {
-            Workspace::new(
-                "default",
-                "Default workspace",
-                self.workspace.clone(),
-                ExecutorKind::LocalAndroid,
-            )
-        });
         let registry = default_mobile_tool_registry();
         let mut coordinator = ToolExecutionCoordinator::new(&registry);
         if let Some(client) = self.pc_gateway_client.as_ref() {
             coordinator = coordinator.with_pc_gateway(client);
         }
-        let context = ToolContext::new(workspace)
-            .with_external_access(self.config.external_access.clone())
-            .with_auto_approve(matches!(self.approval_mode, ApprovalMode::Never));
+        let context = self.tool_context();
         process_model_text_with_tools(
             model_text,
             &registry,
@@ -311,6 +365,20 @@ impl MobileEngine {
             turn,
         )
         .await
+    }
+
+    fn tool_context(&self) -> ToolContext {
+        let workspace = self.active_workspace.clone().unwrap_or_else(|| {
+            Workspace::new(
+                "default",
+                "Default workspace",
+                self.workspace.clone(),
+                ExecutorKind::LocalAndroid,
+            )
+        });
+        ToolContext::new(workspace)
+            .with_external_access(self.config.external_access.clone())
+            .with_auto_approve(matches!(self.approval_mode, ApprovalMode::Never))
     }
 
     fn push_event(
@@ -336,6 +404,13 @@ pub struct EngineTurnResult {
     pub turn: TurnContext,
     pub events: Vec<AgentEvent>,
     pub final_text: Option<String>,
+}
+
+#[derive(Clone, Debug)]
+pub struct EngineApprovalContinuationResult {
+    pub turn: TurnContext,
+    pub events: Vec<AgentEvent>,
+    pub executed: Vec<crate::tool_loop::ToolLoopExecutionRecord>,
 }
 
 fn title_from_input(input: &str) -> String {
