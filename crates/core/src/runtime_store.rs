@@ -5,6 +5,8 @@
 //! restart. This is inspired by the original TUI runtime thread store, but kept
 //! dependency-light for mobile builds.
 
+use crate::approval::{ApprovalRisk, ReviewDecision, ToolCategory};
+use crate::approval_session::ApprovalSessionGrant;
 use crate::events::AgentEvent;
 use crate::tool_loop::PendingToolCallApproval;
 use crate::turn::{TurnContext, TurnStatus};
@@ -230,6 +232,49 @@ impl PendingApprovalRecord {
     }
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct ApprovalDecisionRecord {
+    pub schema_version: u32,
+    pub seq: u64,
+    pub timestamp_unix: u64,
+    pub thread_id: String,
+    pub turn_id: String,
+    pub approval_id: String,
+    pub tool_call_id: String,
+    pub tool_name: String,
+    pub category: ToolCategory,
+    pub risk: ApprovalRisk,
+    pub decision: ReviewDecision,
+    pub session_grant: Option<ApprovalSessionGrant>,
+    pub arguments_preview: Value,
+}
+
+impl ApprovalDecisionRecord {
+    pub fn new(
+        thread_id: impl Into<String>,
+        turn_id: impl Into<String>,
+        pending: &PendingToolCallApproval,
+        decision: ReviewDecision,
+        session_grant: Option<ApprovalSessionGrant>,
+    ) -> Self {
+        Self {
+            schema_version: CURRENT_RUNTIME_SCHEMA_VERSION,
+            seq: 0,
+            timestamp_unix: current_unix_time(),
+            thread_id: thread_id.into(),
+            turn_id: turn_id.into(),
+            approval_id: pending.approval.id.clone(),
+            tool_call_id: pending.call.id.clone(),
+            tool_name: pending.call.name.clone(),
+            category: pending.approval.category.clone(),
+            risk: pending.approval.risk.clone(),
+            decision,
+            session_grant,
+            arguments_preview: crate::approval_card::sanitize_value_for_preview(&pending.call.arguments),
+        }
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 struct RuntimeStoreState {
     schema_version: u32,
@@ -253,6 +298,7 @@ pub struct RuntimeThreadStore {
     items_dir: PathBuf,
     events_dir: PathBuf,
     pending_approvals_dir: PathBuf,
+    approval_decisions_dir: PathBuf,
     state_path: PathBuf,
 }
 
@@ -264,12 +310,15 @@ impl RuntimeThreadStore {
         let items_dir = root.join("items");
         let events_dir = root.join("events");
         let pending_approvals_dir = root.join("pending_approvals");
+        let approval_decisions_dir = root.join("approval_decisions");
         fs::create_dir_all(&threads_dir).with_context(|| format!("create {}", threads_dir.display()))?;
         fs::create_dir_all(&turns_dir).with_context(|| format!("create {}", turns_dir.display()))?;
         fs::create_dir_all(&items_dir).with_context(|| format!("create {}", items_dir.display()))?;
         fs::create_dir_all(&events_dir).with_context(|| format!("create {}", events_dir.display()))?;
         fs::create_dir_all(&pending_approvals_dir)
             .with_context(|| format!("create {}", pending_approvals_dir.display()))?;
+        fs::create_dir_all(&approval_decisions_dir)
+            .with_context(|| format!("create {}", approval_decisions_dir.display()))?;
 
         let state_path = root.join("state.json");
         if !state_path.exists() {
@@ -283,6 +332,7 @@ impl RuntimeThreadStore {
             items_dir,
             events_dir,
             pending_approvals_dir,
+            approval_decisions_dir,
             state_path,
         })
     }
@@ -381,6 +431,79 @@ impl RuntimeThreadStore {
         Ok(records)
     }
 
+    pub fn append_approval_decision(
+        &self,
+        mut record: ApprovalDecisionRecord,
+    ) -> Result<ApprovalDecisionRecord> {
+        ensure_supported_schema(record.schema_version, "approval decision")?;
+        let mut state = self.load_state()?;
+        record.seq = state.next_seq;
+        record.timestamp_unix = current_unix_time();
+        state.next_seq = state.next_seq.saturating_add(1);
+        self.save_state(&state)?;
+
+        let path = self.approval_decisions_path(&record.thread_id);
+        let mut file = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&path)
+            .with_context(|| format!("open {}", path.display()))?;
+        let line = serde_json::to_string(&record)?;
+        writeln!(file, "{}", line)?;
+        Ok(record)
+    }
+
+    pub fn load_approval_decisions(&self, thread_id: &str) -> Result<Vec<ApprovalDecisionRecord>> {
+        let path = self.approval_decisions_path(thread_id);
+        if !path.exists() {
+            return Ok(Vec::new());
+        }
+        let file = File::open(&path).with_context(|| format!("open {}", path.display()))?;
+        let reader = BufReader::new(file);
+        let mut decisions = Vec::new();
+        for line in reader.lines() {
+            let line = line?;
+            if line.trim().is_empty() {
+                continue;
+            }
+            let record: ApprovalDecisionRecord = serde_json::from_str(&line)
+                .with_context(|| format!("parse approval decision line in {}", path.display()))?;
+            ensure_supported_schema(record.schema_version, "approval decision")?;
+            decisions.push(record);
+        }
+        decisions.sort_by_key(|record| record.seq);
+        Ok(decisions)
+    }
+
+    pub fn load_approval_decisions_for_turn(&self, turn_id: &str) -> Result<Vec<ApprovalDecisionRecord>> {
+        let mut decisions = Vec::new();
+        for entry in fs::read_dir(&self.approval_decisions_dir)
+            .with_context(|| format!("read {}", self.approval_decisions_dir.display()))?
+        {
+            let entry = entry?;
+            let path = entry.path();
+            if !path.is_file() || path.extension().and_then(|value| value.to_str()) != Some("jsonl") {
+                continue;
+            }
+            let file = File::open(&path).with_context(|| format!("open {}", path.display()))?;
+            let reader = BufReader::new(file);
+            for line in reader.lines() {
+                let line = line?;
+                if line.trim().is_empty() {
+                    continue;
+                }
+                let record: ApprovalDecisionRecord = serde_json::from_str(&line)
+                    .with_context(|| format!("parse approval decision line in {}", path.display()))?;
+                ensure_supported_schema(record.schema_version, "approval decision")?;
+                if record.turn_id == turn_id {
+                    decisions.push(record);
+                }
+            }
+        }
+        decisions.sort_by_key(|record| record.seq);
+        Ok(decisions)
+    }
+
     pub fn append_event(
         &self,
         thread_id: impl Into<String>,
@@ -446,6 +569,11 @@ impl RuntimeThreadStore {
 
     fn events_path(&self, thread_id: &str) -> PathBuf {
         self.events_dir.join(format!("{}.jsonl", sanitize_id(thread_id)))
+    }
+
+    fn approval_decisions_path(&self, thread_id: &str) -> PathBuf {
+        self.approval_decisions_dir
+            .join(format!("{}.jsonl", sanitize_id(thread_id)))
     }
 
     fn pending_approval_path(&self, approval_id: &str) -> PathBuf {
@@ -514,7 +642,8 @@ fn current_unix_time() -> u64 {
 
 #[cfg(test)]
 mod tests {
-    use super::{RuntimeThreadStore, ThreadRecord, TurnRecord};
+    use super::{ApprovalDecisionRecord, RuntimeThreadStore, ThreadRecord, TurnRecord};
+    use crate::approval::{MobileApprovalRequest, ReviewDecision};
     use crate::events::AgentEvent;
     use crate::tool_call::{ToolCallRequest, ToolCallSource};
     use crate::tool_loop::PendingToolCallApproval;
@@ -530,6 +659,22 @@ mod tests {
         ));
         let _ = fs::remove_dir_all(&root);
         RuntimeThreadStore::open(root).unwrap()
+    }
+
+    fn sample_pending() -> PendingToolCallApproval {
+        let tool = WriteFileTool;
+        let call = ToolCallRequest::new(
+            "write_file",
+            serde_json::json!({"path":"README.md","content":"x","api_key":"hidden"}),
+            ToolCallSource::Manual,
+        )
+        .with_id("approval-1");
+        let approval = MobileApprovalRequest::new(
+            "approval-1",
+            &tool,
+            call.arguments.clone(),
+        );
+        PendingToolCallApproval { approval, call }
     }
 
     #[test]
@@ -573,19 +718,7 @@ mod tests {
     fn saves_loads_and_deletes_pending_approval() {
         let store = temp_store("pending_approval");
         let turn = TurnContext::new(10);
-        let tool = WriteFileTool;
-        let call = ToolCallRequest::new(
-            "write_file",
-            serde_json::json!({"path":"README.md","content":"x"}),
-            ToolCallSource::Manual,
-        )
-        .with_id("approval-1");
-        let approval = crate::approval::MobileApprovalRequest::new(
-            "approval-1",
-            &tool,
-            call.arguments.clone(),
-        );
-        let pending = PendingToolCallApproval { approval, call };
+        let pending = sample_pending();
 
         store
             .save_pending_approval("thread-1", &turn.id, &pending)
@@ -599,6 +732,31 @@ mod tests {
         assert_eq!(by_turn.len(), 1);
         store.delete_pending_approval("approval-1").unwrap();
         assert!(store.load_pending_approvals_for_turn(&turn.id).unwrap().is_empty());
+        let _ = fs::remove_dir_all(store.root());
+    }
+
+    #[test]
+    fn appends_and_loads_approval_decisions() {
+        let store = temp_store("approval_decisions");
+        let pending = sample_pending();
+        let record = ApprovalDecisionRecord::new(
+            "thread-1",
+            "turn-1",
+            &pending,
+            ReviewDecision::Approved,
+            None,
+        );
+        store.append_approval_decision(record).unwrap();
+
+        let decisions = store.load_approval_decisions("thread-1").unwrap();
+        assert_eq!(decisions.len(), 1);
+        assert_eq!(decisions[0].seq, 1);
+        assert_eq!(decisions[0].approval_id, "approval-1");
+        assert_eq!(decisions[0].decision, ReviewDecision::Approved);
+        assert_eq!(decisions[0].arguments_preview["api_key"], "<redacted>");
+
+        let by_turn = store.load_approval_decisions_for_turn("turn-1").unwrap();
+        assert_eq!(by_turn.len(), 1);
         let _ = fs::remove_dir_all(store.root());
     }
 }
