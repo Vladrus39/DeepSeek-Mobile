@@ -421,7 +421,7 @@ impl MobileEngine {
             store.delete_pending_approval(&approval_id)?;
         }
 
-        let completed = !matches!(turn.status, TurnStatus::Cancelled) && !outcome.requires_user_input;
+        let completed = !matches!(&turn.status, TurnStatus::Cancelled) && !outcome.requires_user_input;
         if completed {
             turn.complete();
             self.push_event(
@@ -435,7 +435,7 @@ impl MobileEngine {
                 },
             )?;
             self.push_event(&mut events, Some(&turn.id), AgentEvent::Finished)?;
-        } else if matches!(turn.status, TurnStatus::Cancelled) {
+        } else if matches!(&turn.status, TurnStatus::Cancelled) {
             self.push_event(
                 &mut events,
                 Some(&turn.id),
@@ -501,7 +501,7 @@ impl MobileEngine {
         });
         ToolContext::new(workspace)
             .with_external_access(self.config.external_access.clone())
-            .with_auto_approve(matches!(self.approval_mode, ApprovalMode::Never))
+            .with_auto_approve(matches!(&self.approval_mode, ApprovalMode::Never))
     }
 
     fn approval_session_policy_snapshot(&self) -> Result<ApprovalSessionPolicy> {
