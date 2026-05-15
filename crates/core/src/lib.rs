@@ -14,13 +14,14 @@ pub mod workspace_files;
 
 pub use agent::DeepSeekAgent;
 pub use api_client::{DeepSeekClient, Message};
-pub use config::Config;
+pub use config::{Config, ExternalAccessMode, ModelMode, ThinkingLevel};
 pub use context::{
     estimate_messages_tokens, estimate_text_tokens, CompressionStrategy, ContextBudget,
     ContextCompressionPlan, ContextManager,
 };
 pub use events::{AgentEvent, ApprovalRequest, PatchProposal, RiskLevel, ToolCallEvent, ToolResultEvent};
 pub use executor::{CommandOutput, CommandRequest, DisabledExecutor, Executor};
+pub use model_router::{ModelRouter, RouteDecision, TaskProfile};
 pub use session::Session;
 pub use workspace::{ExecutorKind, Workspace};
 pub use workspace_files::{WorkspaceFileEntry, WorkspaceFileService};
