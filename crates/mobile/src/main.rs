@@ -1,6 +1,7 @@
 mod agent_event_adapter;
 mod agent_timeline;
 mod agent_timeline_panel;
+mod attachment_ingestion;
 mod chat_attachment;
 mod cockpit_section_panel;
 mod document_picker;
@@ -333,13 +334,16 @@ fn app() -> Element {
                         let draft = composer();
                         if !draft.has_content() { return; }
 
-                        let user_input = draft.to_core_input();
+                        let (user_input, ingestion_statuses) = draft.to_core_input_with_ingestion();
                         let user_message = user_input.clone().into_message();
                         let prompt = user_message.content.clone();
 
                         messages.push((user_message.role.clone(), prompt.clone()));
                         let mut next_timeline = timeline();
                         next_timeline.push_user_message(prompt);
+                        for status in ingestion_statuses {
+                            push_agent_event(&mut next_timeline, &AgentEvent::Status(status));
+                        }
                         push_agent_event(&mut next_timeline, &AgentEvent::Started);
                         push_agent_event(&mut next_timeline, &AgentEvent::Status("MobileEngine turn started".to_string()));
                         timeline.set(next_timeline);
