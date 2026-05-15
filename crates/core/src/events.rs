@@ -8,7 +8,7 @@ use crate::api_client::Message;
 use crate::turn::{TokenUsage, TurnStatus};
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub enum AgentEvent {
     Started,
     Status(String),
