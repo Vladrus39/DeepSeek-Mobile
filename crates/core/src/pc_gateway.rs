@@ -1,9 +1,11 @@
 //! PC companion gateway protocol.
 //!
 //! The mobile app can be a control cockpit while a trusted PC/laptop acts as a
-//! workspace host and heavy executor. The gateway must never expose the whole
-//! computer by default: the PC grants explicit workspaces, the phone sends
-//! structured requests, and risky actions still go through the approval layer.
+//! workspace runtime host: files, terminals, git, tests, dev servers, previews,
+//! diagnostics and project indexing live on the PC; the phone controls them.
+//! The gateway must never expose the whole computer by default: the PC grants
+//! explicit workspaces, the phone sends structured requests, and risky actions
+//! still go through the approval layer.
 
 use crate::executor::{CommandOutput, CommandRequest};
 use serde::{Deserialize, Serialize};
@@ -20,10 +22,18 @@ pub enum PcGatewayCapability {
     DeleteFiles,
     ApplyPatch,
     ExecuteCommands,
+    TerminalSessions,
+    ManageEnvironments,
     GitStatus,
     GitDiff,
     GitCommit,
     GitPushPull,
+    RunTests,
+    RunBuilds,
+    DevServerPreview,
+    Diagnostics,
+    LanguageServer,
+    WorkspaceIndex,
     WatchFileChanges,
 }
 
@@ -101,9 +111,22 @@ impl Default for PcGatewaySecurityPolicy {
                 "cargo".to_string(),
                 "git".to_string(),
                 "npm".to_string(),
+                "npx".to_string(),
+                "pnpm".to_string(),
+                "yarn".to_string(),
                 "python".to_string(),
+                "python3".to_string(),
                 "pytest".to_string(),
                 "node".to_string(),
+                "bun".to_string(),
+                "deno".to_string(),
+                "go".to_string(),
+                "rustc".to_string(),
+                "java".to_string(),
+                "gradle".to_string(),
+                "mvn".to_string(),
+                "docker".to_string(),
+                "docker-compose".to_string(),
             ],
             blocked_path_fragments: vec![
                 ".ssh".to_string(),
@@ -177,6 +200,99 @@ impl PcWorkspaceGrant {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub enum PcEnvironmentKind {
+    System,
+    PythonVenv,
+    Conda,
+    Node,
+    Rust,
+    Go,
+    Java,
+    Docker,
+    DevContainer,
+    Custom(String),
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PcEnvironmentDescriptor {
+    pub id: String,
+    pub name: String,
+    pub kind: PcEnvironmentKind,
+    pub root: Option<String>,
+    pub command_prefix: Vec<String>,
+    pub detected_tools: Vec<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PcTerminalSession {
+    pub id: String,
+    pub workspace_id: String,
+    pub title: String,
+    pub cwd: String,
+    pub environment_id: Option<String>,
+    pub created_at_unix: u64,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub enum PcTaskKind {
+    Build,
+    Test,
+    Run,
+    Format,
+    Lint,
+    Install,
+    DevServer,
+    Custom,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PcTaskDescriptor {
+    pub id: String,
+    pub workspace_id: String,
+    pub label: String,
+    pub kind: PcTaskKind,
+    pub command: CommandRequest,
+    pub environment_id: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PcPreviewDescriptor {
+    pub id: String,
+    pub workspace_id: String,
+    pub label: String,
+    pub local_url: String,
+    pub gateway_url: Option<String>,
+    pub process_id: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PcDiagnostic {
+    pub path: String,
+    pub line: u32,
+    pub column: u32,
+    pub severity: PcDiagnosticSeverity,
+    pub message: String,
+    pub source: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub enum PcDiagnosticSeverity {
+    Error,
+    Warning,
+    Info,
+    Hint,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PcWorkspaceIndexSummary {
+    pub workspace_id: String,
+    pub files_indexed: u64,
+    pub symbols_indexed: u64,
+    pub last_indexed_at_unix: Option<u64>,
+    pub status: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct PcGatewayPairingRequest {
     pub device_id: String,
     pub device_label: String,
@@ -217,33 +333,24 @@ impl PcGatewayRequestEnvelope {
 pub enum PcGatewayRequest {
     Health,
     ListWorkspaces,
-    ReadFile {
-        workspace_id: String,
-        path: String,
-    },
-    WriteFile {
-        workspace_id: String,
-        path: String,
-        content: String,
-    },
-    DeleteFile {
-        workspace_id: String,
-        path: String,
-    },
-    ListDir {
-        workspace_id: String,
-        path: String,
-    },
-    ExecuteCommand {
-        workspace_id: String,
-        command: CommandRequest,
-    },
-    GitStatus {
-        workspace_id: String,
-    },
-    GitDiff {
-        workspace_id: String,
-    },
+    ListEnvironments { workspace_id: String },
+    DetectTasks { workspace_id: String },
+    IndexWorkspace { workspace_id: String },
+    ReadFile { workspace_id: String, path: String },
+    WriteFile { workspace_id: String, path: String, content: String },
+    DeleteFile { workspace_id: String, path: String },
+    ListDir { workspace_id: String, path: String },
+    OpenTerminal { workspace_id: String, cwd: Option<String>, environment_id: Option<String> },
+    TerminalInput { session_id: String, input: String },
+    CloseTerminal { session_id: String },
+    ExecuteCommand { workspace_id: String, command: CommandRequest, environment_id: Option<String> },
+    RunTask { task_id: String },
+    StopTask { task_id: String },
+    StartDevServer { workspace_id: String, command: CommandRequest, environment_id: Option<String> },
+    StopDevServer { preview_id: String },
+    GetDiagnostics { workspace_id: String, path: Option<String> },
+    GitStatus { workspace_id: String },
+    GitDiff { workspace_id: String },
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -257,11 +364,22 @@ pub struct PcGatewayResponseEnvelope {
 pub enum PcGatewayResponse {
     Health(PcGatewayHealth),
     Workspaces(Vec<PcWorkspaceGrant>),
+    Environments(Vec<PcEnvironmentDescriptor>),
+    Tasks(Vec<PcTaskDescriptor>),
+    WorkspaceIndex(PcWorkspaceIndexSummary),
     FileContent { path: String, content: String },
     FileWritten { path: String, bytes: usize },
     FileDeleted { path: String },
     DirEntries(Vec<PcGatewayDirEntry>),
+    TerminalOpened(PcTerminalSession),
+    TerminalOutput { session_id: String, chunk: String },
+    TerminalClosed { session_id: String, exit_code: Option<i32> },
     CommandOutput(CommandOutput),
+    TaskStarted { task_id: String, process_id: String },
+    TaskStopped { task_id: String },
+    PreviewStarted(PcPreviewDescriptor),
+    PreviewStopped { preview_id: String },
+    Diagnostics(Vec<PcDiagnostic>),
     GitText { operation: String, output: String },
     Error(PcGatewayError),
 }
