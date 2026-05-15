@@ -11,6 +11,7 @@ mod native_bridge;
 mod pc_pairing_manager;
 mod pc_pairing_panel;
 mod pc_pairing_state;
+mod saved_timeline_loader;
 
 use agent_event_adapter::push_agent_event;
 use agent_timeline::MobileTimelineState;
@@ -24,6 +25,7 @@ use mobile_drawer::{mobile_drawer, CockpitSection};
 use mobile_engine_runner::run_mobile_turn;
 use native_bridge::{NativeBridgeState, NativeMobileCommand, NativeMobileEvent};
 use pc_pairing_state::PcPairingUiState;
+use saved_timeline_loader::load_default_saved_timeline;
 
 fn main() {
     dioxus_mobile::launch(app);
@@ -34,12 +36,32 @@ fn app() -> Element {
     let mut input = use_signal(String::new);
     let mut composer = use_signal(ChatComposerState::default);
     let mut timeline = use_signal(MobileTimelineState::default);
+    let mut did_load_saved_timeline = use_signal(|| false);
     let mut picker = use_signal(DocumentPickerState::default);
     let mut native_bridge = use_signal(NativeBridgeState::default);
     let mut is_loading = use_signal(|| false);
     let mut drawer_open = use_signal(|| false);
     let mut active_section = use_signal(|| CockpitSection::Chat);
     let pc_pairing_state = use_signal(PcPairingUiState::default);
+
+    if !did_load_saved_timeline() {
+        did_load_saved_timeline.set(true);
+        match load_default_saved_timeline() {
+            Ok(saved) => {
+                if !saved.is_empty() {
+                    timeline.set(saved);
+                }
+            }
+            Err(error) => {
+                let mut next_timeline = timeline();
+                push_agent_event(
+                    &mut next_timeline,
+                    &AgentEvent::Error(format!("Failed to restore saved timeline: {}", error)),
+                );
+                timeline.set(next_timeline);
+            }
+        }
+    }
 
     rsx! {
         div {
