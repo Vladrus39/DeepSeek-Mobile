@@ -5,6 +5,11 @@
 //! UI should not hard-code those choices. This module stores connection profiles,
 //! tracks status, chooses the active backend, and converts the selected profile
 //! into a `Workspace` boundary for tools and the engine.
+//!
+//! Important design rule: remote/PC execution is an optional power feature, not
+//! the default operating mode. The app must work normally on the phone, and it
+//! should switch to PC/remote only by explicit user selection or by a chosen
+//! selection policy.
 
 use crate::pc_gateway::PcGatewayConfig;
 use crate::workspace::{ExecutorKind, Workspace};
@@ -29,6 +34,26 @@ impl WorkspaceBackendKind {
             WorkspaceBackendKind::PcGateway => ExecutorKind::PcGateway,
             WorkspaceBackendKind::RemoteYlit => ExecutorKind::RemoteYlit,
         }
+    }
+
+    pub fn is_remote_power_backend(&self) -> bool {
+        matches!(self, WorkspaceBackendKind::PcGateway | WorkspaceBackendKind::RemoteYlit)
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub enum WorkspaceSelectionPolicy {
+    ManualOnly,
+    PreferLocal,
+    PreferTermux,
+    PreferPcGatewayWhenActive,
+    PreferRemoteYlitWhenActive,
+    BestAvailable,
+}
+
+impl Default for WorkspaceSelectionPolicy {
+    fn default() -> Self {
+        WorkspaceSelectionPolicy::ManualOnly
     }
 }
 
@@ -84,6 +109,7 @@ impl WorkspaceConnection {
             root,
         )
         .with_status(WorkspaceConnectionStatus::Online)
+        .with_priority(10)
     }
 
     pub fn termux(
@@ -95,6 +121,7 @@ impl WorkspaceConnection {
     ) -> Self {
         Self::new(id, label, WorkspaceBackendKind::Termux, workspace_id, workspace_name, root)
             .with_status(WorkspaceConnectionStatus::SetupRequired)
+            .with_priority(30)
     }
 
     pub fn pc_gateway(
@@ -204,15 +231,35 @@ impl WorkspaceConnection {
     }
 }
 
-#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct WorkspaceConnectionManager {
     pub connections: Vec<WorkspaceConnection>,
     pub active_connection_id: Option<String>,
+    pub selection_policy: WorkspaceSelectionPolicy,
+}
+
+impl Default for WorkspaceConnectionManager {
+    fn default() -> Self {
+        Self {
+            connections: Vec::new(),
+            active_connection_id: None,
+            selection_policy: WorkspaceSelectionPolicy::default(),
+        }
+    }
 }
 
 impl WorkspaceConnectionManager {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    pub fn with_selection_policy(mut self, policy: WorkspaceSelectionPolicy) -> Self {
+        self.selection_policy = policy;
+        self
+    }
+
+    pub fn set_selection_policy(&mut self, policy: WorkspaceSelectionPolicy) {
+        self.selection_policy = policy;
     }
 
     pub fn add_or_update(&mut self, connection: WorkspaceConnection) {
@@ -238,6 +285,10 @@ impl WorkspaceConnectionManager {
         }
         self.active_connection_id = Some(connection_id);
         Ok(())
+    }
+
+    pub fn clear_active(&mut self) {
+        self.active_connection_id = None;
     }
 
     pub fn active(&self) -> Option<&WorkspaceConnection> {
@@ -287,6 +338,54 @@ impl WorkspaceConnectionManager {
         self.active_connection_id = Some(best_id);
         self.active()
     }
+
+    pub fn choose_by_policy(&mut self, workspace_id: &str) -> Option<&WorkspaceConnection> {
+        let selected_id = match self.selection_policy {
+            WorkspaceSelectionPolicy::ManualOnly => self
+                .active()
+                .filter(|connection| connection.workspace_id == workspace_id && connection.is_usable())
+                .map(|connection| connection.id.clone()),
+            WorkspaceSelectionPolicy::PreferLocal => self.select_first_usable(workspace_id, &[
+                WorkspaceBackendKind::LocalAndroid,
+                WorkspaceBackendKind::Termux,
+                WorkspaceBackendKind::PcGateway,
+                WorkspaceBackendKind::RemoteYlit,
+            ]),
+            WorkspaceSelectionPolicy::PreferTermux => self.select_first_usable(workspace_id, &[
+                WorkspaceBackendKind::Termux,
+                WorkspaceBackendKind::LocalAndroid,
+                WorkspaceBackendKind::PcGateway,
+                WorkspaceBackendKind::RemoteYlit,
+            ]),
+            WorkspaceSelectionPolicy::PreferPcGatewayWhenActive => self.select_first_usable(workspace_id, &[
+                WorkspaceBackendKind::PcGateway,
+                WorkspaceBackendKind::LocalAndroid,
+                WorkspaceBackendKind::Termux,
+                WorkspaceBackendKind::RemoteYlit,
+            ]),
+            WorkspaceSelectionPolicy::PreferRemoteYlitWhenActive => self.select_first_usable(workspace_id, &[
+                WorkspaceBackendKind::RemoteYlit,
+                WorkspaceBackendKind::LocalAndroid,
+                WorkspaceBackendKind::Termux,
+                WorkspaceBackendKind::PcGateway,
+            ]),
+            WorkspaceSelectionPolicy::BestAvailable => self
+                .best_usable_for_workspace(workspace_id)
+                .map(|connection| connection.id.clone()),
+        }?;
+        self.active_connection_id = Some(selected_id);
+        self.active()
+    }
+
+    fn select_first_usable(&self, workspace_id: &str, order: &[WorkspaceBackendKind]) -> Option<String> {
+        order.iter().find_map(|backend| {
+            self.connections
+                .iter()
+                .filter(|item| item.workspace_id == workspace_id && item.backend == *backend && item.is_usable())
+                .max_by_key(|item| item.priority)
+                .map(|connection| connection.id.clone())
+        })
+    }
 }
 
 fn current_unix_time() -> u64 {
@@ -298,7 +397,10 @@ fn current_unix_time() -> u64 {
 
 #[cfg(test)]
 mod tests {
-    use super::{WorkspaceBackendKind, WorkspaceConnection, WorkspaceConnectionManager, WorkspaceConnectionStatus};
+    use super::{
+        WorkspaceBackendKind, WorkspaceConnection, WorkspaceConnectionManager, WorkspaceConnectionStatus,
+        WorkspaceSelectionPolicy,
+    };
     use crate::pc_gateway::PcGatewayConfig;
     use crate::workspace::ExecutorKind;
     use std::path::PathBuf;
@@ -318,7 +420,42 @@ mod tests {
     }
 
     #[test]
-    fn chooses_highest_priority_usable_backend() {
+    fn default_policy_is_manual_and_does_not_jump_to_pc() {
+        let mut manager = manager_with_local_and_pc();
+        let selected = manager.choose_by_policy("w1");
+        assert!(selected.is_none());
+        assert!(manager.active().is_none());
+    }
+
+    #[test]
+    fn prefer_local_policy_keeps_phone_backend_even_when_pc_is_online() {
+        let mut manager = manager_with_local_and_pc().with_selection_policy(WorkspaceSelectionPolicy::PreferLocal);
+        let selected = manager.choose_by_policy("w1").unwrap();
+        assert_eq!(selected.backend, WorkspaceBackendKind::LocalAndroid);
+    }
+
+    #[test]
+    fn prefer_pc_policy_uses_pc_only_when_explicitly_selected() {
+        let mut manager = manager_with_local_and_pc().with_selection_policy(WorkspaceSelectionPolicy::PreferPcGatewayWhenActive);
+        let selected = manager.choose_by_policy("w1").unwrap();
+        assert_eq!(selected.backend, WorkspaceBackendKind::PcGateway);
+    }
+
+    #[test]
+    fn chooses_highest_priority_usable_backend_when_best_available_requested() {
+        let mut manager = manager_with_local_and_pc().with_selection_policy(WorkspaceSelectionPolicy::BestAvailable);
+        let best = manager.choose_by_policy("w1").unwrap();
+        assert_eq!(best.backend, WorkspaceBackendKind::PcGateway);
+        assert_eq!(manager.active().unwrap().id, "pc");
+    }
+
+    #[test]
+    fn rejects_missing_active_connection() {
+        let mut manager = WorkspaceConnectionManager::new();
+        assert!(manager.set_active("missing").is_err());
+    }
+
+    fn manager_with_local_and_pc() -> WorkspaceConnectionManager {
         let mut manager = WorkspaceConnectionManager::new();
         manager.add_or_update(
             WorkspaceConnection::local_android("local", "Phone", "w1", "Project", "/phone/project")
@@ -331,15 +468,6 @@ mod tests {
                 .with_status(WorkspaceConnectionStatus::Online)
                 .with_priority(100),
         );
-
-        let best = manager.choose_best_active("w1").unwrap();
-        assert_eq!(best.backend, WorkspaceBackendKind::PcGateway);
-        assert_eq!(manager.active().unwrap().id, "pc");
-    }
-
-    #[test]
-    fn rejects_missing_active_connection() {
-        let mut manager = WorkspaceConnectionManager::new();
-        assert!(manager.set_active("missing").is_err());
+        manager
     }
 }
