@@ -39,7 +39,7 @@ pub enum ApprovalRisk {
     Destructive,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct MobileApprovalRequest {
     pub id: String,
     pub tool_name: String,
