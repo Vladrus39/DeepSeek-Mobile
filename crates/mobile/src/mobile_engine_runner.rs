@@ -44,11 +44,41 @@ pub async fn run_mobile_turn_with_runtime(
     input: UserChatInput,
     runtime: MobileRuntimeConfig,
 ) -> anyhow::Result<MobileTurnUiResult> {
+    run_mobile_turn_with_runtime_and_observer(config, input, runtime, |_| {}).await
+}
+
+pub async fn run_mobile_turn_streaming<F>(
+    config: Config,
+    input: UserChatInput,
+    on_event: F,
+) -> anyhow::Result<MobileTurnUiResult>
+where
+    F: Fn(AgentEvent) + 'static,
+{
+    run_mobile_turn_with_runtime_and_observer(
+        config,
+        input,
+        MobileRuntimeConfig::default(),
+        on_event,
+    )
+    .await
+}
+
+pub async fn run_mobile_turn_with_runtime_and_observer<F>(
+    config: Config,
+    input: UserChatInput,
+    runtime: MobileRuntimeConfig,
+    on_event: F,
+) -> anyhow::Result<MobileTurnUiResult>
+where
+    F: Fn(AgentEvent) + 'static,
+{
     let store = RuntimeThreadStore::open(runtime.runtime_store_root.clone())?;
     let engine = MobileEngine::new(config)
         .with_runtime_store(store)
         .with_thread_id(runtime.thread_id.clone())
-        .with_workspace(runtime.workspace_root.clone());
+        .with_workspace(runtime.workspace_root.clone())
+        .with_event_observer(on_event);
 
     let result = engine.run_turn(input.to_prompt_text()).await?;
     let approval_card_count = result.approval_cards.len();
