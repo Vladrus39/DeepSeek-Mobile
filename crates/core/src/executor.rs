@@ -1,10 +1,11 @@
-//! Execution abstraction for Android, Termux and remote backends.
+//! Execution abstraction for Android, Termux, PC gateway and remote backends.
 //!
 //! Large projects should not be limited by the phone. The mobile app can route
-//! commands either to a safe local executor, a Termux bridge, or a remote Y-lit
-//! executor while keeping the same agent/tool interface.
+//! commands either to a safe local executor, a Termux bridge, a paired PC
+//! gateway, or a remote Y-lit executor while keeping the same agent/tool
+//! interface.
 
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
@@ -13,6 +14,21 @@ pub struct CommandRequest {
     pub program: String,
     pub args: Vec<String>,
     pub working_dir: Option<PathBuf>,
+}
+
+impl CommandRequest {
+    pub fn new(program: impl Into<String>, args: Vec<String>) -> Self {
+        Self {
+            program: program.into(),
+            args,
+            working_dir: None,
+        }
+    }
+
+    pub fn with_working_dir(mut self, working_dir: impl Into<PathBuf>) -> Self {
+        self.working_dir = Some(working_dir.into());
+        self
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -45,5 +61,83 @@ impl Executor for DisabledExecutor {
             ),
             stderr: String::new(),
         })
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct PcGatewayExecutorPlan {
+    pub gateway_id: String,
+    pub workspace_id: String,
+    pub request: CommandRequest,
+    pub environment_id: Option<String>,
+    pub requires_remote_runtime: bool,
+}
+
+impl PcGatewayExecutorPlan {
+    pub fn new(
+        gateway_id: impl Into<String>,
+        workspace_id: impl Into<String>,
+        request: CommandRequest,
+    ) -> Self {
+        Self {
+            gateway_id: gateway_id.into(),
+            workspace_id: workspace_id.into(),
+            request,
+            environment_id: None,
+            requires_remote_runtime: true,
+        }
+    }
+
+    pub fn with_environment(mut self, environment_id: impl Into<String>) -> Self {
+        self.environment_id = Some(environment_id.into());
+        self
+    }
+}
+
+pub struct PcGatewayPlannedExecutor {
+    gateway_id: String,
+    workspace_id: String,
+    environment_id: Option<String>,
+}
+
+impl PcGatewayPlannedExecutor {
+    pub fn new(gateway_id: impl Into<String>, workspace_id: impl Into<String>) -> Self {
+        Self {
+            gateway_id: gateway_id.into(),
+            workspace_id: workspace_id.into(),
+            environment_id: None,
+        }
+    }
+
+    pub fn with_environment(mut self, environment_id: impl Into<String>) -> Self {
+        self.environment_id = Some(environment_id.into());
+        self
+    }
+
+    pub fn plan(&self, request: CommandRequest) -> PcGatewayExecutorPlan {
+        PcGatewayExecutorPlan {
+            gateway_id: self.gateway_id.clone(),
+            workspace_id: self.workspace_id.clone(),
+            request,
+            environment_id: self.environment_id.clone(),
+            requires_remote_runtime: true,
+        }
+    }
+}
+
+impl Executor for PcGatewayPlannedExecutor {
+    fn name(&self) -> &str {
+        "pc_gateway_planned"
+    }
+
+    fn execute(&self, request: CommandRequest) -> Result<CommandOutput> {
+        let plan = self.plan(request);
+        Err(anyhow!(
+            "PC gateway execution requires async transport. Planned gateway={} workspace={} command={} {}",
+            plan.gateway_id,
+            plan.workspace_id,
+            plan.request.program,
+            plan.request.args.join(" ")
+        ))
     }
 }
