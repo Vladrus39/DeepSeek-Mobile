@@ -1,8 +1,11 @@
 mod pc_pairing_manager;
+mod pc_pairing_panel;
 mod pc_pairing_state;
 
 use deepseek_mobile_core::{Config, DeepSeekCore, Message};
 use dioxus::prelude::*;
+use pc_pairing_panel::pc_pairing_panel;
+use pc_pairing_state::PcPairingUiState;
 
 fn main() {
     dioxus_mobile::launch(app);
@@ -12,6 +15,7 @@ fn app() -> Element {
     let mut messages = use_signal(Vec::<(String, String)>::new);
     let mut input = use_signal(String::new);
     let mut is_loading = use_signal(|| false);
+    let pc_pairing_state = use_signal(PcPairingUiState::default);
 
     rsx! {
         div {
@@ -29,6 +33,8 @@ fn app() -> Element {
                 "DeepSeek Mobile"
             }
 
+            {pc_pairing_panel(&pc_pairing_state())}
+
             div {
                 flex: "1",
                 background_color: "#1a1a1a",
@@ -38,6 +44,7 @@ fn app() -> Element {
                 display: "flex",
                 flex_direction: "column",
                 gap: "8px",
+                margin_top: "12px",
 
                 for (role, content) in messages() {
                     div {
