@@ -118,53 +118,90 @@ Integration layer:
 - Y-lit runtime API
 ```
 
-## Implementation order
+## Current DeepSeek-Mobile state after mobile runtime work
 
-1. Stabilize workspace and CI.
-2. Align mobile event model with TUI events.
-3. Add mobile `ToolSpec`, `ToolContext`, `ToolResult`, and capabilities.
-4. Implement real file tools.
-5. Add approval policy.
-6. Add `TurnContext` and snapshots.
-7. Add streaming client and reasoning deltas.
-8. Connect Auto Flash/Pro router to the agent.
-9. Add durable thread/turn/item store.
-10. Add Termux executor.
-11. Add RemoteYlit executor.
-12. Add git/GitHub tools.
-13. Add task manager.
-14. Add MCP/plugin support.
-15. Add diagnostics through Termux or Remote executor.
+Implemented or started:
 
-## Current DeepSeek-Mobile state
-
-Started:
-
-- separate core and mobile crates;
-- basic API client;
-- basic mobile chat UI;
-- session model;
-- agent event primitives;
-- workspace boundary;
+- separate `core` and `mobile` crates;
+- real DeepSeek API client wrapper;
+- Dioxus Android chat shell;
+- mobile drawer and cockpit sections;
+- mobile chat composer with document attachment state;
+- Android document picker contract;
+- native mobile bridge command/event contract;
+- `UserChatInput` / `UserAttachmentRef` core contract;
+- mobile attachment mapping into core input;
+- `MobileEngine::run_turn()` path used by mobile requests;
+- turn creation and `TurnContext` lifecycle;
+- `AgentEvent` primitives;
+- `AgentEvent` to mobile timeline adapter;
+- mobile timeline model and timeline card renderer;
+- runtime event replay into mobile timeline on app startup;
+- durable `RuntimeThreadStore` for threads, turns, events, pending approvals and approval decisions;
+- mobile runtime config for thread id, runtime store path and workspace path;
+- workspace boundary model;
 - workspace file service;
 - executor abstraction;
+- PC gateway types and client surface;
+- tool registry and tool schemas;
+- file tools: `read_file`, `write_file`, `list_dir`, `edit_file`, generic file ops;
+- shell tool contract;
+- git tool contract;
+- tool-call parsing and execution loop in the engine path;
+- approval/risk primitives and approval card data model;
+- approval session policy primitives;
 - context compression planning;
-- Auto Flash/Pro router.
+- Auto Flash/Pro model router.
 
-Missing compared with TUI:
+Partially implemented but not yet complete:
 
-- full engine loop;
-- true streaming;
-- tool-call parsing and execution loop;
-- full tool abstraction;
-- approval policy;
-- turn context;
-- snapshots/rollback;
-- durable runtime store;
-- Termux/remote execution;
-- git/GitHub tools;
-- MCP/plugins;
-- diagnostics;
-- background tasks;
-- large-output workshop promotion;
-- native screens for these features.
+- true streaming: `AgentEvent::TextDelta` exists, but mobile currently receives batch engine output after `run_turn()` completes;
+- approval continuation: pending approvals can be stored, but mobile has no Approve/Reject UI action wired to `continue_after_approval`;
+- tool timeline: tool events can be mapped, but live per-step streaming to UI is not yet wired;
+- local Android execution: executor abstraction exists, but Android/Termux execution needs production wiring and permission handling;
+- PC gateway execution: core types/client exist, but mobile pairing and request execution are not yet fully wired through the active engine;
+- durable timeline: events are replayed, but full thread list, thread switching and item-level timeline are not yet exposed in mobile UI;
+- workspace UI: workspace boundaries exist, but project tree, diff viewer and editor screens are not yet implemented.
+
+Still missing compared with original TUI:
+
+- real streaming LLM client integrated with mobile timeline;
+- native Android file picker callback implementation;
+- attachment content ingestion: PDF text, source text, images metadata and ZIP/project import;
+- approval cards with Approve / Reject / Approve once / Approve session buttons;
+- approval continuation from mobile UI;
+- snapshots and rollback;
+- large-output routing / workshop promotion;
+- background task manager;
+- long-running job monitor;
+- LSP diagnostics after file changes;
+- git panel UI and GitHub provider integration;
+- MCP / plugin / skills host;
+- thread list, archived threads and thread switching;
+- runtime log viewer;
+- API key/settings screen;
+- full Android storage permission flow;
+- production Termux executor bridge;
+- production RemoteYlit executor bridge.
+
+## Updated implementation order
+
+1. Add mobile approval cards and wire `continue_after_approval`.
+2. Replace batch mobile request handling with event streaming from `MobileEngine`.
+3. Implement native Android document picker callback and remove simulated picked document placeholder.
+4. Add attachment ingestion pipeline: source text, ZIP project import, PDF text extraction metadata.
+5. Add project tree, file viewer and diff viewer screens.
+6. Wire PC gateway pairing into active `MobileEngine` runtime.
+7. Add Termux executor bridge with permission and safety boundaries.
+8. Add snapshots and rollback.
+9. Add large-output routing.
+10. Add background task manager and long-running job monitor.
+11. Add git/GitHub UI integration.
+12. Add LSP diagnostics.
+13. Add MCP/plugins/skills host.
+
+## Gap summary
+
+The mobile port is no longer only a chat prototype. It now has the central runtime spine: `MobileEngine`, `AgentEvent`, tool loop, runtime store, event replay, timeline UI and attachment-aware chat input.
+
+The largest remaining gap versus the original TUI is interactivity during execution: streaming, approvals, live tool progress, and continuation after user decisions. The second largest gap is execution surface maturity: Android/Termux/PC gateway tools need production wiring, not only core contracts.
