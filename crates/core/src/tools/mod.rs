@@ -1,9 +1,8 @@
-//! Tool registry - all tools from original DeepSeek-TUI
+//! Tool registry
 
 pub mod file_ops;
 pub mod shell;
 pub mod git;
-// TODO: web, lsp, mcp, rlm, sub_agents
 
 use anyhow::Result;
 use std::collections::HashMap;
@@ -15,7 +14,7 @@ pub trait Tool {
 }
 
 pub struct ToolRegistry {
-    tools: HashMap<String, Box<dyn Tool + Send + Sync>>,
+    pub tools: HashMap<String, Box<dyn Tool + Send + Sync>>,
 }
 
 impl ToolRegistry {

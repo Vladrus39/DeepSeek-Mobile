@@ -1,4 +1,4 @@
-//! DeepSeek Agent - now with real API integration
+//! DeepSeek Agent with tools
 
 use crate::config::Config;
 use crate::api_client::{DeepSeekClient, Message};
@@ -16,6 +16,8 @@ impl DeepSeekAgent {
     pub fn new(config: Config) -> Self {
         let mut tools = ToolRegistry::new();
         tools.register(Box::new(crate::tools::file_ops::FileOpsTool));
+        tools.register(Box::new(crate::tools::shell::ShellTool));
+        tools.register(Box::new(crate::tools::git::GitTool));
         
         let client = DeepSeekClient::new(config.api_key.clone());
         
@@ -27,31 +29,14 @@ impl DeepSeekAgent {
     }
 
     pub async fn run(&self, input: String) -> Result<String> {
-        println!("[Agent] Processing input...");
-        
-        // Build messages for API
         let messages = vec![
-            Message {
-                role: "system".to_string(),
-                content: "You are a helpful coding assistant running on mobile. Be concise and practical.".to_string(),
-            },
-            Message {
-                role: "user".to_string(),
-                content: input,
-            },
+            Message { role: "system".to_string(), content: "You are a helpful coding assistant. Use tools when needed.".to_string() },
+            Message { role: "user".to_string(), content: input },
         ];
         
-        // Call real DeepSeek API
         match self.client.chat(&self.config.model, messages).await {
-            Ok(response) => {
-                println!("[Agent] Got response from API");
-                Ok(response)
-            }
-            Err(e) => {
-                println!("[Agent] API error: {}", e);
-                // Fallback to simple response if API fails
-                Ok(format!("[Fallback] Could not reach DeepSeek API. Your input: {}", input))
-            }
+            Ok(response) => Ok(response),
+            Err(e) => Ok(format!("[Agent] Error: {}. Fallback response for: {}", e, input)),
         }
     }
 }
