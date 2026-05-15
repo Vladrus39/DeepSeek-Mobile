@@ -9,7 +9,7 @@ use crate::approval::{
     should_request_approval, ApprovalMode, ApprovalRisk, MobileApprovalRequest, ReviewDecision,
     ToolCategory,
 };
-use crate::approval_session::ApprovalSessionPolicy;
+use crate::approval_session::{ApprovalSessionGrant, ApprovalSessionPolicy};
 use crate::events::{AgentEvent, ApprovalRequest, RiskLevel, ToolCallEvent, ToolResultEvent};
 use crate::tool_call::{parse_tool_calls_from_text, ToolCallRequest};
 use crate::tool_execution::ToolExecutionCoordinator;
@@ -26,6 +26,7 @@ pub struct ToolLoopOutcome {
     pub pending_approvals: Vec<MobileApprovalRequest>,
     pub pending_tool_approvals: Vec<PendingToolCallApproval>,
     pub executed: Vec<ToolLoopExecutionRecord>,
+    pub session_grants_created: Vec<ApprovalSessionGrant>,
     pub requires_user_input: bool,
 }
 
@@ -37,6 +38,7 @@ impl ToolLoopOutcome {
             pending_approvals: Vec::new(),
             pending_tool_approvals: Vec::new(),
             executed: Vec::new(),
+            session_grants_created: Vec::new(),
             requires_user_input: false,
         }
     }
@@ -101,6 +103,7 @@ pub async fn process_model_text_with_tools_and_session(
         pending_approvals: Vec::new(),
         pending_tool_approvals: Vec::new(),
         executed: Vec::new(),
+        session_grants_created: Vec::new(),
         requires_user_input: false,
     };
 
@@ -188,10 +191,8 @@ pub async fn continue_pending_tool_approval_with_session(
             turn.status = TurnStatus::Running;
             if matches!(decision, ReviewDecision::ApprovedForSession) {
                 if let Some(policy) = session_policy {
-                    if policy
-                        .grant_for_approved_call(&pending.approval, &pending.call)
-                        .is_some()
-                    {
+                    if let Some(grant) = policy.grant_for_approved_call(&pending.approval, &pending.call) {
+                        outcome.session_grants_created.push(grant);
                         outcome.events.push(AgentEvent::Status(format!(
                             "Session approval granted for tool '{}'",
                             pending.call.name
@@ -411,7 +412,7 @@ mod tests {
         .await
         .unwrap();
         let pending = first.pending_tool_approvals[0].clone();
-        continue_pending_tool_approval_with_session(
+        let continued = continue_pending_tool_approval_with_session(
             &pending,
             &ReviewDecision::ApprovedForSession,
             &coordinator,
@@ -422,6 +423,7 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(policy.grant_count(), 1);
+        assert_eq!(continued.session_grants_created.len(), 1);
 
         let second = process_model_text_with_tools_and_session(
             r#"{"tool":"write_file","args":{"path":"README.md","content":"second"}}"#,
@@ -477,6 +479,7 @@ mod tests {
 
         assert_eq!(turn.status, TurnStatus::Running);
         assert_eq!(continued.executed.len(), 1);
+        assert!(continued.session_grants_created.is_empty());
         assert_eq!(std::fs::read_to_string(dir.join("README.md")).unwrap(), "approved");
         let _ = std::fs::remove_dir_all(&dir);
     }
