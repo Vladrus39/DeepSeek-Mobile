@@ -8,6 +8,7 @@ use crate::agent::DeepSeekAgent;
 use crate::api_client::Message;
 use crate::approval::{ApprovalMode, ReviewDecision};
 use crate::approval_card::{approval_cards_from_records, ApprovalCardView};
+use crate::approval_session::{ApprovalSessionGrant, ApprovalSessionPolicy};
 use crate::config::Config;
 use crate::context::ContextManager;
 use crate::events::AgentEvent;
@@ -15,13 +16,17 @@ use crate::model_router::ModelRouter;
 use crate::pc_gateway_client::PcGatewayClient;
 use crate::runtime_store::{PendingApprovalRecord, RuntimeThreadStore, ThreadRecord, TurnRecord};
 use crate::tool_execution::ToolExecutionCoordinator;
-use crate::tool_loop::{continue_pending_tool_approval, process_model_text_with_tools, PendingToolCallApproval};
+use crate::tool_loop::{
+    continue_pending_tool_approval_with_session, process_model_text_with_tools_and_session,
+    PendingToolCallApproval,
+};
 use crate::tools::{default_mobile_tool_registry, ToolContext};
 use crate::turn::{TurnContext, TurnStatus};
 use crate::workspace::{ExecutorKind, Workspace};
 use crate::workspace_connection::WorkspaceConnectionManager;
 use anyhow::{anyhow, Result};
 use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
 
 pub struct MobileEngine {
     config: Config,
@@ -36,6 +41,7 @@ pub struct MobileEngine {
     connection_manager: Option<WorkspaceConnectionManager>,
     pc_gateway_client: Option<PcGatewayClient>,
     approval_mode: ApprovalMode,
+    approval_session_policy: Arc<Mutex<ApprovalSessionPolicy>>,
 }
 
 impl MobileEngine {
@@ -58,6 +64,7 @@ impl MobileEngine {
             connection_manager: None,
             pc_gateway_client: None,
             approval_mode,
+            approval_session_policy: Arc::new(Mutex::new(ApprovalSessionPolicy::new())),
         }
     }
 
@@ -122,6 +129,15 @@ impl MobileEngine {
         &self.approval_mode
     }
 
+    pub fn approval_session_grants(&self) -> Result<Vec<ApprovalSessionGrant>> {
+        Ok(self.approval_session_policy()?.grants().to_vec())
+    }
+
+    pub fn clear_approval_session_grants(&self) -> Result<()> {
+        self.approval_session_policy()?.clear();
+        Ok(())
+    }
+
     pub fn pending_approvals_for_current_thread(&self) -> Result<Vec<PendingApprovalRecord>> {
         let Some(store) = self.runtime_store.as_ref() else {
             return Ok(Vec::new());
@@ -170,6 +186,7 @@ impl MobileEngine {
             thread_id: self.thread_id.clone(),
             pending,
             cards,
+            session_grants: self.approval_session_grants()?,
         })
     }
 
@@ -360,14 +377,17 @@ impl MobileEngine {
             coordinator = coordinator.with_pc_gateway(client);
         }
         let context = self.tool_context();
-        let outcome = continue_pending_tool_approval(
+        let mut session_policy = self.approval_session_policy()?;
+        let outcome = continue_pending_tool_approval_with_session(
             &pending,
             &decision,
             &coordinator,
             &context,
+            Some(&mut session_policy),
             &mut turn,
         )
         .await?;
+        drop(session_policy);
 
         for event in outcome.events {
             self.push_event(&mut events, Some(&turn.id), event)?;
@@ -430,15 +450,19 @@ impl MobileEngine {
             coordinator = coordinator.with_pc_gateway(client);
         }
         let context = self.tool_context();
-        process_model_text_with_tools(
+        let mut session_policy = self.approval_session_policy()?;
+        let outcome = process_model_text_with_tools_and_session(
             model_text,
             &registry,
             &coordinator,
             &context,
             &self.approval_mode,
+            Some(&mut session_policy),
             turn,
         )
-        .await
+        .await;
+        drop(session_policy);
+        outcome
     }
 
     fn tool_context(&self) -> ToolContext {
@@ -453,6 +477,12 @@ impl MobileEngine {
         ToolContext::new(workspace)
             .with_external_access(self.config.external_access.clone())
             .with_auto_approve(matches!(self.approval_mode, ApprovalMode::Never))
+    }
+
+    fn approval_session_policy(&self) -> Result<std::sync::MutexGuard<'_, ApprovalSessionPolicy>> {
+        self.approval_session_policy
+            .lock()
+            .map_err(|_| anyhow!("approval session policy lock poisoned"))
     }
 
     fn push_event(
@@ -492,6 +522,7 @@ pub struct EnginePendingApprovalSnapshot {
     pub thread_id: String,
     pub pending: Vec<PendingApprovalRecord>,
     pub cards: Vec<ApprovalCardView>,
+    pub session_grants: Vec<ApprovalSessionGrant>,
 }
 
 fn title_from_input(input: &str) -> String {
