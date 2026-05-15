@@ -24,7 +24,9 @@ use dioxus::prelude::*;
 use document_picker::{DocumentPickerRequest, DocumentPickerState, PickedDocument};
 use mobile_approval_panel::mobile_approval_panel;
 use mobile_drawer::{mobile_drawer, CockpitSection};
-use mobile_engine_runner::{continue_mobile_approval, load_default_mobile_approval_cards, run_mobile_turn};
+use mobile_engine_runner::{
+    continue_mobile_approval, load_default_mobile_approval_cards, run_mobile_turn_streaming,
+};
 use native_bridge::{NativeBridgeState, NativeMobileCommand, NativeMobileEvent};
 use pc_pairing_state::PcPairingUiState;
 use saved_timeline_loader::load_default_saved_timeline;
@@ -348,7 +350,12 @@ fn app() -> Element {
 
                         spawn(async move {
                             let config = Config::default();
-                            match run_mobile_turn(config, user_input).await {
+                            let mut event_timeline = timeline;
+                            match run_mobile_turn_streaming(config, user_input, move |event| {
+                                let mut next_timeline = event_timeline();
+                                push_agent_event(&mut next_timeline, &event);
+                                event_timeline.set(next_timeline);
+                            }).await {
                                 Ok(result) => {
                                     if let Some(final_text) = result.final_text.clone() {
                                         messages.push(("assistant".to_string(), final_text));
@@ -364,9 +371,6 @@ fn app() -> Element {
                                             result.thread_id
                                         )),
                                     );
-                                    for event in &result.events {
-                                        push_agent_event(&mut next_timeline, event);
-                                    }
                                     if result.has_pending_approvals() {
                                         push_agent_event(
                                             &mut next_timeline,
