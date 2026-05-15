@@ -4,6 +4,7 @@ pub mod agent;
 pub mod api_client;
 pub mod approval;
 pub mod approval_card;
+pub mod approval_session;
 pub mod config;
 pub mod context;
 pub mod engine;
@@ -33,6 +34,9 @@ pub use approval::{
 pub use approval_card::{
     approval_cards_from_records, sanitize_value_for_preview, ApprovalCardAction, ApprovalCardSeverity,
     ApprovalCardStatus, ApprovalCardView,
+};
+pub use approval_session::{
+    can_grant_for_session, ApprovalSessionGrant, ApprovalSessionPolicy, ApprovalSessionScope,
 };
 pub use config::{Config, ExternalAccessMode, ModelMode, ThinkingLevel};
 pub use context::{
@@ -67,8 +71,9 @@ pub use session::Session;
 pub use tool_call::{parse_tool_calls_from_text, ToolCallParseResult, ToolCallRequest, ToolCallSource};
 pub use tool_execution::{ToolExecutionCoordinator, ToolExecutionRoute, ToolExecutionTarget};
 pub use tool_loop::{
-    continue_pending_tool_approval, execute_approved_call, process_model_text_with_tools,
-    PendingToolCallApproval, ToolLoopExecutionRecord, ToolLoopOutcome,
+    continue_pending_tool_approval, continue_pending_tool_approval_with_session, execute_approved_call,
+    process_model_text_with_tools, process_model_text_with_tools_and_session, PendingToolCallApproval,
+    ToolLoopExecutionRecord, ToolLoopOutcome,
 };
 pub use tools::{ApprovalRequirement, ToolCapability, ToolContext, ToolRegistry, ToolResult, ToolSpec};
 pub use turn::{TokenUsage, TurnContext, TurnStatus, TurnToolCall};
