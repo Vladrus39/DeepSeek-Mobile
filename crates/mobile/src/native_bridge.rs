@@ -1,4 +1,5 @@
 use crate::document_picker::{DocumentPickerRequest, PickedDocument};
+use crate::native_document_picker::AndroidDocumentPickerCommand;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum NativeMobileCommand {
@@ -40,6 +41,19 @@ impl NativeBridgeState {
         }
     }
 
+    pub fn pop_next_android_document_picker_command(&mut self) -> Option<AndroidDocumentPickerCommand> {
+        let command_index = self
+            .pending_commands
+            .iter()
+            .position(|command| matches!(command, NativeMobileCommand::OpenDocumentPicker(_)))?;
+        match self.pending_commands.remove(command_index) {
+            NativeMobileCommand::OpenDocumentPicker(request) => {
+                Some(AndroidDocumentPickerCommand::from_request(&request))
+            }
+            _ => None,
+        }
+    }
+
     pub fn accept_event(&mut self, event: NativeMobileEvent) {
         self.last_error = match &event {
             NativeMobileEvent::DocumentPickerFailed(message) | NativeMobileEvent::ShareFailed(message) => {
@@ -69,6 +83,18 @@ mod tests {
             state.pop_next_command(),
             Some(NativeMobileCommand::OpenDocumentPicker(_))
         ));
+        assert!(!state.has_pending_commands());
+    }
+
+    #[test]
+    fn bridge_exposes_android_document_picker_command() {
+        let mut state = NativeBridgeState::default();
+        state.enqueue_document_picker(DocumentPickerRequest::chat_attachment());
+        let command = state
+            .pop_next_android_document_picker_command()
+            .expect("android picker command");
+        assert_eq!(command.action, "android.intent.action.OPEN_DOCUMENT");
+        assert!(command.allow_multiple);
         assert!(!state.has_pending_commands());
     }
 
