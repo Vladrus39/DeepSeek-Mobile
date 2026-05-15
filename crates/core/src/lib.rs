@@ -42,11 +42,13 @@ pub use executor::{
 };
 pub use model_router::{ModelRouter, RouteDecision, TaskProfile};
 pub use pc_gateway::{
-    validate_gateway_base_url, PcDiagnostic, PcDiagnosticSeverity, PcEnvironmentDescriptor,
-    PcEnvironmentKind, PcGatewayCapability, PcGatewayConfig, PcGatewayConnectionStatus,
-    PcGatewayDirEntry, PcGatewayError, PcGatewayHealth, PcGatewayPairingRequest,
-    PcGatewayPairingResponse, PcGatewayRequest, PcGatewayRequestEnvelope, PcGatewayResponse,
-    PcGatewayResponseEnvelope, PcGatewaySecurityPolicy, PcGatewayTrustLevel, PcPreviewDescriptor,
+    is_private_or_loopback_http_url, validate_gateway_base_url,
+    validate_gateway_base_url_for_transport, PcDiagnostic, PcDiagnosticSeverity,
+    PcEnvironmentDescriptor, PcEnvironmentKind, PcGatewayCapability, PcGatewayConfig,
+    PcGatewayConnectionStatus, PcGatewayDirEntry, PcGatewayError, PcGatewayHealth,
+    PcGatewayPairingRequest, PcGatewayPairingResponse, PcGatewayRequest,
+    PcGatewayRequestEnvelope, PcGatewayResponse, PcGatewayResponseEnvelope,
+    PcGatewaySecurityPolicy, PcGatewayTransportMode, PcGatewayTrustLevel, PcPreviewDescriptor,
     PcTaskDescriptor, PcTaskKind, PcTerminalSession, PcWorkspaceGrant, PcWorkspaceIndexSummary,
 };
 pub use pc_gateway_client::PcGatewayClient;
