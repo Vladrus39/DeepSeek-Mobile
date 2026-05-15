@@ -16,6 +16,7 @@ pub mod session;
 pub mod tools;
 pub mod turn;
 pub mod workspace;
+pub mod workspace_connection;
 pub mod workspace_files;
 
 pub use agent::DeepSeekAgent;
@@ -53,6 +54,9 @@ pub use session::Session;
 pub use tools::{ApprovalRequirement, ToolCapability, ToolContext, ToolRegistry, ToolResult, ToolSpec};
 pub use turn::{TokenUsage, TurnContext, TurnStatus, TurnToolCall};
 pub use workspace::{ExecutorKind, Workspace};
+pub use workspace_connection::{
+    WorkspaceBackendKind, WorkspaceConnection, WorkspaceConnectionManager, WorkspaceConnectionStatus,
+};
 pub use workspace_files::{WorkspaceFileEntry, WorkspaceFileService};
 
 pub struct DeepSeekCore {
