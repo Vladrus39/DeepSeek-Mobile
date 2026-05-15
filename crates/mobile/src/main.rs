@@ -1,4 +1,5 @@
 mod pc_pairing_manager;
+mod pc_pairing_state;
 
 use deepseek_mobile_core::{Config, DeepSeekCore, Message};
 use dioxus::prelude::*;
