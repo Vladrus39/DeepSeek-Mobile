@@ -119,8 +119,7 @@ pub fn mobile_approval_panel(
 }
 
 fn format_argument_preview(card: &ApprovalCardView) -> String {
-    serde_json::to_string_pretty(&card.argument_preview)
-        .unwrap_or_else(|_| card.argument_preview.to_string())
+    card.argument_preview.to_string()
 }
 
 fn severity_background(severity: &ApprovalCardSeverity) -> &'static str {
