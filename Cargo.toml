@@ -2,6 +2,7 @@
 members = [
     "crates/core",
     "crates/mobile",
+    "crates/pc-host",
 ]
 resolver = "2"
 
@@ -15,6 +16,7 @@ anyhow = "1"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 reqwest = { version = "0.12", features = ["json", "stream"] }
+axum = "0.7"
 dioxus = { version = "0.7", features = ["mobile"] }
 dioxus-mobile = "0.7"
 deepseek-mobile-core = { path = "crates/core" }
