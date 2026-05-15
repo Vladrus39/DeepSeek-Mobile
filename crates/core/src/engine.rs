@@ -7,6 +7,7 @@
 use crate::agent::DeepSeekAgent;
 use crate::api_client::Message;
 use crate::approval::{ApprovalMode, ReviewDecision};
+use crate::approval_card::{approval_cards_from_records, ApprovalCardView};
 use crate::config::Config;
 use crate::context::ContextManager;
 use crate::events::AgentEvent;
@@ -135,6 +136,14 @@ impl MobileEngine {
         store.load_pending_approvals_for_turn(turn_id)
     }
 
+    pub fn pending_approval_cards_for_current_thread(&self) -> Result<Vec<ApprovalCardView>> {
+        Ok(approval_cards_from_records(&self.pending_approvals_for_current_thread()?))
+    }
+
+    pub fn pending_approval_cards_for_turn(&self, turn_id: &str) -> Result<Vec<ApprovalCardView>> {
+        Ok(approval_cards_from_records(&self.pending_approvals_for_turn(turn_id)?))
+    }
+
     pub fn load_pending_approval(&self, approval_id: &str) -> Result<Option<PendingApprovalRecord>> {
         let Some(store) = self.runtime_store.as_ref() else {
             return Ok(None);
@@ -155,9 +164,12 @@ impl MobileEngine {
     }
 
     pub fn pending_approval_snapshot(&self) -> Result<EnginePendingApprovalSnapshot> {
+        let pending = self.pending_approvals_for_current_thread()?;
+        let cards = approval_cards_from_records(&pending);
         Ok(EnginePendingApprovalSnapshot {
             thread_id: self.thread_id.clone(),
-            pending: self.pending_approvals_for_current_thread()?,
+            pending,
+            cards,
         })
     }
 
@@ -479,6 +491,7 @@ pub struct EngineApprovalContinuationResult {
 pub struct EnginePendingApprovalSnapshot {
     pub thread_id: String,
     pub pending: Vec<PendingApprovalRecord>,
+    pub cards: Vec<ApprovalCardView>,
 }
 
 fn title_from_input(input: &str) -> String {
