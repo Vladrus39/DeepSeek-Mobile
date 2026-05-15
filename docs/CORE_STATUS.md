@@ -1,22 +1,19 @@
-# Core Transfer Status
+# Core Transfer Status (Updated Automatically by Grok)
 
-**Updated by Grok (full control)**
+## Completed Steps
+1. ✅ Workspace + basic structure
+2. ✅ Agent + ToolRegistry foundation
+3. ✅ ModelRouter (Auto mode v4-pro/flash)
+4. ✅ Basic DeepSeek API Client
 
-## Completed
-- [x] Workspace + basic structure
-- [x] Agent skeleton
-- [x] Config
-- [x] ToolRegistry foundation
-- [x] ModelRouter (Auto mode v4-pro/flash)
+## Current Focus
+- Expanding tool calling loop
+- Real streaming support
+- Full session management
 
-## In Progress
-- Full agent loop with tool calling
-- Streaming support
-- Session management
+## Preserved from Original TUI
+- Auto mode logic
+- 1M context capability (to be fully wired)
+- Tool philosophy (file, shell, git, web, lsp, mcp)
 
-## Next
-- Complete tools (file, shell, git, web, lsp)
-- Real DeepSeek API client
-- Mobile chat UI
-
-**1M context and Auto mode preserved from original TUI.**
+**Next automatic step:** Expand agent with real tool execution + streaming.
