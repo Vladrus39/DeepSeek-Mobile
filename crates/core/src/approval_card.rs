@@ -7,6 +7,7 @@
 //! exact decisions the UI can send back to the engine.
 
 use crate::approval::{ApprovalRisk, MobileApprovalRequest, ReviewDecision, ToolCategory};
+use crate::approval_session::can_grant_for_session;
 use crate::runtime_store::PendingApprovalRecord;
 use crate::tool_loop::PendingToolCallApproval;
 use serde::{Deserialize, Serialize};
@@ -117,7 +118,7 @@ impl ApprovalCardView {
             description: approval.description.clone(),
             impacts: approval.impacts.clone(),
             argument_preview,
-            actions: default_actions_for(&approval.category, &approval.risk),
+            actions: default_actions_for(approval),
         }
     }
 }
@@ -211,7 +212,7 @@ fn severity_for(category: &ToolCategory, risk: &ApprovalRisk) -> ApprovalCardSev
     }
 }
 
-fn default_actions_for(category: &ToolCategory, risk: &ApprovalRisk) -> Vec<ApprovalCardAction> {
+fn default_actions_for(approval: &MobileApprovalRequest) -> Vec<ApprovalCardAction> {
     let mut actions = vec![
         ApprovalCardAction {
             decision: ReviewDecision::Approved,
@@ -233,9 +234,7 @@ fn default_actions_for(category: &ToolCategory, risk: &ApprovalRisk) -> Vec<Appr
         },
     ];
 
-    if !matches!(category, ToolCategory::Shell | ToolCategory::Unknown)
-        && !matches!(risk, ApprovalRisk::Destructive if matches!(category, ToolCategory::Network))
-    {
+    if can_grant_for_session(approval) {
         actions.insert(
             1,
             ApprovalCardAction {
@@ -253,10 +252,11 @@ fn default_actions_for(category: &ToolCategory, risk: &ApprovalRisk) -> Vec<Appr
 #[cfg(test)]
 mod tests {
     use super::{sanitize_value_for_preview, ApprovalCardView};
-    use crate::approval::MobileApprovalRequest;
+    use crate::approval::{MobileApprovalRequest, ReviewDecision};
     use crate::tool_call::{ToolCallRequest, ToolCallSource};
     use crate::tool_loop::PendingToolCallApproval;
     use crate::tools::file_ops::WriteFileTool;
+    use crate::tools::shell::ShellTool;
     use serde_json::json;
 
     #[test]
@@ -294,6 +294,27 @@ mod tests {
         assert_eq!(card.id, "approval-1");
         assert_eq!(card.tool_name, "write_file");
         assert!(card.title.contains("file change"));
-        assert!(!card.actions.is_empty());
+        assert!(card
+            .actions
+            .iter()
+            .any(|action| action.decision == ReviewDecision::ApprovedForSession));
+    }
+
+    #[test]
+    fn shell_card_does_not_offer_session_approval() {
+        let tool = ShellTool;
+        let call = ToolCallRequest::new(
+            "exec_shell",
+            json!({"command":"rm -rf /tmp/x"}),
+            ToolCallSource::Manual,
+        )
+        .with_id("approval-1");
+        let approval = MobileApprovalRequest::new("approval-1", &tool, call.arguments.clone());
+        let pending = PendingToolCallApproval { approval, call };
+        let card = ApprovalCardView::from_pending_tool_approval(&pending);
+        assert!(!card
+            .actions
+            .iter()
+            .any(|action| action.decision == ReviewDecision::ApprovedForSession));
     }
 }
