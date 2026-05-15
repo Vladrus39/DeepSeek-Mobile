@@ -1,21 +1,37 @@
 //! Agent event types shared by the core and mobile UI.
 //!
 //! The mobile app should not wait for a single final string forever. The agent
-//! core will increasingly emit events: text deltas, tool status, approval
-//! requests, patch proposals and final completion.
+//! core emits timeline events: turn lifecycle, text deltas, reasoning deltas,
+//! tool status, approval requests, patch proposals and completion.
 
+use crate::api_client::Message;
+use crate::turn::{TokenUsage, TurnStatus};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub enum AgentEvent {
     Started,
     Status(String),
+    TurnStarted { turn_id: String },
+    TurnFinished {
+        turn_id: String,
+        status: TurnStatus,
+        usage: TokenUsage,
+        error: Option<String>,
+    },
+    MessageStarted { index: usize, role: String },
     TextDelta(String),
     ReasoningDelta(String),
+    MessageFinished { index: usize },
     ToolCallStarted(ToolCallEvent),
     ToolCallFinished(ToolResultEvent),
     ApprovalRequired(ApprovalRequest),
     PatchProposed(PatchProposal),
+    SessionUpdated {
+        messages: Vec<Message>,
+        model: String,
+        workspace: String,
+    },
     Error(String),
     Finished,
 }
