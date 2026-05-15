@@ -1,11 +1,9 @@
 [application]
 name = "DeepSeek Mobile"
 version = "0.1.0"
-out_dir = "dist"
 
 [android]
 package = "com.deepseek.mobile"
-version_code = 1
 permissions = [
     "android.permission.INTERNET",
     "android.permission.READ_EXTERNAL_STORAGE",

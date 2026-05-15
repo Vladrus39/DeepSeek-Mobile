@@ -6,10 +6,6 @@ edition = "2021"
 [dependencies]
 dioxus = { workspace = true }
 dioxus-mobile = { workspace = true }
-dioxus-signals = { workspace = true }
-dioxus-router = { workspace = true }
 deepseek-mobile-core = { workspace = true }
-
-[features]
-default = ["mobile"]
-mobile = []
+tokio = { workspace = true }
+anyhow = "1"

@@ -1,25 +1,27 @@
+//! DeepSeek Mobile Core
+//! Полный перенос логики из DeepSeek-TUI
+
 pub mod agent;
-pub mod config;
 pub mod tools;
+pub mod config;
 pub mod session;
 pub mod model_router;
 
 pub use agent::DeepSeekAgent;
 pub use config::Config;
 
-#[derive(Clone)]
-pub struct Core {
+/// Главная точка входа в core
+pub struct DeepSeekCore {
     agent: DeepSeekAgent,
 }
 
-impl Core {
+impl DeepSeekCore {
     pub fn new(config: Config) -> Self {
-        Self {
-            agent: DeepSeekAgent::new(config),
-        }
+        let agent = DeepSeekAgent::new(config);
+        Self { agent }
     }
 
-    pub async fn send_message(&self, message: String) -> anyhow::Result<String> {
-        self.agent.process(message).await
+    pub async fn process(&self, input: String) -> anyhow::Result<String> {
+        self.agent.run(input).await
     }
 }
