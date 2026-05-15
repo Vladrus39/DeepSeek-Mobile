@@ -10,6 +10,7 @@ pub mod events;
 pub mod executor;
 pub mod model_router;
 pub mod pc_gateway;
+pub mod pc_gateway_client;
 pub mod runtime_store;
 pub mod session;
 pub mod tools;
@@ -30,7 +31,10 @@ pub use context::{
 };
 pub use engine::{EngineTurnResult, MobileEngine};
 pub use events::{AgentEvent, ApprovalRequest, PatchProposal, RiskLevel, ToolCallEvent, ToolResultEvent};
-pub use executor::{CommandOutput, CommandRequest, DisabledExecutor, Executor};
+pub use executor::{
+    CommandOutput, CommandRequest, DisabledExecutor, Executor, PcGatewayExecutorPlan,
+    PcGatewayPlannedExecutor,
+};
 pub use model_router::{ModelRouter, RouteDecision, TaskProfile};
 pub use pc_gateway::{
     validate_gateway_base_url, PcDiagnostic, PcDiagnosticSeverity, PcEnvironmentDescriptor,
@@ -40,6 +44,7 @@ pub use pc_gateway::{
     PcGatewayResponseEnvelope, PcGatewaySecurityPolicy, PcGatewayTrustLevel, PcPreviewDescriptor,
     PcTaskDescriptor, PcTaskKind, PcTerminalSession, PcWorkspaceGrant, PcWorkspaceIndexSummary,
 };
+pub use pc_gateway_client::PcGatewayClient;
 pub use runtime_store::{
     RuntimeEventRecord, RuntimeThreadStore, RuntimeTurnStatus, ThreadRecord, TurnItemKind,
     TurnItemLifecycleStatus, TurnItemRecord, TurnRecord,
