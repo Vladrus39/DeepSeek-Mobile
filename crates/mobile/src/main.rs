@@ -1,11 +1,14 @@
+mod cockpit_section_panel;
 mod mobile_drawer;
 mod pc_pairing_manager;
 mod pc_pairing_panel;
 mod pc_pairing_state;
 
+use cockpit_section_panel::cockpit_section_panel;
 use deepseek_mobile_core::{Config, DeepSeekCore, Message};
 use dioxus::prelude::*;
 use mobile_drawer::{mobile_drawer, CockpitSection};
+use pc_pairing_state::PcPairingUiState;
 
 fn main() {
     dioxus_mobile::launch(app);
@@ -17,6 +20,7 @@ fn app() -> Element {
     let mut is_loading = use_signal(|| false);
     let mut drawer_open = use_signal(|| false);
     let active_section = use_signal(|| CockpitSection::Chat);
+    let pc_pairing_state = use_signal(PcPairingUiState::default);
 
     rsx! {
         div {
@@ -85,33 +89,31 @@ fn app() -> Element {
                 flex_direction: "column",
                 gap: "8px",
 
-                if messages().is_empty() {
-                    div {
-                        color: "#9ca3af",
-                        text_align: "center",
-                        margin_top: "32px",
-                        white_space: "pre-wrap",
-                        "Ask DeepSeek to build, inspect, fix, test or deploy a project.\nOpen the drawer for PC Host, Files, Terminal, Git and Settings."
+                if active_section() == CockpitSection::Chat {
+                    if messages().is_empty() {
+                        {cockpit_section_panel(CockpitSection::Chat, &pc_pairing_state())}
                     }
-                }
 
-                for (role, content) in messages() {
-                    div {
-                        background_color: if role == "user" { "#2563eb" } else { "#1f2937" },
-                        padding: "10px 14px",
-                        border_radius: "14px",
-                        max_width: "85%",
-                        align_self: if role == "user" { "flex-end" } else { "flex-start" },
-                        white_space: "pre-wrap",
-                        "{content}"
+                    for (role, content) in messages() {
+                        div {
+                            background_color: if role == "user" { "#2563eb" } else { "#1f2937" },
+                            padding: "10px 14px",
+                            border_radius: "14px",
+                            max_width: "85%",
+                            align_self: if role == "user" { "flex-end" } else { "flex-start" },
+                            white_space: "pre-wrap",
+                            "{content}"
+                        }
                     }
-                }
 
-                if is_loading() {
-                    div {
-                        color: "#9ca3af",
-                        "Thinking with DeepSeek..."
+                    if is_loading() {
+                        div {
+                            color: "#9ca3af",
+                            "Thinking with DeepSeek..."
+                        }
                     }
+                } else {
+                    {cockpit_section_panel(active_section(), &pc_pairing_state())}
                 }
             }
 
