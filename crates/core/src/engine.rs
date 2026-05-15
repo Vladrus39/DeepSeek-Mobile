@@ -12,14 +12,14 @@ use crate::context::ContextManager;
 use crate::events::AgentEvent;
 use crate::model_router::ModelRouter;
 use crate::pc_gateway_client::PcGatewayClient;
-use crate::runtime_store::{RuntimeThreadStore, ThreadRecord, TurnRecord};
+use crate::runtime_store::{PendingApprovalRecord, RuntimeThreadStore, ThreadRecord, TurnRecord};
 use crate::tool_execution::ToolExecutionCoordinator;
 use crate::tool_loop::{continue_pending_tool_approval, process_model_text_with_tools, PendingToolCallApproval};
 use crate::tools::{default_mobile_tool_registry, ToolContext};
 use crate::turn::{TurnContext, TurnStatus};
 use crate::workspace::{ExecutorKind, Workspace};
 use crate::workspace_connection::WorkspaceConnectionManager;
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use std::path::PathBuf;
 
 pub struct MobileEngine {
@@ -119,6 +119,58 @@ impl MobileEngine {
 
     pub fn approval_mode(&self) -> &ApprovalMode {
         &self.approval_mode
+    }
+
+    pub fn pending_approvals_for_current_thread(&self) -> Result<Vec<PendingApprovalRecord>> {
+        let Some(store) = self.runtime_store.as_ref() else {
+            return Ok(Vec::new());
+        };
+        store.load_pending_approvals_for_thread(&self.thread_id)
+    }
+
+    pub fn pending_approvals_for_turn(&self, turn_id: &str) -> Result<Vec<PendingApprovalRecord>> {
+        let Some(store) = self.runtime_store.as_ref() else {
+            return Ok(Vec::new());
+        };
+        store.load_pending_approvals_for_turn(turn_id)
+    }
+
+    pub fn load_pending_approval(&self, approval_id: &str) -> Result<Option<PendingApprovalRecord>> {
+        let Some(store) = self.runtime_store.as_ref() else {
+            return Ok(None);
+        };
+        match store.load_pending_approval(approval_id) {
+            Ok(record) => Ok(Some(record)),
+            Err(error) => {
+                if error.to_string().contains("No such file")
+                    || error.to_string().contains("os error 2")
+                    || error.to_string().contains("not found")
+                {
+                    Ok(None)
+                } else {
+                    Err(error)
+                }
+            }
+        }
+    }
+
+    pub fn pending_approval_snapshot(&self) -> Result<EnginePendingApprovalSnapshot> {
+        Ok(EnginePendingApprovalSnapshot {
+            thread_id: self.thread_id.clone(),
+            pending: self.pending_approvals_for_current_thread()?,
+        })
+    }
+
+    pub async fn continue_stored_approval(
+        &self,
+        approval_id: &str,
+        decision: ReviewDecision,
+        turn: TurnContext,
+    ) -> Result<EngineApprovalContinuationResult> {
+        let record = self
+            .load_pending_approval(approval_id)?
+            .ok_or_else(|| anyhow!("pending approval not found: {}", approval_id))?;
+        self.continue_after_approval(record.pending, decision, turn).await
     }
 
     pub async fn run_turn(&self, user_input: String) -> Result<EngineTurnResult> {
@@ -421,6 +473,12 @@ pub struct EngineApprovalContinuationResult {
     pub turn: TurnContext,
     pub events: Vec<AgentEvent>,
     pub executed: Vec<crate::tool_loop::ToolLoopExecutionRecord>,
+}
+
+#[derive(Clone, Debug)]
+pub struct EnginePendingApprovalSnapshot {
+    pub thread_id: String,
+    pub pending: Vec<PendingApprovalRecord>,
 }
 
 fn title_from_input(input: &str) -> String {
