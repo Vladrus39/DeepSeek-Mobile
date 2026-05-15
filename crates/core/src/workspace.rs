@@ -2,8 +2,8 @@
 //!
 //! A workspace is the boundary where the agent is allowed to read, write,
 //! patch and execute project-specific commands. Keeping this boundary explicit
-//! is essential for Android scoped storage, Termux integration and remote
-//! execution backends.
+//! is essential for Android scoped storage, Termux integration, PC companion
+//! gateways and remote execution backends.
 
 use serde::{Deserialize, Serialize};
 use std::path::{Component, Path, PathBuf};
@@ -20,6 +20,7 @@ pub struct Workspace {
 pub enum ExecutorKind {
     LocalAndroid,
     Termux,
+    PcGateway,
     RemoteYlit,
 }
 
