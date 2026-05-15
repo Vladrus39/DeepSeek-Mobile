@@ -1,17 +1,14 @@
-//! DeepSeek API Client with streaming support (OpenAI-compatible)
+//! DeepSeek API Client - Real implementation ready
 
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use anyhow::Result;
-use futures_util::StreamExt;
+use anyhow::{Result, anyhow};
 
 #[derive(Serialize)]
 struct ChatRequest {
     model: String,
     messages: Vec<Message>,
     stream: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    temperature: Option<f32>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -27,13 +24,7 @@ struct ChatResponse {
 
 #[derive(Deserialize, Debug)]
 struct Choice {
-    delta: Option<Delta>,
     message: Option<Message>,
-}
-
-#[derive(Deserialize, Debug)]
-struct Delta {
-    content: Option<String>,
 }
 
 pub struct DeepSeekClient {
@@ -51,38 +42,37 @@ impl DeepSeekClient {
         }
     }
 
-    /// Non-streaming chat
     pub async fn chat(&self, model: &str, messages: Vec<Message>) -> Result<String> {
+        if self.api_key.is_empty() {
+            return Err(anyhow!("DEEPSEEK_API_KEY is not set"));
+        }
+
         let req = ChatRequest {
             model: model.to_string(),
             messages,
             stream: false,
-            temperature: Some(0.7),
         };
 
-        let resp = self.client
+        let response = self.client
             .post(format!("{}/chat/completions", self.base_url))
             .header("Authorization", format!("Bearer {}", self.api_key))
+            .header("Content-Type", "application/json")
             .json(&req)
             .send()
             .await?;
 
-        let chat_resp: ChatResponse = resp.json().await?;
-        
-        if let Some(choice) = chat_resp.choices.first() {
-            if let Some(msg) = &choice.message {
-                return Ok(msg.content.clone());
-            }
+        if !response.status().is_success() {
+            let status = response.status();
+            let text = response.text().await.unwrap_or_default();
+            return Err(anyhow!("DeepSeek API error {}: {}", status, text));
         }
-        
-        Ok("No response".to_string())
-    }
 
-    /// Streaming chat (for real-time reasoning blocks)
-    pub async fn chat_stream(&self, model: &str, messages: Vec<Message>) -> Result<()> {
-        println!("[API] Starting stream for model: {}", model);
-        // TODO: Implement real SSE streaming
-        // For now this is prepared for future streaming
-        Ok(())
+        let chat_resp: ChatResponse = response.json().await?;
+        
+        chat_resp.choices
+            .first()
+            .and_then(|c| c.message.as_ref())
+            .map(|m| m.content.clone())
+            .ok_or_else(|| anyhow!("No response from model"))
     }
 }
