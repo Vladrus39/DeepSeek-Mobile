@@ -35,7 +35,7 @@ pub enum ApprovalRequirement {
     Never,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct ToolResult {
     pub success: bool,
     pub content: String,
