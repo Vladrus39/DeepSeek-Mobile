@@ -1,14 +1,16 @@
 mod chat_attachment;
 mod cockpit_section_panel;
+mod document_picker;
 mod mobile_drawer;
 mod pc_pairing_manager;
 mod pc_pairing_panel;
 mod pc_pairing_state;
 
-use chat_attachment::{ChatAttachmentDraft, ChatComposerState};
+use chat_attachment::ChatComposerState;
 use cockpit_section_panel::cockpit_section_panel;
 use deepseek_mobile_core::{Config, DeepSeekCore, Message};
 use dioxus::prelude::*;
+use document_picker::{DocumentPickerRequest, DocumentPickerState, PickedDocument};
 use mobile_drawer::{mobile_drawer, CockpitSection};
 use pc_pairing_state::PcPairingUiState;
 
@@ -20,6 +22,7 @@ fn app() -> Element {
     let mut messages = use_signal(Vec::<(String, String)>::new);
     let mut input = use_signal(String::new);
     let mut composer = use_signal(ChatComposerState::default);
+    let mut picker = use_signal(DocumentPickerState::default);
     let mut is_loading = use_signal(|| false);
     let mut drawer_open = use_signal(|| false);
     let mut active_section = use_signal(|| CockpitSection::Chat);
@@ -127,6 +130,19 @@ fn app() -> Element {
                 }
             }
 
+            if picker().is_waiting_for_native_picker() {
+                div {
+                    margin_top: "8px",
+                    background_color: "#1e3a8a",
+                    border: "1px solid #3b82f6",
+                    border_radius: "14px",
+                    padding: "8px 10px",
+                    color: "white",
+                    font_size: "12px",
+                    "Opening Android document picker..."
+                }
+            }
+
             if !composer().attachments.is_empty() {
                 div {
                     margin_top: "8px",
@@ -154,13 +170,24 @@ fn app() -> Element {
                     border_radius: "999px",
                     border: "1px solid #4b5563",
                     onclick: move |_| {
+                        let mut picker_state = picker();
+                        picker_state.request(DocumentPickerRequest::chat_attachment());
+                        picker.set(picker_state);
+
+                        // Temporary bridge placeholder: until the native Android picker callback is wired,
+                        // simulate one selected document through the same PickedDocument contract.
                         let mut next = composer();
                         let index = next.attachments.len() + 1;
-                        next.add_attachment(ChatAttachmentDraft::new_document(
-                            format!("draft-doc-{}", index),
-                            format!("document-{}.pdf", index),
-                        ));
+                        next.add_picked_document(
+                            PickedDocument::new(format!("picked-doc-{}", index), format!("document-{}.pdf", index))
+                                .with_uri(format!("content://deepseek-mobile/document-{}", index))
+                                .with_mime_type("application/pdf")
+                        );
                         composer.set(next);
+
+                        let mut picker_state = picker();
+                        picker_state.complete();
+                        picker.set(picker_state);
                     },
                     "+"
                 }
@@ -203,6 +230,11 @@ fn app() -> Element {
                             for attachment in &draft.attachments {
                                 prompt.push_str("- ");
                                 prompt.push_str(&attachment.display_name);
+                                if let Some(mime_type) = attachment.mime_type.as_ref() {
+                                    prompt.push_str(" (");
+                                    prompt.push_str(mime_type);
+                                    prompt.push(')');
+                                }
                                 prompt.push('\n');
                             }
                         }
