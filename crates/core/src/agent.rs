@@ -1,6 +1,7 @@
-//! DeepSeek Agent with tool calling (expanded from original TUI)
+//! DeepSeek Agent - now with real API integration
 
 use crate::config::Config;
+use crate::api_client::{DeepSeekClient, Message};
 use crate::tools::ToolRegistry;
 use anyhow::Result;
 use std::sync::Arc;
@@ -8,33 +9,49 @@ use std::sync::Arc;
 pub struct DeepSeekAgent {
     config: Config,
     tools: Arc<ToolRegistry>,
+    client: DeepSeekClient,
 }
 
 impl DeepSeekAgent {
     pub fn new(config: Config) -> Self {
         let mut tools = ToolRegistry::new();
         tools.register(Box::new(crate::tools::file_ops::FileOpsTool));
-        // TODO: register more tools (shell, git, web, etc.)
+        
+        let client = DeepSeekClient::new(config.api_key.clone());
         
         Self {
-            config,
+            config: config.clone(),
             tools: Arc::new(tools),
+            client,
         }
     }
 
     pub async fn run(&self, input: String) -> Result<String> {
-        println!("[Agent] Received: {}", input);
+        println!("[Agent] Processing input...");
         
-        // TODO: Real tool calling loop + reasoning
-        // For now: simple processing
-        if input.contains("file") || input.contains("файл") {
-            if let Some(tool) = self.tools.get("file_ops") {
-                return tool.execute(&input);
+        // Build messages for API
+        let messages = vec![
+            Message {
+                role: "system".to_string(),
+                content: "You are a helpful coding assistant running on mobile. Be concise and practical.".to_string(),
+            },
+            Message {
+                role: "user".to_string(),
+                content: input,
+            },
+        ];
+        
+        // Call real DeepSeek API
+        match self.client.chat(&self.config.model, messages).await {
+            Ok(response) => {
+                println!("[Agent] Got response from API");
+                Ok(response)
+            }
+            Err(e) => {
+                println!("[Agent] API error: {}", e);
+                // Fallback to simple response if API fails
+                Ok(format!("[Fallback] Could not reach DeepSeek API. Your input: {}", input))
             }
         }
-        
-        Ok(format!("[Agent] Processed: {}. Tools available: {}", 
-            input, 
-            self.tools.tools.len()))
     }
 }

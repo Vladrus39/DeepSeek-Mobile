@@ -1,4 +1,4 @@
-//! Configuration module
+//! Configuration
 
 use serde::{Deserialize, Serialize};
 
@@ -7,7 +7,7 @@ pub struct Config {
     pub api_key: String,
     pub model: String,
     pub auto_mode: bool,
-    pub thinking_level: String, // off, high, max
+    pub thinking_level: String,
 }
 
 impl Default for Config {
@@ -18,5 +18,12 @@ impl Default for Config {
             auto_mode: true,
             thinking_level: "high".to_string(),
         }
+    }
+}
+
+impl Config {
+    pub fn with_api_key(mut self, key: String) -> Self {
+        self.api_key = key;
+        self
     }
 }
