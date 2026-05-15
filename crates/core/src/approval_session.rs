@@ -59,6 +59,14 @@ impl ApprovalSessionPolicy {
         }
 
         let scope = scope_for_call(approval, call)?;
+        if let Some(existing) = self
+            .grants
+            .iter()
+            .find(|grant| grant.tool_name == approval.tool_name && grant.category == approval.category && grant.scope == scope)
+        {
+            return Some(existing.clone());
+        }
+
         let grant = ApprovalSessionGrant {
             id: format!("session-grant-{}-{}", current_unix_time(), self.grants.len() + 1),
             tool_name: approval.tool_name.clone(),
@@ -66,10 +74,7 @@ impl ApprovalSessionPolicy {
             scope,
             created_at_unix: current_unix_time(),
         };
-
-        if !self.grants.iter().any(|existing| same_grant(existing, &grant)) {
-            self.grants.push(grant.clone());
-        }
+        self.grants.push(grant.clone());
         Some(grant)
     }
 
@@ -104,7 +109,7 @@ fn scope_for_call(
     approval: &MobileApprovalRequest,
     call: &ToolCallRequest,
 ) -> Option<ApprovalSessionScope> {
-    match approval.category {
+    match &approval.category {
         ToolCategory::FileWrite => argument_string(&call.arguments, "path")
             .or_else(|| argument_string(&approval.params, "path"))
             .map(|path| ApprovalSessionScope::ExactFilePath { path }),
@@ -125,29 +130,25 @@ fn scope_matches(
 ) -> bool {
     match scope {
         ApprovalSessionScope::ExactFilePath { path } => {
-            if !matches!(approval.category, ToolCategory::FileWrite) {
+            if !matches!(&approval.category, ToolCategory::FileWrite) {
                 return false;
             }
             argument_string(&call.arguments, "path")
                 .or_else(|| argument_string(&approval.params, "path"))
-                .is_some_and(|candidate| candidate == *path)
+                .map_or(false, |candidate| candidate == *path)
         }
-        ApprovalSessionScope::GitTool => matches!(approval.category, ToolCategory::Git),
+        ApprovalSessionScope::GitTool => matches!(&approval.category, ToolCategory::Git),
         ApprovalSessionScope::NetworkHost { host } => {
-            if !matches!(approval.category, ToolCategory::Network) {
+            if !matches!(&approval.category, ToolCategory::Network) {
                 return false;
             }
             argument_string(&call.arguments, "url")
                 .or_else(|| argument_string(&approval.params, "url"))
                 .and_then(|url| host_from_url(&url))
-                .is_some_and(|candidate| candidate == *host)
+                .map_or(false, |candidate| candidate == *host)
         }
         ApprovalSessionScope::ExactTool => true,
     }
-}
-
-fn same_grant(left: &ApprovalSessionGrant, right: &ApprovalSessionGrant) -> bool {
-    left.tool_name == right.tool_name && left.category == right.category && left.scope == right.scope
 }
 
 fn argument_string(value: &Value, key: &str) -> Option<String> {
@@ -201,6 +202,22 @@ mod tests {
         );
         let other_approval = MobileApprovalRequest::new(other_call.id.clone(), &tool, other_call.arguments.clone());
         assert!(!policy.is_call_allowed_by_session(&other_approval, &other_call));
+    }
+
+    #[test]
+    fn duplicate_session_grant_does_not_grow_policy() {
+        let tool = WriteFileTool;
+        let call = ToolCallRequest::new(
+            "write_file",
+            json!({"path":"README.md","content":"x"}),
+            ToolCallSource::Manual,
+        );
+        let approval = MobileApprovalRequest::new(call.id.clone(), &tool, call.arguments.clone());
+        let mut policy = ApprovalSessionPolicy::new();
+        let first = policy.grant_for_approved_call(&approval, &call).unwrap();
+        let second = policy.grant_for_approved_call(&approval, &call).unwrap();
+        assert_eq!(policy.grant_count(), 1);
+        assert_eq!(first.id, second.id);
     }
 
     #[test]
