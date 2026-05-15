@@ -5,7 +5,7 @@ mod pc_pairing_state;
 
 use deepseek_mobile_core::{Config, DeepSeekCore, Message};
 use dioxus::prelude::*;
-use mobile_drawer::mobile_drawer;
+use mobile_drawer::{mobile_drawer, CockpitSection};
 
 fn main() {
     dioxus_mobile::launch(app);
@@ -16,6 +16,7 @@ fn app() -> Element {
     let mut input = use_signal(String::new);
     let mut is_loading = use_signal(|| false);
     let mut drawer_open = use_signal(|| false);
+    let active_section = use_signal(|| CockpitSection::Chat);
 
     rsx! {
         div {
@@ -28,7 +29,7 @@ fn app() -> Element {
             position: "relative",
             overflow: "hidden",
 
-            {mobile_drawer(drawer_open())}
+            {mobile_drawer(drawer_open(), active_section())}
 
             div {
                 display: "flex",
@@ -59,7 +60,7 @@ fn app() -> Element {
                     div {
                         color: "#9ca3af",
                         font_size: "12px",
-                        "Chat + agent timeline"
+                        "{active_section().subtitle()}"
                     }
                 }
 
