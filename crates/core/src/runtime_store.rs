@@ -6,8 +6,9 @@
 //! dependency-light for mobile builds.
 
 use crate::events::AgentEvent;
+use crate::tool_loop::PendingToolCallApproval;
 use crate::turn::{TurnContext, TurnStatus};
-use anyhow::{Context, Result, bail};
+use anyhow::{bail, Context, Result};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::fs::{self, File, OpenOptions};
@@ -197,6 +198,38 @@ pub struct RuntimeEventRecord {
     pub event: AgentEvent,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct PendingApprovalRecord {
+    pub schema_version: u32,
+    pub thread_id: String,
+    pub turn_id: String,
+    pub pending: PendingToolCallApproval,
+    pub created_at_unix: u64,
+    pub updated_at_unix: u64,
+}
+
+impl PendingApprovalRecord {
+    pub fn new(
+        thread_id: impl Into<String>,
+        turn_id: impl Into<String>,
+        pending: PendingToolCallApproval,
+    ) -> Self {
+        let now = current_unix_time();
+        Self {
+            schema_version: CURRENT_RUNTIME_SCHEMA_VERSION,
+            thread_id: thread_id.into(),
+            turn_id: turn_id.into(),
+            pending,
+            created_at_unix: now,
+            updated_at_unix: now,
+        }
+    }
+
+    pub fn approval_id(&self) -> &str {
+        &self.pending.approval.id
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 struct RuntimeStoreState {
     schema_version: u32,
@@ -219,6 +252,7 @@ pub struct RuntimeThreadStore {
     turns_dir: PathBuf,
     items_dir: PathBuf,
     events_dir: PathBuf,
+    pending_approvals_dir: PathBuf,
     state_path: PathBuf,
 }
 
@@ -229,10 +263,13 @@ impl RuntimeThreadStore {
         let turns_dir = root.join("turns");
         let items_dir = root.join("items");
         let events_dir = root.join("events");
+        let pending_approvals_dir = root.join("pending_approvals");
         fs::create_dir_all(&threads_dir).with_context(|| format!("create {}", threads_dir.display()))?;
         fs::create_dir_all(&turns_dir).with_context(|| format!("create {}", turns_dir.display()))?;
         fs::create_dir_all(&items_dir).with_context(|| format!("create {}", items_dir.display()))?;
         fs::create_dir_all(&events_dir).with_context(|| format!("create {}", events_dir.display()))?;
+        fs::create_dir_all(&pending_approvals_dir)
+            .with_context(|| format!("create {}", pending_approvals_dir.display()))?;
 
         let state_path = root.join("state.json");
         if !state_path.exists() {
@@ -245,6 +282,7 @@ impl RuntimeThreadStore {
             turns_dir,
             items_dir,
             events_dir,
+            pending_approvals_dir,
             state_path,
         })
     }
@@ -284,6 +322,63 @@ impl RuntimeThreadStore {
         let record: TurnItemRecord = read_json(&self.item_path(item_id))?;
         ensure_supported_schema(record.schema_version, "item")?;
         Ok(record)
+    }
+
+    pub fn save_pending_approval(
+        &self,
+        thread_id: impl Into<String>,
+        turn_id: impl Into<String>,
+        pending: &PendingToolCallApproval,
+    ) -> Result<PendingApprovalRecord> {
+        let record = PendingApprovalRecord::new(thread_id, turn_id, pending.clone());
+        write_json_atomic(&self.pending_approval_path(record.approval_id()), &record)?;
+        Ok(record)
+    }
+
+    pub fn load_pending_approval(&self, approval_id: &str) -> Result<PendingApprovalRecord> {
+        let record: PendingApprovalRecord = read_json(&self.pending_approval_path(approval_id))?;
+        ensure_supported_schema(record.schema_version, "pending approval")?;
+        Ok(record)
+    }
+
+    pub fn delete_pending_approval(&self, approval_id: &str) -> Result<()> {
+        let path = self.pending_approval_path(approval_id);
+        if path.exists() {
+            fs::remove_file(&path).with_context(|| format!("remove {}", path.display()))?;
+        }
+        Ok(())
+    }
+
+    pub fn load_pending_approvals_for_turn(&self, turn_id: &str) -> Result<Vec<PendingApprovalRecord>> {
+        let mut records = self.load_all_pending_approvals()?;
+        records.retain(|record| record.turn_id == turn_id);
+        records.sort_by_key(|record| record.created_at_unix);
+        Ok(records)
+    }
+
+    pub fn load_pending_approvals_for_thread(&self, thread_id: &str) -> Result<Vec<PendingApprovalRecord>> {
+        let mut records = self.load_all_pending_approvals()?;
+        records.retain(|record| record.thread_id == thread_id);
+        records.sort_by_key(|record| record.created_at_unix);
+        Ok(records)
+    }
+
+    pub fn load_all_pending_approvals(&self) -> Result<Vec<PendingApprovalRecord>> {
+        let mut records = Vec::new();
+        for entry in fs::read_dir(&self.pending_approvals_dir)
+            .with_context(|| format!("read {}", self.pending_approvals_dir.display()))?
+        {
+            let entry = entry?;
+            let path = entry.path();
+            if !path.is_file() || path.extension().and_then(|value| value.to_str()) != Some("json") {
+                continue;
+            }
+            let record: PendingApprovalRecord = read_json(&path)?;
+            ensure_supported_schema(record.schema_version, "pending approval")?;
+            records.push(record);
+        }
+        records.sort_by_key(|record| record.created_at_unix);
+        Ok(records)
     }
 
     pub fn append_event(
@@ -353,6 +448,11 @@ impl RuntimeThreadStore {
         self.events_dir.join(format!("{}.jsonl", sanitize_id(thread_id)))
     }
 
+    fn pending_approval_path(&self, approval_id: &str) -> PathBuf {
+        self.pending_approvals_dir
+            .join(format!("{}.json", sanitize_id(approval_id)))
+    }
+
     fn load_state(&self) -> Result<RuntimeStoreState> {
         let state: RuntimeStoreState = read_json(&self.state_path)?;
         ensure_supported_schema(state.schema_version, "runtime state")?;
@@ -416,6 +516,9 @@ fn current_unix_time() -> u64 {
 mod tests {
     use super::{RuntimeThreadStore, ThreadRecord, TurnRecord};
     use crate::events::AgentEvent;
+    use crate::tool_call::{ToolCallRequest, ToolCallSource};
+    use crate::tool_loop::PendingToolCallApproval;
+    use crate::tools::file_ops::WriteFileTool;
     use crate::turn::TurnContext;
     use std::fs;
 
@@ -463,6 +566,39 @@ mod tests {
         assert_eq!(events.len(), 2);
         assert_eq!(events[0].seq, 1);
         assert_eq!(events[1].seq, 2);
+        let _ = fs::remove_dir_all(store.root());
+    }
+
+    #[test]
+    fn saves_loads_and_deletes_pending_approval() {
+        let store = temp_store("pending_approval");
+        let turn = TurnContext::new(10);
+        let tool = WriteFileTool;
+        let call = ToolCallRequest::new(
+            "write_file",
+            serde_json::json!({"path":"README.md","content":"x"}),
+            ToolCallSource::Manual,
+        )
+        .with_id("approval-1");
+        let approval = crate::approval::MobileApprovalRequest::new(
+            "approval-1",
+            &tool,
+            call.arguments.clone(),
+        );
+        let pending = PendingToolCallApproval { approval, call };
+
+        store
+            .save_pending_approval("thread-1", &turn.id, &pending)
+            .unwrap();
+        let loaded = store.load_pending_approval("approval-1").unwrap();
+        assert_eq!(loaded.thread_id, "thread-1");
+        assert_eq!(loaded.turn_id, turn.id);
+        assert_eq!(loaded.pending.call.name, "write_file");
+
+        let by_turn = store.load_pending_approvals_for_turn(&turn.id).unwrap();
+        assert_eq!(by_turn.len(), 1);
+        store.delete_pending_approval("approval-1").unwrap();
+        assert!(store.load_pending_approvals_for_turn(&turn.id).unwrap().is_empty());
         let _ = fs::remove_dir_all(store.root());
     }
 }
