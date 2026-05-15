@@ -6,6 +6,12 @@
 //! The gateway must never expose the whole computer by default: the PC grants
 //! explicit workspaces, the phone sends structured requests, and risky actions
 //! still go through the approval layer.
+//!
+//! The PC gateway does not require public internet. The preferred offline mode
+//! is direct local connectivity: phone and PC on the same Wi-Fi/LAN, phone
+//! hotspot, PC hotspot, USB-tethered LAN, or another private network segment.
+//! Public internet/tunnel modes are optional convenience modes, not a baseline
+//! requirement.
 
 use crate::executor::{CommandOutput, CommandRequest};
 use serde::{Deserialize, Serialize};
@@ -57,6 +63,43 @@ pub enum PcGatewayConnectionStatus {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub enum PcGatewayTransportMode {
+    InternetHttps,
+    TunnelHttps,
+    LocalNetworkHttps,
+    LocalNetworkHttp,
+    DirectWifiHttps,
+    DirectWifiHttp,
+    LoopbackHttp,
+}
+
+impl PcGatewayTransportMode {
+    pub fn requires_internet(&self) -> bool {
+        matches!(self, PcGatewayTransportMode::InternetHttps | PcGatewayTransportMode::TunnelHttps)
+    }
+
+    pub fn allows_plain_http(&self) -> bool {
+        matches!(
+            self,
+            PcGatewayTransportMode::LocalNetworkHttp
+                | PcGatewayTransportMode::DirectWifiHttp
+                | PcGatewayTransportMode::LoopbackHttp
+        )
+    }
+
+    pub fn is_local_only(&self) -> bool {
+        matches!(
+            self,
+            PcGatewayTransportMode::LocalNetworkHttps
+                | PcGatewayTransportMode::LocalNetworkHttp
+                | PcGatewayTransportMode::DirectWifiHttps
+                | PcGatewayTransportMode::DirectWifiHttp
+                | PcGatewayTransportMode::LoopbackHttp
+        )
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct PcGatewayConfig {
     pub id: String,
     pub label: String,
@@ -64,6 +107,7 @@ pub struct PcGatewayConfig {
     pub device_id: String,
     pub auth_token: Option<String>,
     pub trust_level: PcGatewayTrustLevel,
+    pub transport_mode: PcGatewayTransportMode,
     pub allow_http_on_local_network: bool,
 }
 
@@ -81,12 +125,67 @@ impl PcGatewayConfig {
             device_id: device_id.into(),
             auth_token: None,
             trust_level: PcGatewayTrustLevel::Unpaired,
+            transport_mode: PcGatewayTransportMode::InternetHttps,
             allow_http_on_local_network: false,
         }
     }
 
+    pub fn local_network_http(
+        id: impl Into<String>,
+        label: impl Into<String>,
+        base_url: impl Into<String>,
+        device_id: impl Into<String>,
+    ) -> Self {
+        let mut config = Self::new(id, label, base_url, device_id);
+        config.transport_mode = PcGatewayTransportMode::LocalNetworkHttp;
+        config.allow_http_on_local_network = true;
+        config
+    }
+
+    pub fn direct_wifi_http(
+        id: impl Into<String>,
+        label: impl Into<String>,
+        base_url: impl Into<String>,
+        device_id: impl Into<String>,
+    ) -> Self {
+        let mut config = Self::new(id, label, base_url, device_id);
+        config.transport_mode = PcGatewayTransportMode::DirectWifiHttp;
+        config.allow_http_on_local_network = true;
+        config
+    }
+
+    pub fn local_network_https(
+        id: impl Into<String>,
+        label: impl Into<String>,
+        base_url: impl Into<String>,
+        device_id: impl Into<String>,
+    ) -> Self {
+        let mut config = Self::new(id, label, base_url, device_id);
+        config.transport_mode = PcGatewayTransportMode::LocalNetworkHttps;
+        config
+    }
+
+    pub fn tunnel_https(
+        id: impl Into<String>,
+        label: impl Into<String>,
+        base_url: impl Into<String>,
+        device_id: impl Into<String>,
+    ) -> Self {
+        let mut config = Self::new(id, label, base_url, device_id);
+        config.transport_mode = PcGatewayTransportMode::TunnelHttps;
+        config
+    }
+
+    pub fn requires_internet(&self) -> bool {
+        self.transport_mode.requires_internet()
+    }
+
+    pub fn is_local_only(&self) -> bool {
+        self.transport_mode.is_local_only()
+    }
+
     pub fn validate_base_url(&self) -> Result<(), String> {
-        validate_gateway_base_url(&self.base_url, self.allow_http_on_local_network)
+        validate_gateway_base_url_for_transport(&self.base_url, &self.transport_mode, self.allow_http_on_local_network)
     }
 }
 
@@ -415,20 +514,56 @@ impl PcGatewayError {
 }
 
 pub fn validate_gateway_base_url(base_url: &str, allow_http_on_local_network: bool) -> Result<(), String> {
+    let mode = if allow_http_on_local_network {
+        PcGatewayTransportMode::LocalNetworkHttp
+    } else {
+        PcGatewayTransportMode::InternetHttps
+    };
+    validate_gateway_base_url_for_transport(base_url, &mode, allow_http_on_local_network)
+}
+
+pub fn validate_gateway_base_url_for_transport(
+    base_url: &str,
+    transport_mode: &PcGatewayTransportMode,
+    allow_http_on_local_network: bool,
+) -> Result<(), String> {
     let base_url = base_url.trim();
     if base_url.starts_with("https://") {
         return Ok(());
     }
-    if allow_http_on_local_network
-        && (base_url.starts_with("http://127.0.0.1")
-            || base_url.starts_with("http://localhost")
-            || base_url.starts_with("http://192.168.")
-            || base_url.starts_with("http://10.")
-            || base_url.starts_with("http://172.16."))
+
+    if base_url.starts_with("http://")
+        && transport_mode.allows_plain_http()
+        && allow_http_on_local_network
+        && is_private_or_loopback_http_url(base_url)
     {
         return Ok(());
     }
-    Err("gateway URL must use HTTPS unless explicitly allowed for local network pairing".to_string())
+
+    Err("gateway URL must use HTTPS unless explicitly allowed for private local/offline network pairing".to_string())
+}
+
+pub fn is_private_or_loopback_http_url(base_url: &str) -> bool {
+    let Some(host_port_path) = base_url.strip_prefix("http://") else {
+        return false;
+    };
+    let host_port = host_port_path.split('/').next().unwrap_or_default();
+    let host = host_port.split(':').next().unwrap_or_default().to_ascii_lowercase();
+
+    host == "localhost"
+        || host == "127.0.0.1"
+        || host.starts_with("127.")
+        || host.starts_with("10.")
+        || host.starts_with("192.168.")
+        || host.starts_with("169.254.")
+        || is_172_private_address(&host)
+}
+
+fn is_172_private_address(host: &str) -> bool {
+    let mut parts = host.split('.');
+    let first = parts.next();
+    let second = parts.next().and_then(|value| value.parse::<u8>().ok());
+    first == Some("172") && second.is_some_and(|octet| (16..=31).contains(&octet))
 }
 
 fn current_unix_time() -> u64 {
@@ -440,7 +575,11 @@ fn current_unix_time() -> u64 {
 
 #[cfg(test)]
 mod tests {
-    use super::{validate_gateway_base_url, PcGatewayCapability, PcGatewaySecurityPolicy, PcWorkspaceGrant};
+    use super::{
+        is_private_or_loopback_http_url, validate_gateway_base_url, validate_gateway_base_url_for_transport,
+        PcGatewayCapability, PcGatewayConfig, PcGatewaySecurityPolicy, PcGatewayTransportMode,
+        PcWorkspaceGrant,
+    };
     use crate::executor::CommandRequest;
     use std::path::PathBuf;
 
@@ -460,6 +599,49 @@ mod tests {
     fn allows_https_gateway_urls() {
         let result = validate_gateway_base_url("https://gateway.example.test", false);
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn local_network_config_does_not_require_internet() {
+        let config = PcGatewayConfig::local_network_http(
+            "pc-1",
+            "Laptop",
+            "http://192.168.1.10:8787",
+            "phone-1",
+        );
+        assert!(config.validate_base_url().is_ok());
+        assert!(config.is_local_only());
+        assert!(!config.requires_internet());
+    }
+
+    #[test]
+    fn direct_wifi_config_allows_link_local_addresses() {
+        let config = PcGatewayConfig::direct_wifi_http(
+            "pc-1",
+            "Laptop Hotspot",
+            "http://169.254.12.10:8787",
+            "phone-1",
+        );
+        assert!(config.validate_base_url().is_ok());
+        assert!(config.is_local_only());
+        assert!(!config.requires_internet());
+    }
+
+    #[test]
+    fn validates_full_172_private_range() {
+        assert!(is_private_or_loopback_http_url("http://172.16.0.2:8787"));
+        assert!(is_private_or_loopback_http_url("http://172.31.255.2:8787"));
+        assert!(!is_private_or_loopback_http_url("http://172.32.0.2:8787"));
+    }
+
+    #[test]
+    fn transport_rejects_public_http_even_when_plain_http_mode_exists() {
+        let result = validate_gateway_base_url_for_transport(
+            "http://example.com:8787",
+            &PcGatewayTransportMode::LocalNetworkHttp,
+            true,
+        );
+        assert!(result.is_err());
     }
 
     #[test]
