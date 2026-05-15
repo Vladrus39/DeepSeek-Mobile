@@ -132,12 +132,11 @@ impl MobileEngine {
     }
 
     pub fn approval_session_grants(&self) -> Result<Vec<ApprovalSessionGrant>> {
-        Ok(self.approval_session_policy()?.grants().to_vec())
+        Ok(self.approval_session_policy_snapshot()?.grants().to_vec())
     }
 
     pub fn clear_approval_session_grants(&self) -> Result<()> {
-        self.approval_session_policy()?.clear();
-        Ok(())
+        self.replace_approval_session_policy(ApprovalSessionPolicy::new())
     }
 
     pub fn approval_decisions_for_current_thread(&self) -> Result<Vec<ApprovalDecisionRecord>> {
@@ -394,7 +393,7 @@ impl MobileEngine {
             coordinator = coordinator.with_pc_gateway(client);
         }
         let context = self.tool_context();
-        let mut session_policy = self.approval_session_policy()?;
+        let mut session_policy = self.approval_session_policy_snapshot()?;
         let outcome = continue_pending_tool_approval_with_session(
             &pending,
             &decision,
@@ -404,7 +403,7 @@ impl MobileEngine {
             &mut turn,
         )
         .await?;
-        drop(session_policy);
+        self.replace_approval_session_policy(session_policy)?;
 
         for event in outcome.events {
             self.push_event(&mut events, Some(&turn.id), event)?;
@@ -476,7 +475,7 @@ impl MobileEngine {
             coordinator = coordinator.with_pc_gateway(client);
         }
         let context = self.tool_context();
-        let mut session_policy = self.approval_session_policy()?;
+        let mut session_policy = self.approval_session_policy_snapshot()?;
         let outcome = process_model_text_with_tools_and_session(
             model_text,
             &registry,
@@ -486,9 +485,9 @@ impl MobileEngine {
             Some(&mut session_policy),
             turn,
         )
-        .await;
-        drop(session_policy);
-        outcome
+        .await?;
+        self.replace_approval_session_policy(session_policy)?;
+        Ok(outcome)
     }
 
     fn tool_context(&self) -> ToolContext {
@@ -505,10 +504,20 @@ impl MobileEngine {
             .with_auto_approve(matches!(self.approval_mode, ApprovalMode::Never))
     }
 
-    fn approval_session_policy(&self) -> Result<std::sync::MutexGuard<'_, ApprovalSessionPolicy>> {
+    fn approval_session_policy_snapshot(&self) -> Result<ApprovalSessionPolicy> {
         self.approval_session_policy
             .lock()
+            .map(|policy| policy.clone())
             .map_err(|_| anyhow!("approval session policy lock poisoned"))
+    }
+
+    fn replace_approval_session_policy(&self, policy: ApprovalSessionPolicy) -> Result<()> {
+        let mut guard = self
+            .approval_session_policy
+            .lock()
+            .map_err(|_| anyhow!("approval session policy lock poisoned"))?;
+        *guard = policy;
+        Ok(())
     }
 
     fn push_event(
