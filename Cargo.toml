@@ -10,18 +10,18 @@ resolver = "2"
 version = "0.1.0"
 edition = "2021"
 rust-version = "1.80"
-authors = ["Vladrus39"]
-license = "MIT OR Apache-2.0"
 
 [workspace.dependencies]
 tokio = { version = "1", features = ["full"] }
 anyhow = "1"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-tracing = "0.1"
 reqwest = { version = "0.12", features = ["json", "stream"] }
+tracing = "0.1"
+
+# Dioxus
 dioxus = { version = "0.7", features = ["mobile"] }
 dioxus-mobile = "0.7"
 dioxus-signals = "0.7"
-dioxus-router = "0.7"
+
 deepseek-mobile-core = { path = "crates/core" }
