@@ -14,7 +14,9 @@ use crate::context::ContextManager;
 use crate::events::AgentEvent;
 use crate::model_router::ModelRouter;
 use crate::pc_gateway_client::PcGatewayClient;
-use crate::runtime_store::{PendingApprovalRecord, RuntimeThreadStore, ThreadRecord, TurnRecord};
+use crate::runtime_store::{
+    ApprovalDecisionRecord, PendingApprovalRecord, RuntimeThreadStore, ThreadRecord, TurnRecord,
+};
 use crate::tool_execution::ToolExecutionCoordinator;
 use crate::tool_loop::{
     continue_pending_tool_approval_with_session, process_model_text_with_tools_and_session,
@@ -138,6 +140,20 @@ impl MobileEngine {
         Ok(())
     }
 
+    pub fn approval_decisions_for_current_thread(&self) -> Result<Vec<ApprovalDecisionRecord>> {
+        let Some(store) = self.runtime_store.as_ref() else {
+            return Ok(Vec::new());
+        };
+        store.load_approval_decisions(&self.thread_id)
+    }
+
+    pub fn approval_decisions_for_turn(&self, turn_id: &str) -> Result<Vec<ApprovalDecisionRecord>> {
+        let Some(store) = self.runtime_store.as_ref() else {
+            return Ok(Vec::new());
+        };
+        store.load_approval_decisions_for_turn(turn_id)
+    }
+
     pub fn pending_approvals_for_current_thread(&self) -> Result<Vec<PendingApprovalRecord>> {
         let Some(store) = self.runtime_store.as_ref() else {
             return Ok(Vec::new());
@@ -187,6 +203,7 @@ impl MobileEngine {
             pending,
             cards,
             session_grants: self.approval_session_grants()?,
+            decisions: self.approval_decisions_for_current_thread()?,
         })
     }
 
@@ -394,6 +411,14 @@ impl MobileEngine {
         }
 
         if let Some(store) = self.runtime_store.as_ref() {
+            let session_grant = outcome.session_grants_created.first().cloned();
+            store.append_approval_decision(ApprovalDecisionRecord::new(
+                self.thread_id.clone(),
+                turn.id.clone(),
+                &pending,
+                decision.clone(),
+                session_grant,
+            ))?;
             store.delete_pending_approval(&approval_id)?;
         }
 
@@ -432,6 +457,7 @@ impl MobileEngine {
             turn,
             events,
             executed: outcome.executed,
+            session_grants_created: outcome.session_grants_created,
         })
     }
 
@@ -515,6 +541,7 @@ pub struct EngineApprovalContinuationResult {
     pub turn: TurnContext,
     pub events: Vec<AgentEvent>,
     pub executed: Vec<crate::tool_loop::ToolLoopExecutionRecord>,
+    pub session_grants_created: Vec<ApprovalSessionGrant>,
 }
 
 #[derive(Clone, Debug)]
@@ -523,6 +550,7 @@ pub struct EnginePendingApprovalSnapshot {
     pub pending: Vec<PendingApprovalRecord>,
     pub cards: Vec<ApprovalCardView>,
     pub session_grants: Vec<ApprovalSessionGrant>,
+    pub decisions: Vec<ApprovalDecisionRecord>,
 }
 
 fn title_from_input(input: &str) -> String {
