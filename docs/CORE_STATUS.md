@@ -1,19 +1,22 @@
-# Core Transfer Status (Updated Automatically by Grok)
+# Core + Mobile Progress (Automatic Mode)
 
-## Completed Steps
-1. ✅ Workspace + basic structure
-2. ✅ Agent + ToolRegistry foundation
-3. ✅ ModelRouter (Auto mode v4-pro/flash)
-4. ✅ Basic DeepSeek API Client
+**Grok is running the project automatically**
 
-## Current Focus
-- Expanding tool calling loop
-- Real streaming support
-- Full session management
+## Completed
+- Workspace & structure
+- Agent with ToolRegistry
+- ModelRouter (Auto mode)
+- DeepSeek API Client (non-streaming + streaming skeleton)
+- Basic Mobile Chat UI (Dioxus)
 
-## Preserved from Original TUI
-- Auto mode logic
-- 1M context capability (to be fully wired)
-- Tool philosophy (file, shell, git, web, lsp, mcp)
+## In Progress (automatic)
+- Connecting real API calls
+- Improving tool execution
+- Full streaming reasoning blocks
 
-**Next automatic step:** Expand agent with real tool execution + streaming.
+## Next automatic steps
+- Polish chat UI
+- Add more tools
+- Android storage integration
+
+**Project is moving forward automatically.**

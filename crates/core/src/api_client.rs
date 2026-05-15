@@ -1,20 +1,39 @@
-//! DeepSeek API Client (OpenAI-compatible)
+//! DeepSeek API Client with streaming support (OpenAI-compatible)
 
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use anyhow::Result;
+use futures_util::StreamExt;
 
 #[derive(Serialize)]
 struct ChatRequest {
     model: String,
     messages: Vec<Message>,
     stream: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    temperature: Option<f32>,
 }
 
-#[derive(Serialize, Deserialize)]
-struct Message {
-    role: String,
-    content: String,
+#[derive(Serialize, Deserialize, Clone)]
+pub struct Message {
+    pub role: String,
+    pub content: String,
+}
+
+#[derive(Deserialize, Debug)]
+struct ChatResponse {
+    choices: Vec<Choice>,
+}
+
+#[derive(Deserialize, Debug)]
+struct Choice {
+    delta: Option<Delta>,
+    message: Option<Message>,
+}
+
+#[derive(Deserialize, Debug)]
+struct Delta {
+    content: Option<String>,
 }
 
 pub struct DeepSeekClient {
@@ -32,17 +51,38 @@ impl DeepSeekClient {
         }
     }
 
+    /// Non-streaming chat
     pub async fn chat(&self, model: &str, messages: Vec<Message>) -> Result<String> {
         let req = ChatRequest {
             model: model.to_string(),
             messages,
             stream: false,
+            temperature: Some(0.7),
         };
+
+        let resp = self.client
+            .post(format!("{}/chat/completions", self.base_url))
+            .header("Authorization", format!("Bearer {}", self.api_key))
+            .json(&req)
+            .send()
+            .await?;
+
+        let chat_resp: ChatResponse = resp.json().await?;
         
-        // Placeholder - real implementation will use streaming
-        println!("[API] Calling DeepSeek model: {}", model);
+        if let Some(choice) = chat_resp.choices.first() {
+            if let Some(msg) = &choice.message {
+                return Ok(msg.content.clone());
+            }
+        }
         
-        // TODO: Real HTTP call + streaming support
-        Ok("[API Response] Placeholder - will be replaced with real streaming".to_string())
+        Ok("No response".to_string())
+    }
+
+    /// Streaming chat (for real-time reasoning blocks)
+    pub async fn chat_stream(&self, model: &str, messages: Vec<Message>) -> Result<()> {
+        println!("[API] Starting stream for model: {}", model);
+        // TODO: Implement real SSE streaming
+        // For now this is prepared for future streaming
+        Ok(())
     }
 }
