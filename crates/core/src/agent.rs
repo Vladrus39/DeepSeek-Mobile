@@ -15,6 +15,10 @@ pub struct DeepSeekAgent {
 impl DeepSeekAgent {
     pub fn new(config: Config) -> Self {
         let mut tools = ToolRegistry::new();
+        tools.register(Box::new(crate::tools::file_ops::ReadFileTool));
+        tools.register(Box::new(crate::tools::file_ops::WriteFileTool));
+        tools.register(Box::new(crate::tools::file_ops::EditFileTool));
+        tools.register(Box::new(crate::tools::file_ops::ListDirTool));
         tools.register(Box::new(crate::tools::file_ops::FileOpsTool));
         tools.register(Box::new(crate::tools::shell::ShellTool));
         tools.register(Box::new(crate::tools::git::GitTool));
@@ -61,9 +65,9 @@ impl DeepSeekAgent {
     }
 
     fn system_prompt(&self) -> String {
-        let tool_names = self.tools.tools.keys().cloned().collect::<Vec<_>>().join(", ");
+        let tool_names = self.tools.names().join(", ");
         format!(
-            "You are DeepSeek Mobile, an Android-first coding agent. Available tool categories: {}. When a task requires file, shell or git access, explain the intended tool action clearly before execution.",
+            "You are DeepSeek Mobile, an Android-first coding agent. Available tools: {}. For now, explain planned file, shell or git actions before execution. File writes, shell commands and git actions require user approval.",
             tool_names
         )
     }
