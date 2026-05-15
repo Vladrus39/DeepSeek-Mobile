@@ -6,7 +6,7 @@
 //! execution backends.
 
 use serde::{Deserialize, Serialize};
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Workspace {
@@ -38,12 +38,28 @@ impl Workspace {
         }
     }
 
-    pub fn contains(&self, path: impl AsRef<Path>) -> bool {
+    pub fn resolve_relative_path(&self, path: impl AsRef<Path>) -> Option<PathBuf> {
         let path = path.as_ref();
+
         if path.is_absolute() {
-            path.starts_with(&self.root)
-        } else {
-            self.root.join(path).starts_with(&self.root)
+            return path.starts_with(&self.root).then(|| path.to_path_buf());
         }
+
+        let mut safe_relative = PathBuf::new();
+        for component in path.components() {
+            match component {
+                Component::Normal(part) => safe_relative.push(part),
+                Component::CurDir => {}
+                Component::ParentDir | Component::RootDir | Component::Prefix(_) => return None,
+            }
+        }
+
+        Some(self.root.join(safe_relative))
+    }
+
+    pub fn contains(&self, path: impl AsRef<Path>) -> bool {
+        self.resolve_relative_path(path)
+            .map(|resolved| resolved.starts_with(&self.root))
+            .unwrap_or(false)
     }
 }
