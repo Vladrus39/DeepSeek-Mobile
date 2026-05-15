@@ -6,6 +6,7 @@ mod cockpit_section_panel;
 mod document_picker;
 mod mobile_drawer;
 mod mobile_engine_runner;
+mod mobile_runtime_config;
 mod native_bridge;
 mod pc_pairing_manager;
 mod pc_pairing_panel;
@@ -277,6 +278,15 @@ fn app() -> Element {
                                     }
 
                                     let mut next_timeline = timeline();
+                                    push_agent_event(
+                                        &mut next_timeline,
+                                        &AgentEvent::Status(format!(
+                                            "Runtime store: {} | workspace: {} | thread: {}",
+                                            result.runtime_store_root,
+                                            result.workspace_root,
+                                            result.thread_id
+                                        )),
+                                    );
                                     for event in &result.events {
                                         push_agent_event(&mut next_timeline, event);
                                     }
