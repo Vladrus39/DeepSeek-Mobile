@@ -63,3 +63,45 @@ impl Workspace {
             .unwrap_or(false)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{ExecutorKind, Workspace};
+    use std::path::PathBuf;
+
+    fn workspace() -> Workspace {
+        Workspace::new(
+            "test",
+            "Test Workspace",
+            PathBuf::from("/safe/workspace"),
+            ExecutorKind::LocalAndroid,
+        )
+    }
+
+    #[test]
+    fn accepts_safe_relative_paths() {
+        let workspace = workspace();
+        assert!(workspace.contains("src/main.rs"));
+        assert!(workspace.contains("./README.md"));
+    }
+
+    #[test]
+    fn rejects_parent_directory_traversal() {
+        let workspace = workspace();
+        assert!(!workspace.contains("../secrets.txt"));
+        assert!(!workspace.contains("src/../../secrets.txt"));
+    }
+
+    #[test]
+    fn accepts_absolute_paths_inside_workspace() {
+        let workspace = workspace();
+        assert!(workspace.contains("/safe/workspace/src/lib.rs"));
+    }
+
+    #[test]
+    fn rejects_absolute_paths_outside_workspace() {
+        let workspace = workspace();
+        assert!(!workspace.contains("/safe/other/lib.rs"));
+        assert!(!workspace.contains("/etc/passwd"));
+    }
+}
