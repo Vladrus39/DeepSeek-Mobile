@@ -417,12 +417,7 @@ fn task(
         workspace_id: workspace_id.to_string(),
         label: label.to_string(),
         kind,
-        command: CommandRequest {
-            program: program.to_string(),
-            args: args.iter().map(|arg| arg.to_string()).collect(),
-            working_dir: None,
-            env: Vec::new(),
-        },
+        command: CommandRequest::new(program, args.iter().map(|arg| arg.to_string()).collect()),
         environment_id: None,
     }
 }
