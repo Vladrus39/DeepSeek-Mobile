@@ -4,15 +4,19 @@ pub mod agent;
 pub mod api_client;
 pub mod config;
 pub mod events;
+pub mod executor;
 pub mod model_router;
 pub mod session;
 pub mod tools;
+pub mod workspace;
 
 pub use agent::DeepSeekAgent;
 pub use api_client::{DeepSeekClient, Message};
 pub use config::Config;
 pub use events::{AgentEvent, ApprovalRequest, PatchProposal, RiskLevel, ToolCallEvent, ToolResultEvent};
+pub use executor::{CommandOutput, CommandRequest, DisabledExecutor, Executor};
 pub use session::Session;
+pub use workspace::{ExecutorKind, Workspace};
 
 pub struct DeepSeekCore {
     agent: DeepSeekAgent,
