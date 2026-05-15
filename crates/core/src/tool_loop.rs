@@ -5,7 +5,10 @@
 //! recording turn state. The selected execution backend then decides where the
 //! action actually runs: phone, Termux, PC gateway or remote runtime.
 
-use crate::approval::{should_request_approval, ApprovalMode, ApprovalRisk, MobileApprovalRequest, ToolCategory};
+use crate::approval::{
+    should_request_approval, ApprovalMode, ApprovalRisk, MobileApprovalRequest, ReviewDecision,
+    ToolCategory,
+};
 use crate::events::{AgentEvent, ApprovalRequest, RiskLevel, ToolCallEvent, ToolResultEvent};
 use crate::tool_call::{parse_tool_calls_from_text, ToolCallRequest};
 use crate::tool_execution::ToolExecutionCoordinator;
@@ -20,6 +23,7 @@ pub struct ToolLoopOutcome {
     pub final_text: String,
     pub events: Vec<AgentEvent>,
     pub pending_approvals: Vec<MobileApprovalRequest>,
+    pub pending_tool_approvals: Vec<PendingToolCallApproval>,
     pub executed: Vec<ToolLoopExecutionRecord>,
     pub requires_user_input: bool,
 }
@@ -30,10 +34,21 @@ impl ToolLoopOutcome {
             final_text: final_text.into(),
             events: Vec::new(),
             pending_approvals: Vec::new(),
+            pending_tool_approvals: Vec::new(),
             executed: Vec::new(),
             requires_user_input: false,
         }
     }
+
+    pub fn empty() -> Self {
+        Self::no_tools("")
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct PendingToolCallApproval {
+    pub approval: MobileApprovalRequest,
+    pub call: ToolCallRequest,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -62,6 +77,7 @@ pub async fn process_model_text_with_tools(
         final_text: parsed.final_text,
         events: Vec::new(),
         pending_approvals: Vec::new(),
+        pending_tool_approvals: Vec::new(),
         executed: Vec::new(),
         requires_user_input: false,
     };
@@ -94,13 +110,73 @@ pub async fn process_model_text_with_tools(
             ));
             outcome.requires_user_input = true;
             outcome.events.push(AgentEvent::ApprovalRequired(to_agent_approval_request(&approval)));
-            outcome.pending_approvals.push(approval);
+            outcome.pending_approvals.push(approval.clone());
+            outcome.pending_tool_approvals.push(PendingToolCallApproval { approval, call });
             continue;
         }
 
         execute_approved_call(&call, coordinator, context, turn, &mut outcome).await?;
     }
 
+    Ok(outcome)
+}
+
+pub async fn continue_pending_tool_approval(
+    pending: &PendingToolCallApproval,
+    decision: &ReviewDecision,
+    coordinator: &ToolExecutionCoordinator<'_>,
+    context: &ToolContext,
+    turn: &mut TurnContext,
+) -> Result<ToolLoopOutcome> {
+    let mut outcome = ToolLoopOutcome::empty();
+    match decision {
+        ReviewDecision::Approved | ReviewDecision::ApprovedForSession => {
+            turn.status = TurnStatus::Running;
+            outcome.events.push(AgentEvent::Status(format!(
+                "Approval accepted for tool '{}'",
+                pending.call.name
+            )));
+            execute_approved_call(&pending.call, coordinator, context, turn, &mut outcome).await?;
+        }
+        ReviewDecision::Denied => {
+            let message = format!("Tool '{}' was denied by user", pending.call.name);
+            let mut turn_call = TurnToolCall::new(
+                pending.call.id.clone(),
+                pending.call.name.clone(),
+                pending.call.arguments.clone(),
+            );
+            turn_call.set_error(message.clone());
+            turn.record_tool_call(turn_call);
+            turn.status = TurnStatus::Running;
+            outcome.events.push(AgentEvent::Status(message.clone()));
+            outcome.executed.push(ToolLoopExecutionRecord {
+                id: pending.call.id.clone(),
+                name: pending.call.name.clone(),
+                success: false,
+                output: message,
+                metadata: None,
+            });
+        }
+        ReviewDecision::Abort => {
+            let message = format!("Tool '{}' aborted by user", pending.call.name);
+            let mut turn_call = TurnToolCall::new(
+                pending.call.id.clone(),
+                pending.call.name.clone(),
+                pending.call.arguments.clone(),
+            );
+            turn_call.set_error(message.clone());
+            turn.record_tool_call(turn_call);
+            turn.cancel();
+            outcome.events.push(AgentEvent::Error(message.clone()));
+            outcome.executed.push(ToolLoopExecutionRecord {
+                id: pending.call.id.clone(),
+                name: pending.call.name.clone(),
+                success: false,
+                output: message,
+                metadata: None,
+            });
+        }
+    }
     Ok(outcome)
 }
 
@@ -182,8 +258,8 @@ fn risk_level_for(category: &ToolCategory, risk: &ApprovalRisk) -> RiskLevel {
 
 #[cfg(test)]
 mod tests {
-    use super::process_model_text_with_tools;
-    use crate::approval::ApprovalMode;
+    use super::{continue_pending_tool_approval, process_model_text_with_tools};
+    use crate::approval::{ApprovalMode, ReviewDecision};
     use crate::tool_execution::ToolExecutionCoordinator;
     use crate::tools::file_ops::ReadFileTool;
     use crate::tools::{ToolContext, ToolRegistry};
@@ -229,7 +305,82 @@ mod tests {
         .unwrap();
         assert!(outcome.requires_user_input);
         assert_eq!(outcome.pending_approvals.len(), 1);
+        assert_eq!(outcome.pending_tool_approvals.len(), 1);
         assert_eq!(turn.status, TurnStatus::WaitingForApproval);
+    }
+
+    #[tokio::test]
+    async fn approved_pending_tool_continues_same_turn() {
+        let dir = std::env::temp_dir().join(format!(
+            "deepseek_mobile_tool_approval_{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+
+        let mut registry = ToolRegistry::new();
+        registry.register(Box::new(crate::tools::file_ops::WriteFileTool));
+        let coordinator = ToolExecutionCoordinator::new(&registry);
+        let context = ToolContext::new(Workspace::new("w1", "Project", &dir, ExecutorKind::LocalAndroid));
+        let mut turn = TurnContext::new(5);
+        let outcome = process_model_text_with_tools(
+            r#"{"tool":"write_file","args":{"path":"README.md","content":"approved"}}"#,
+            &registry,
+            &coordinator,
+            &context,
+            &ApprovalMode::Suggest,
+            &mut turn,
+        )
+        .await
+        .unwrap();
+        let pending = outcome.pending_tool_approvals[0].clone();
+
+        let continued = continue_pending_tool_approval(
+            &pending,
+            &ReviewDecision::Approved,
+            &coordinator,
+            &context,
+            &mut turn,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(turn.status, TurnStatus::Running);
+        assert_eq!(continued.executed.len(), 1);
+        assert_eq!(std::fs::read_to_string(dir.join("README.md")).unwrap(), "approved");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn denied_pending_tool_records_error_without_execution() {
+        let mut registry = ToolRegistry::new();
+        registry.register(Box::new(crate::tools::file_ops::WriteFileTool));
+        let coordinator = ToolExecutionCoordinator::new(&registry);
+        let context = ToolContext::new(Workspace::new("w1", "Project", "/tmp", ExecutorKind::LocalAndroid));
+        let mut turn = TurnContext::new(5);
+        let outcome = process_model_text_with_tools(
+            r#"{"tool":"write_file","args":{"path":"README.md","content":"x"}}"#,
+            &registry,
+            &coordinator,
+            &context,
+            &ApprovalMode::Suggest,
+            &mut turn,
+        )
+        .await
+        .unwrap();
+        let pending = outcome.pending_tool_approvals[0].clone();
+        let continued = continue_pending_tool_approval(
+            &pending,
+            &ReviewDecision::Denied,
+            &coordinator,
+            &context,
+            &mut turn,
+        )
+        .await
+        .unwrap();
+        assert_eq!(turn.status, TurnStatus::Running);
+        assert_eq!(continued.executed.len(), 1);
+        assert!(!continued.executed[0].success);
     }
 
     #[tokio::test]
