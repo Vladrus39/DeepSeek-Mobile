@@ -1,20 +1,15 @@
-# Automatic Progress Log
+# Core Development Progress (Automatic Mode)
 
-**Grok is developing autonomously**
+**Grok is continuing core improvements automatically (option 1)**
 
 ## Latest
-- Added ShellTool and GitTool
-- Agent now has multiple tools registered
-- Improved tool system
+- Added `chat_stream()` to DeepSeekClient
+- Added `run_stream()` to DeepSeekAgent
+- Added `run_turn_streaming()` foundation in MobileEngine
 
-## Current Capabilities
-- Real DeepSeek API calls
-- Multiple tools (file, shell, git)
-- Functional mobile chat UI
-
-## Next
-- Wire tools into actual reasoning loop
-- Better streaming
-- Android integration
+## Focus
+- Real streaming from DeepSeek API
+- Emitting TextDelta events in real time
+- Preparing tool calling during streaming
 
 **Continuing automatically.**
