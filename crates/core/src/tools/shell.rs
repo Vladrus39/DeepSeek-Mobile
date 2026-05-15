@@ -1,17 +1,51 @@
-//! Shell execution tool
+//! Shell execution tool surface.
+//!
+//! Direct shell execution is intentionally disabled in the mobile core until a
+//! concrete executor is selected. Android builds should route commands through
+//! Termux or a remote backend instead of spawning arbitrary local processes.
 
-use super::Tool;
+use super::{ApprovalRequirement, ToolCapability, ToolContext, ToolResult, ToolSpec, required_str};
 use anyhow::Result;
+use serde_json::{Value, json};
 
 pub struct ShellTool;
 
-impl Tool for ShellTool {
-    fn name(&self) -> &str { "shell" }
-    fn description(&self) -> &str { "Execute shell commands in workspace" }
-    
-    fn execute(&self, args: &str) -> Result<String> {
-        // Placeholder - real implementation will use tokio::process
-        println!("[Tool] Shell command requested: {}", args);
-        Ok(format!("[Shell] Would execute: {}. (Sandbox mode in mobile)", args))
+impl ToolSpec for ShellTool {
+    fn name(&self) -> &str {
+        "exec_shell"
+    }
+
+    fn description(&self) -> &str {
+        "Request shell command execution through the selected executor. Requires approval."
+    }
+
+    fn input_schema(&self) -> Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "command": { "type": "string", "description": "Shell command to execute" }
+            },
+            "required": ["command"]
+        })
+    }
+
+    fn capabilities(&self) -> Vec<ToolCapability> {
+        vec![
+            ToolCapability::ExecutesCode,
+            ToolCapability::RequiresApproval,
+            ToolCapability::Sandboxable,
+        ]
+    }
+
+    fn approval_requirement(&self) -> ApprovalRequirement {
+        ApprovalRequirement::Required
+    }
+
+    fn execute(&self, input: Value, _context: &ToolContext) -> Result<ToolResult> {
+        let command = required_str(&input, "command")?;
+        Ok(ToolResult::success(format!(
+            "Shell execution requested but no executor is active yet. Requested command: {}",
+            command
+        )))
     }
 }
