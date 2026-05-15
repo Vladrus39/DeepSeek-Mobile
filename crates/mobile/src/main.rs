@@ -251,25 +251,11 @@ fn app() -> Element {
                         let draft = composer();
                         if !draft.has_content() { return; }
 
-                        let mut prompt = draft.draft_text.clone();
-                        if !draft.attachments.is_empty() {
-                            if !prompt.is_empty() {
-                                prompt.push_str("\n\n");
-                            }
-                            prompt.push_str("Attachments:\n");
-                            for attachment in &draft.attachments {
-                                prompt.push_str("- ");
-                                prompt.push_str(&attachment.display_name);
-                                if let Some(mime_type) = attachment.mime_type.as_ref() {
-                                    prompt.push_str(" (");
-                                    prompt.push_str(mime_type);
-                                    prompt.push(')');
-                                }
-                                prompt.push('\n');
-                            }
-                        }
+                        let user_input = draft.to_core_input();
+                        let user_message = user_input.clone().into_message();
+                        let prompt = user_message.content.clone();
 
-                        messages.push(("user".to_string(), prompt.clone()));
+                        messages.push((user_message.role.clone(), prompt));
                         input.set(String::new());
                         composer.set(ChatComposerState::default());
                         is_loading.set(true);
