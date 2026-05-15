@@ -9,6 +9,7 @@ pub mod engine;
 pub mod events;
 pub mod executor;
 pub mod model_router;
+pub mod pc_gateway;
 pub mod runtime_store;
 pub mod session;
 pub mod tools;
@@ -31,6 +32,14 @@ pub use engine::{EngineTurnResult, MobileEngine};
 pub use events::{AgentEvent, ApprovalRequest, PatchProposal, RiskLevel, ToolCallEvent, ToolResultEvent};
 pub use executor::{CommandOutput, CommandRequest, DisabledExecutor, Executor};
 pub use model_router::{ModelRouter, RouteDecision, TaskProfile};
+pub use pc_gateway::{
+    validate_gateway_base_url, PcDiagnostic, PcDiagnosticSeverity, PcEnvironmentDescriptor,
+    PcEnvironmentKind, PcGatewayCapability, PcGatewayConfig, PcGatewayConnectionStatus,
+    PcGatewayDirEntry, PcGatewayError, PcGatewayHealth, PcGatewayPairingRequest,
+    PcGatewayPairingResponse, PcGatewayRequest, PcGatewayRequestEnvelope, PcGatewayResponse,
+    PcGatewayResponseEnvelope, PcGatewaySecurityPolicy, PcGatewayTrustLevel, PcPreviewDescriptor,
+    PcTaskDescriptor, PcTaskKind, PcTerminalSession, PcWorkspaceGrant, PcWorkspaceIndexSummary,
+};
 pub use runtime_store::{
     RuntimeEventRecord, RuntimeThreadStore, RuntimeTurnStatus, ThreadRecord, TurnItemKind,
     TurnItemLifecycleStatus, TurnItemRecord, TurnRecord,
