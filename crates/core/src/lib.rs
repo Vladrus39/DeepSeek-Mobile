@@ -3,6 +3,7 @@
 pub mod agent;
 pub mod api_client;
 pub mod approval;
+pub mod approval_card;
 pub mod config;
 pub mod context;
 pub mod engine;
@@ -28,6 +29,10 @@ pub use api_client::{DeepSeekClient, Message};
 pub use approval::{
     categorize_tool, classify_risk, should_request_approval, ApprovalMode, ApprovalRisk,
     MobileApprovalRequest, ReviewDecision, ToolCategory,
+};
+pub use approval_card::{
+    approval_cards_from_records, sanitize_value_for_preview, ApprovalCardAction, ApprovalCardSeverity,
+    ApprovalCardStatus, ApprovalCardView,
 };
 pub use config::{Config, ExternalAccessMode, ModelMode, ThinkingLevel};
 pub use context::{
