@@ -1,7 +1,15 @@
+//! DeepSeek Mobile Core
+//! Переиспользуемая логика agent'а из оригинального DeepSeek-TUI
+
 pub mod agent;
 pub mod tools;
 pub mod config;
 pub mod session;
 
-pub use agent::DeepSeekAgent;
-// Core logic will be ported from original DeepSeek-TUI
+// Re-exports
+pub use agent::Agent;
+pub use config::Config;
+
+pub fn version() -> &'static str {
+    "0.1.0"
+}

@@ -1,22 +1,13 @@
 # DeepSeek-Mobile
 
-Полноценный **DeepSeek Coding Agent** для Android.
+Полноценный DeepSeek Coding Agent для Android на Dioxus + Rust.
 
-Работает полностью локально на телефоне + DeepSeek API (V4-pro / Flash, 1M контекст).
-
-## Основные возможности
-- Полноценный чат с streaming reasoning
-- Workspace Explorer
-- Все инструменты оригинального TUI
-- Режимы Plan / Agent / YOLO
+Работает локально на телефоне, использует DeepSeek API (v4-pro / v4-flash, 1M контекст).
 
 ## Стек
-- Rust Core
-- Dioxus 0.7 Mobile
+- Core: Rust (перенесён из Hmbown/DeepSeek-TUI)
+- UI: Dioxus 0.7 (native Android)
+- Agent: Полный tool calling, auto-mode, streaming
 
-## Быстрый старт
-```bash
-git clone https://github.com/Vladrus39/DeepSeek-Mobile.git
-cd DeepSeek-Mobile
-cargo run --package mobile
-```
+## Цель
+Сохранить 95%+ функционала оригинального TUI в удобном touch-интерфейсе.
