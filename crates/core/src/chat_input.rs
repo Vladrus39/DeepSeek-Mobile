@@ -8,6 +8,8 @@
 use crate::api_client::Message;
 use serde::{Deserialize, Serialize};
 
+const MAX_ATTACHMENT_PROMPT_CHARS: usize = 24_000;
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub enum UserAttachmentKind {
     Document,
@@ -26,6 +28,7 @@ pub struct UserAttachmentRef {
     pub mime_type: Option<String>,
     pub size_bytes: Option<u64>,
     pub kind: UserAttachmentKind,
+    pub extracted_text: Option<String>,
 }
 
 impl UserAttachmentRef {
@@ -42,6 +45,7 @@ impl UserAttachmentRef {
             mime_type: None,
             size_bytes: None,
             kind,
+            extracted_text: None,
         }
     }
 
@@ -62,6 +66,11 @@ impl UserAttachmentRef {
 
     pub fn with_size_bytes(mut self, size_bytes: u64) -> Self {
         self.size_bytes = Some(size_bytes);
+        self
+    }
+
+    pub fn with_extracted_text(mut self, text: impl Into<String>) -> Self {
+        self.extracted_text = Some(text.into());
         self
     }
 }
@@ -127,7 +136,21 @@ impl UserChatInput {
                 out.push_str(" path=");
                 out.push_str(path);
             }
+            if attachment.extracted_text.is_some() {
+                out.push_str(" extracted_text=true");
+            }
             out.push('\n');
+        }
+
+        for attachment in self.attachments.iter().filter(|item| item.extracted_text.is_some()) {
+            let text = attachment.extracted_text.as_deref().unwrap_or_default();
+            out.push_str("\n--- Extracted content for ");
+            out.push_str(&attachment.display_name);
+            out.push_str(" ---\n");
+            out.push_str(&truncate_attachment_text(text));
+            out.push_str("\n--- End extracted content for ");
+            out.push_str(&attachment.display_name);
+            out.push_str(" ---\n");
         }
         out
     }
@@ -138,6 +161,16 @@ impl UserChatInput {
             content: self.to_prompt_text(),
         }
     }
+}
+
+fn truncate_attachment_text(text: &str) -> String {
+    if text.chars().count() <= MAX_ATTACHMENT_PROMPT_CHARS {
+        return text.to_string();
+    }
+
+    let mut out = text.chars().take(MAX_ATTACHMENT_PROMPT_CHARS).collect::<String>();
+    out.push_str("\n...[attachment content truncated]...");
+    out
 }
 
 #[cfg(test)]
@@ -164,6 +197,31 @@ mod tests {
         assert!(prompt.contains("project.zip"));
         assert!(prompt.contains("archive"));
         assert!(prompt.contains("application/zip"));
+    }
+
+    #[test]
+    fn extracted_attachment_text_is_rendered_into_prompt() {
+        let input = UserChatInput::new("Review this")
+            .with_attachments(vec![
+                UserAttachmentRef::new("a1", "main.rs", UserAttachmentKind::SourceFile)
+                    .with_extracted_text("fn main() {}"),
+            ]);
+        let prompt = input.to_prompt_text();
+        assert!(prompt.contains("extracted_text=true"));
+        assert!(prompt.contains("Extracted content for main.rs"));
+        assert!(prompt.contains("fn main() {}"));
+    }
+
+    #[test]
+    fn extracted_attachment_text_is_truncated() {
+        let input = UserChatInput::new("Review this")
+            .with_attachments(vec![
+                UserAttachmentRef::new("a1", "large.txt", UserAttachmentKind::SourceFile)
+                    .with_extracted_text("x".repeat(30_000)),
+            ]);
+        let prompt = input.to_prompt_text();
+        assert!(prompt.contains("attachment content truncated"));
+        assert!(prompt.len() < 26_000);
     }
 
     #[test]
