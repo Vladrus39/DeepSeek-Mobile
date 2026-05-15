@@ -19,7 +19,7 @@ fn app() -> Element {
     let mut input = use_signal(String::new);
     let mut is_loading = use_signal(|| false);
     let mut drawer_open = use_signal(|| false);
-    let active_section = use_signal(|| CockpitSection::Chat);
+    let mut active_section = use_signal(|| CockpitSection::Chat);
     let pc_pairing_state = use_signal(PcPairingUiState::default);
 
     rsx! {
@@ -33,7 +33,14 @@ fn app() -> Element {
             position: "relative",
             overflow: "hidden",
 
-            {mobile_drawer(drawer_open(), active_section())}
+            {mobile_drawer(
+                drawer_open(),
+                active_section(),
+                move |section| {
+                    active_section.set(section);
+                    drawer_open.set(false);
+                }
+            )}
 
             div {
                 display: "flex",
