@@ -13,6 +13,7 @@ pub mod executor;
 pub mod model_router;
 pub mod pc_gateway;
 pub mod pc_gateway_client;
+pub mod pc_pairing;
 pub mod runtime_store;
 pub mod session;
 pub mod tool_call;
@@ -63,6 +64,7 @@ pub use pc_gateway::{
     PcTaskDescriptor, PcTaskKind, PcTerminalSession, PcWorkspaceGrant, PcWorkspaceIndexSummary,
 };
 pub use pc_gateway_client::PcGatewayClient;
+pub use pc_pairing::{PcGatewayPairingBundle, PcPairingLaunchScript, PcPairingPlatform};
 pub use runtime_store::{
     ApprovalDecisionRecord, PendingApprovalRecord, RuntimeEventRecord, RuntimeThreadStore,
     RuntimeTurnStatus, ThreadRecord, TurnItemKind, TurnItemLifecycleStatus, TurnItemRecord,
