@@ -1,3 +1,4 @@
+use crate::attachment_ingestion::{ingest_attachment_texts, ingestion_status_message};
 use crate::document_picker::PickedDocument;
 use deepseek_mobile_core::{UserAttachmentKind, UserAttachmentRef, UserChatInput};
 use std::path::PathBuf;
@@ -74,6 +75,7 @@ pub struct ChatAttachmentDraft {
     pub mime_type: Option<String>,
     pub size_bytes: Option<u64>,
     pub kind: ChatAttachmentKind,
+    pub extracted_text: Option<String>,
 }
 
 impl ChatAttachmentDraft {
@@ -86,6 +88,7 @@ impl ChatAttachmentDraft {
             mime_type: None,
             size_bytes: None,
             kind: ChatAttachmentKind::Document,
+            extracted_text: None,
         }
     }
 
@@ -99,6 +102,7 @@ impl ChatAttachmentDraft {
             mime_type: document.mime_type,
             size_bytes: document.size_bytes,
             kind,
+            extracted_text: None,
         }
     }
 
@@ -119,6 +123,9 @@ impl ChatAttachmentDraft {
         }
         if let Some(size_bytes) = self.size_bytes {
             attachment = attachment.with_size_bytes(size_bytes);
+        }
+        if let Some(extracted_text) = self.extracted_text.as_ref() {
+            attachment = attachment.with_extracted_text(extracted_text.clone());
         }
         attachment
     }
@@ -141,6 +148,11 @@ impl ChatAttachmentDraft {
 
     pub fn with_size_bytes(mut self, size_bytes: u64) -> Self {
         self.size_bytes = Some(size_bytes);
+        self
+    }
+
+    pub fn with_extracted_text(mut self, text: impl Into<String>) -> Self {
+        self.extracted_text = Some(text.into());
         self
     }
 }
@@ -169,6 +181,23 @@ impl ChatComposerState {
         )
     }
 
+    pub fn to_core_input_with_ingestion(&self) -> (UserChatInput, Vec<String>) {
+        let ingestion_results = ingest_attachment_texts(self.attachments.clone());
+        let status_messages = ingestion_results
+            .iter()
+            .filter_map(ingestion_status_message)
+            .collect::<Vec<_>>();
+        let attachments = ingestion_results
+            .into_iter()
+            .map(|result| result.attachment.to_core_ref())
+            .collect();
+
+        (
+            UserChatInput::new(self.draft_text.clone()).with_attachments(attachments),
+            status_messages,
+        )
+    }
+
     pub fn clear(&mut self) {
         self.draft_text.clear();
         self.attachments.clear();
@@ -192,6 +221,15 @@ mod tests {
     use super::{ChatAttachmentDraft, ChatAttachmentKind, ChatComposerState};
     use crate::document_picker::PickedDocument;
     use deepseek_mobile_core::UserAttachmentKind;
+    use std::fs;
+
+    fn unique_path(name: &str) -> std::path::PathBuf {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("system clock before unix epoch")
+            .as_nanos();
+        std::env::temp_dir().join(format!("deepseek-mobile-{}-{}", name, nanos))
+    }
 
     #[test]
     fn composer_detects_text_content() {
@@ -251,5 +289,26 @@ mod tests {
         assert_eq!(input.text, "Analyze");
         assert_eq!(input.attachments.len(), 1);
         assert_eq!(input.attachments[0].kind, UserAttachmentKind::Archive);
+    }
+
+    #[test]
+    fn composer_ingests_local_text_attachment() {
+        let path = unique_path("note.txt");
+        fs::write(&path, "real attachment text").expect("write test attachment");
+
+        let mut state = ChatComposerState::default();
+        state.draft_text = "Analyze".to_string();
+        state.add_attachment(
+            ChatAttachmentDraft::new_document("doc-1", "note.txt")
+                .with_path(&path)
+                .with_mime_type("text/plain"),
+        );
+
+        let (input, statuses) = state.to_core_input_with_ingestion();
+        assert_eq!(input.attachments.len(), 1);
+        assert_eq!(input.attachments[0].extracted_text.as_deref(), Some("real attachment text"));
+        assert!(statuses[0].contains("Read attachment text"));
+
+        let _ = fs::remove_file(path);
     }
 }
