@@ -5,11 +5,13 @@ pub mod api_client;
 pub mod approval;
 pub mod config;
 pub mod context;
+pub mod engine;
 pub mod events;
 pub mod executor;
 pub mod model_router;
 pub mod session;
 pub mod tools;
+pub mod turn;
 pub mod workspace;
 pub mod workspace_files;
 
@@ -24,11 +26,13 @@ pub use context::{
     estimate_messages_tokens, estimate_text_tokens, CompressionStrategy, ContextBudget,
     ContextCompressionPlan, ContextManager,
 };
+pub use engine::{EngineTurnResult, MobileEngine};
 pub use events::{AgentEvent, ApprovalRequest, PatchProposal, RiskLevel, ToolCallEvent, ToolResultEvent};
 pub use executor::{CommandOutput, CommandRequest, DisabledExecutor, Executor};
 pub use model_router::{ModelRouter, RouteDecision, TaskProfile};
 pub use session::Session;
 pub use tools::{ApprovalRequirement, ToolCapability, ToolContext, ToolRegistry, ToolResult, ToolSpec};
+pub use turn::{TokenUsage, TurnContext, TurnStatus, TurnToolCall};
 pub use workspace::{ExecutorKind, Workspace};
 pub use workspace_files::{WorkspaceFileEntry, WorkspaceFileService};
 
