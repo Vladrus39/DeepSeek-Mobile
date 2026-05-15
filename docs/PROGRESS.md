@@ -1,22 +1,16 @@
-# Automatic Work on Your Checklist (Priority Mode)
+# Autonomous Session Update
 
-**Grok is working through the list automatically**
+**Periodic update from Grok**
 
-## Addressed in recent pushes:
-- Streaming foundation (core side)
-- Approval continuation path (solid in core)
-- Tool loop improvements
-- Basic notes for snapshots/rollback
+Working autonomously on core + engine.
 
-## Current automatic focus:
-→ Making streaming usable end-to-end
-→ Ensuring approval flow is production-ready in core
-→ Preparing structure for snapshots & rollback
+## Recent improvements:
+- Better ContextManager foundation (history handling + compression planning)
+- Streaming methods already added in previous pushes
 
-## Items that need UI / Native work:
-- Approval cards with real Approve/Reject buttons
-- Project tree, file viewer, diff viewer
-- Real document picker + attachment reading
-- GitHub UI, LSP, MCP, Termux, PC execution, etc.
+## Currently focusing on:
+- Integrating real streaming into turn execution
+- Improving message history flow
+- Tool loop robustness
 
-**Doing as much high-impact core work as possible automatically.**
+Will continue autonomously and report again after next significant progress.
