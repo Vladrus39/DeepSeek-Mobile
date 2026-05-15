@@ -1,15 +1,25 @@
-//! DeepSeek Mobile Core
-//! Переиспользуемая логика agent'а из оригинального DeepSeek-TUI
-
 pub mod agent;
-pub mod tools;
 pub mod config;
+pub mod tools;
 pub mod session;
+pub mod model_router;
 
-// Re-exports
-pub use agent::Agent;
+pub use agent::DeepSeekAgent;
 pub use config::Config;
 
-pub fn version() -> &'static str {
-    "0.1.0"
+#[derive(Clone)]
+pub struct Core {
+    agent: DeepSeekAgent,
+}
+
+impl Core {
+    pub fn new(config: Config) -> Self {
+        Self {
+            agent: DeepSeekAgent::new(config),
+        }
+    }
+
+    pub async fn send_message(&self, message: String) -> anyhow::Result<String> {
+        self.agent.process(message).await
+    }
 }
