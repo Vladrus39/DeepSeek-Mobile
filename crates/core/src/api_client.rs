@@ -1,8 +1,8 @@
 //! DeepSeek API Client - Real implementation ready
 
+use anyhow::{anyhow, Result};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use anyhow::{Result, anyhow};
 
 #[derive(Serialize)]
 struct ChatRequest {
@@ -11,7 +11,7 @@ struct ChatRequest {
     stream: bool,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct Message {
     pub role: String,
     pub content: String,
@@ -68,7 +68,7 @@ impl DeepSeekClient {
         }
 
         let chat_resp: ChatResponse = response.json().await?;
-        
+
         chat_resp.choices
             .first()
             .and_then(|c| c.message.as_ref())
