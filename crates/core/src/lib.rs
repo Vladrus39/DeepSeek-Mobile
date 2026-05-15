@@ -13,6 +13,7 @@ pub mod pc_gateway;
 pub mod pc_gateway_client;
 pub mod runtime_store;
 pub mod session;
+pub mod tool_call;
 pub mod tools;
 pub mod turn;
 pub mod workspace;
@@ -52,6 +53,7 @@ pub use runtime_store::{
     TurnItemLifecycleStatus, TurnItemRecord, TurnRecord,
 };
 pub use session::Session;
+pub use tool_call::{parse_tool_calls_from_text, ToolCallParseResult, ToolCallRequest, ToolCallSource};
 pub use tools::{ApprovalRequirement, ToolCapability, ToolContext, ToolRegistry, ToolResult, ToolSpec};
 pub use turn::{TokenUsage, TurnContext, TurnStatus, TurnToolCall};
 pub use workspace::{ExecutorKind, Workspace};
