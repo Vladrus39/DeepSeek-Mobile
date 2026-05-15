@@ -9,6 +9,7 @@ pub mod engine;
 pub mod events;
 pub mod executor;
 pub mod model_router;
+pub mod runtime_store;
 pub mod session;
 pub mod tools;
 pub mod turn;
@@ -30,6 +31,10 @@ pub use engine::{EngineTurnResult, MobileEngine};
 pub use events::{AgentEvent, ApprovalRequest, PatchProposal, RiskLevel, ToolCallEvent, ToolResultEvent};
 pub use executor::{CommandOutput, CommandRequest, DisabledExecutor, Executor};
 pub use model_router::{ModelRouter, RouteDecision, TaskProfile};
+pub use runtime_store::{
+    RuntimeEventRecord, RuntimeThreadStore, RuntimeTurnStatus, ThreadRecord, TurnItemKind,
+    TurnItemLifecycleStatus, TurnItemRecord, TurnRecord,
+};
 pub use session::Session;
 pub use tools::{ApprovalRequirement, ToolCapability, ToolContext, ToolRegistry, ToolResult, ToolSpec};
 pub use turn::{TokenUsage, TurnContext, TurnStatus, TurnToolCall};
