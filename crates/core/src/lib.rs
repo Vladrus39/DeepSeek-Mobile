@@ -60,7 +60,8 @@ pub use session::Session;
 pub use tool_call::{parse_tool_calls_from_text, ToolCallParseResult, ToolCallRequest, ToolCallSource};
 pub use tool_execution::{ToolExecutionCoordinator, ToolExecutionRoute, ToolExecutionTarget};
 pub use tool_loop::{
-    execute_approved_call, process_model_text_with_tools, ToolLoopExecutionRecord, ToolLoopOutcome,
+    continue_pending_tool_approval, execute_approved_call, process_model_text_with_tools,
+    PendingToolCallApproval, ToolLoopExecutionRecord, ToolLoopOutcome,
 };
 pub use tools::{ApprovalRequirement, ToolCapability, ToolContext, ToolRegistry, ToolResult, ToolSpec};
 pub use turn::{TokenUsage, TurnContext, TurnStatus, TurnToolCall};
