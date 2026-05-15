@@ -1,9 +1,11 @@
+mod chat_attachment;
 mod cockpit_section_panel;
 mod mobile_drawer;
 mod pc_pairing_manager;
 mod pc_pairing_panel;
 mod pc_pairing_state;
 
+use chat_attachment::{ChatAttachmentDraft, ChatComposerState};
 use cockpit_section_panel::cockpit_section_panel;
 use deepseek_mobile_core::{Config, DeepSeekCore, Message};
 use dioxus::prelude::*;
@@ -17,6 +19,7 @@ fn main() {
 fn app() -> Element {
     let mut messages = use_signal(Vec::<(String, String)>::new);
     let mut input = use_signal(String::new);
+    let mut composer = use_signal(ChatComposerState::default);
     let mut is_loading = use_signal(|| false);
     let mut drawer_open = use_signal(|| false);
     let mut active_section = use_signal(|| CockpitSection::Chat);
@@ -124,10 +127,43 @@ fn app() -> Element {
                 }
             }
 
+            if !composer().attachments.is_empty() {
+                div {
+                    margin_top: "8px",
+                    background_color: "#111827",
+                    border: "1px solid #374151",
+                    border_radius: "14px",
+                    padding: "8px 10px",
+                    color: "#d1d5db",
+                    font_size: "12px",
+                    "{composer().attachment_summary()}"
+                }
+            }
+
             div {
                 display: "flex",
                 gap: "8px",
                 margin_top: "12px",
+                align_items: "center",
+
+                button {
+                    background_color: "#1f2937",
+                    color: "white",
+                    width: "44px",
+                    height: "44px",
+                    border_radius: "999px",
+                    border: "1px solid #4b5563",
+                    onclick: move |_| {
+                        let mut next = composer();
+                        let index = next.attachments.len() + 1;
+                        next.add_attachment(ChatAttachmentDraft::new_document(
+                            format!("draft-doc-{}", index),
+                            format!("document-{}.pdf", index),
+                        ));
+                        composer.set(next);
+                    },
+                    "+"
+                }
 
                 input {
                     flex: "1",
@@ -136,22 +172,44 @@ fn app() -> Element {
                     padding: "12px",
                     border: "1px solid #4b5563",
                     border_radius: "999px",
-                    placeholder: "Ask anything...",
-                    oninput: move |e| input.set(e.value()),
+                    placeholder: "Message DeepSeek...",
+                    value: "{input}",
+                    oninput: move |e| {
+                        let value = e.value();
+                        input.set(value.clone());
+                        let mut next = composer();
+                        next.draft_text = value;
+                        composer.set(next);
+                    },
                 }
 
                 button {
                     background_color: "#3b82f6",
                     color: "white",
                     padding: "0 20px",
+                    height: "44px",
                     border_radius: "999px",
-                    disabled: is_loading(),
+                    disabled: is_loading() || !composer().has_content(),
                     onclick: move |_| {
-                        let prompt = input();
-                        if prompt.is_empty() { return; }
+                        let draft = composer();
+                        if !draft.has_content() { return; }
+
+                        let mut prompt = draft.draft_text.clone();
+                        if !draft.attachments.is_empty() {
+                            if !prompt.is_empty() {
+                                prompt.push_str("\n\n");
+                            }
+                            prompt.push_str("Attachments:\n");
+                            for attachment in &draft.attachments {
+                                prompt.push_str("- ");
+                                prompt.push_str(&attachment.display_name);
+                                prompt.push('\n');
+                            }
+                        }
 
                         messages.push(("user".to_string(), prompt.clone()));
                         input.set(String::new());
+                        composer.set(ChatComposerState::default());
                         is_loading.set(true);
 
                         spawn(async move {
