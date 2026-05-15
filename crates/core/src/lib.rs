@@ -3,6 +3,7 @@
 pub mod agent;
 pub mod api_client;
 pub mod config;
+pub mod context;
 pub mod events;
 pub mod executor;
 pub mod model_router;
@@ -14,6 +15,10 @@ pub mod workspace_files;
 pub use agent::DeepSeekAgent;
 pub use api_client::{DeepSeekClient, Message};
 pub use config::Config;
+pub use context::{
+    estimate_messages_tokens, estimate_text_tokens, CompressionStrategy, ContextBudget,
+    ContextCompressionPlan, ContextManager,
+};
 pub use events::{AgentEvent, ApprovalRequest, PatchProposal, RiskLevel, ToolCallEvent, ToolResultEvent};
 pub use executor::{CommandOutput, CommandRequest, DisabledExecutor, Executor};
 pub use session::Session;
