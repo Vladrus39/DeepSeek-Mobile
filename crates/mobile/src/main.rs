@@ -1,3 +1,4 @@
+mod agent_event_adapter;
 mod agent_timeline;
 mod agent_timeline_panel;
 mod chat_attachment;
@@ -9,11 +10,12 @@ mod pc_pairing_manager;
 mod pc_pairing_panel;
 mod pc_pairing_state;
 
+use agent_event_adapter::push_agent_event;
 use agent_timeline::MobileTimelineState;
 use agent_timeline_panel::agent_timeline_panel;
 use chat_attachment::ChatComposerState;
 use cockpit_section_panel::cockpit_section_panel;
-use deepseek_mobile_core::{Config, DeepSeekCore, Message};
+use deepseek_mobile_core::{AgentEvent, Config, DeepSeekCore, Message};
 use dioxus::prelude::*;
 use document_picker::{DocumentPickerRequest, DocumentPickerState, PickedDocument};
 use mobile_drawer::{mobile_drawer, CockpitSection};
@@ -256,7 +258,8 @@ fn app() -> Element {
                         messages.push((user_message.role.clone(), prompt.clone()));
                         let mut next_timeline = timeline();
                         next_timeline.push_user_message(prompt);
-                        next_timeline.push_status("DeepSeek request started");
+                        push_agent_event(&mut next_timeline, &AgentEvent::Started);
+                        push_agent_event(&mut next_timeline, &AgentEvent::Status("DeepSeek request started".to_string()));
                         timeline.set(next_timeline);
 
                         input.set(String::new());
@@ -277,14 +280,15 @@ fn app() -> Element {
                                 Ok(response) => {
                                     messages.push(("assistant".to_string(), response.clone()));
                                     let mut next_timeline = timeline();
-                                    next_timeline.push_assistant_message(response);
+                                    push_agent_event(&mut next_timeline, &AgentEvent::TextDelta(response));
+                                    push_agent_event(&mut next_timeline, &AgentEvent::Finished);
                                     timeline.set(next_timeline);
                                 }
                                 Err(e) => {
                                     let error = format!("Error: {}", e);
                                     messages.push(("assistant".to_string(), error.clone()));
                                     let mut next_timeline = timeline();
-                                    next_timeline.push_error(error);
+                                    push_agent_event(&mut next_timeline, &AgentEvent::Error(error));
                                     timeline.set(next_timeline);
                                 }
                             }
