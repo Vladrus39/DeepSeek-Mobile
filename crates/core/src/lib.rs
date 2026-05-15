@@ -9,6 +9,7 @@ pub mod model_router;
 pub mod session;
 pub mod tools;
 pub mod workspace;
+pub mod workspace_files;
 
 pub use agent::DeepSeekAgent;
 pub use api_client::{DeepSeekClient, Message};
@@ -17,6 +18,7 @@ pub use events::{AgentEvent, ApprovalRequest, PatchProposal, RiskLevel, ToolCall
 pub use executor::{CommandOutput, CommandRequest, DisabledExecutor, Executor};
 pub use session::Session;
 pub use workspace::{ExecutorKind, Workspace};
+pub use workspace_files::{WorkspaceFileEntry, WorkspaceFileService};
 
 pub struct DeepSeekCore {
     agent: DeepSeekAgent,
