@@ -10,8 +10,10 @@ use crate::config::Config;
 use crate::context::ContextManager;
 use crate::events::AgentEvent;
 use crate::model_router::ModelRouter;
+use crate::runtime_store::{RuntimeThreadStore, ThreadRecord, TurnRecord};
 use crate::turn::{TurnContext, TurnStatus};
 use anyhow::Result;
+use std::path::PathBuf;
 
 pub struct MobileEngine {
     config: Config,
@@ -19,6 +21,9 @@ pub struct MobileEngine {
     router: ModelRouter,
     context_manager: ContextManager,
     max_steps: u32,
+    runtime_store: Option<RuntimeThreadStore>,
+    thread_id: String,
+    workspace: PathBuf,
 }
 
 impl MobileEngine {
@@ -29,6 +34,9 @@ impl MobileEngine {
             context_manager: ContextManager::default(),
             config,
             max_steps: 100,
+            runtime_store: None,
+            thread_id: "default".to_string(),
+            workspace: PathBuf::from("."),
         }
     }
 
@@ -37,50 +45,104 @@ impl MobileEngine {
         self
     }
 
+    pub fn with_runtime_store(mut self, store: RuntimeThreadStore) -> Self {
+        self.runtime_store = Some(store);
+        self
+    }
+
+    pub fn with_thread_id(mut self, thread_id: impl Into<String>) -> Self {
+        self.thread_id = thread_id.into();
+        self
+    }
+
+    pub fn with_workspace(mut self, workspace: impl Into<PathBuf>) -> Self {
+        self.workspace = workspace.into();
+        self
+    }
+
     pub async fn run_turn(&self, user_input: String) -> Result<EngineTurnResult> {
         let mut events = Vec::new();
         let mut turn = TurnContext::new(self.max_steps);
         turn.start();
 
-        events.push(AgentEvent::TurnStarted {
-            turn_id: turn.id.clone(),
-        });
+        let mut thread = ThreadRecord::new(
+            self.thread_id.clone(),
+            title_from_input(&user_input),
+            self.config.model.clone(),
+            self.workspace.clone(),
+        );
+        thread.latest_turn_id = Some(turn.id.clone());
+
+        if let Some(store) = self.runtime_store.as_ref() {
+            store.save_thread(&thread)?;
+            store.save_turn(&TurnRecord::from_context(&thread.id, &user_input, &turn))?;
+        }
+
+        self.push_event(
+            &mut events,
+            Some(&turn.id),
+            AgentEvent::TurnStarted {
+                turn_id: turn.id.clone(),
+            },
+        )?;
 
         let route = self.router.route_prompt(&user_input, 0);
-        events.push(AgentEvent::Status(format!(
-            "Model route: {} ({})",
-            route.model, route.reason
-        )));
+        self.push_event(
+            &mut events,
+            Some(&turn.id),
+            AgentEvent::Status(format!("Model route: {} ({})", route.model, route.reason)),
+        )?;
 
         let messages = vec![Message {
             role: "user".to_string(),
-            content: user_input,
+            content: user_input.clone(),
         }];
         let compression_plan = self.context_manager.plan_for_messages(&messages);
         if compression_plan.should_compress {
-            events.push(AgentEvent::Status(format!(
-                "Context compression planned: {:?}",
-                compression_plan.strategy
-            )));
+            self.push_event(
+                &mut events,
+                Some(&turn.id),
+                AgentEvent::Status(format!(
+                    "Context compression planned: {:?}",
+                    compression_plan.strategy
+                )),
+            )?;
         }
 
         let response = self.agent.run_with_messages(messages.clone()).await;
         match response {
             Ok(text) => {
-                events.push(AgentEvent::MessageStarted {
-                    index: 0,
-                    role: "assistant".to_string(),
-                });
-                events.push(AgentEvent::TextDelta(text.clone()));
-                events.push(AgentEvent::MessageFinished { index: 0 });
+                self.push_event(
+                    &mut events,
+                    Some(&turn.id),
+                    AgentEvent::MessageStarted {
+                        index: 0,
+                        role: "assistant".to_string(),
+                    },
+                )?;
+                self.push_event(&mut events, Some(&turn.id), AgentEvent::TextDelta(text.clone()))?;
+                self.push_event(
+                    &mut events,
+                    Some(&turn.id),
+                    AgentEvent::MessageFinished { index: 0 },
+                )?;
                 turn.complete();
-                events.push(AgentEvent::TurnFinished {
-                    turn_id: turn.id.clone(),
-                    status: TurnStatus::Completed,
-                    usage: turn.usage.clone(),
-                    error: None,
-                });
-                events.push(AgentEvent::Finished);
+
+                if let Some(store) = self.runtime_store.as_ref() {
+                    store.save_turn(&TurnRecord::from_context(&thread.id, &user_input, &turn))?;
+                }
+
+                self.push_event(
+                    &mut events,
+                    Some(&turn.id),
+                    AgentEvent::TurnFinished {
+                        turn_id: turn.id.clone(),
+                        status: TurnStatus::Completed,
+                        usage: turn.usage.clone(),
+                        error: None,
+                    },
+                )?;
+                self.push_event(&mut events, Some(&turn.id), AgentEvent::Finished)?;
                 Ok(EngineTurnResult {
                     turn,
                     events,
@@ -90,13 +152,22 @@ impl MobileEngine {
             Err(error) => {
                 let error_text = error.to_string();
                 turn.fail(error_text.clone());
-                events.push(AgentEvent::Error(error_text.clone()));
-                events.push(AgentEvent::TurnFinished {
-                    turn_id: turn.id.clone(),
-                    status: TurnStatus::Failed,
-                    usage: turn.usage.clone(),
-                    error: Some(error_text.clone()),
-                });
+
+                if let Some(store) = self.runtime_store.as_ref() {
+                    store.save_turn(&TurnRecord::from_context(&thread.id, &user_input, &turn))?;
+                }
+
+                self.push_event(&mut events, Some(&turn.id), AgentEvent::Error(error_text.clone()))?;
+                self.push_event(
+                    &mut events,
+                    Some(&turn.id),
+                    AgentEvent::TurnFinished {
+                        turn_id: turn.id.clone(),
+                        status: TurnStatus::Failed,
+                        usage: turn.usage.clone(),
+                        error: Some(error_text.clone()),
+                    },
+                )?;
                 Ok(EngineTurnResult {
                     turn,
                     events,
@@ -109,6 +180,23 @@ impl MobileEngine {
     pub fn config(&self) -> &Config {
         &self.config
     }
+
+    fn push_event(
+        &self,
+        events: &mut Vec<AgentEvent>,
+        turn_id: Option<&str>,
+        event: AgentEvent,
+    ) -> Result<()> {
+        if let Some(store) = self.runtime_store.as_ref() {
+            store.append_event(
+                self.thread_id.clone(),
+                turn_id.map(std::string::ToString::to_string),
+                event.clone(),
+            )?;
+        }
+        events.push(event);
+        Ok(())
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -116,4 +204,17 @@ pub struct EngineTurnResult {
     pub turn: TurnContext,
     pub events: Vec<AgentEvent>,
     pub final_text: Option<String>,
+}
+
+fn title_from_input(input: &str) -> String {
+    let trimmed = input.trim();
+    if trimmed.is_empty() {
+        "New mobile thread".to_string()
+    } else {
+        let mut title = trimmed.chars().take(80).collect::<String>();
+        if trimmed.chars().count() > 80 {
+            title.push('…');
+        }
+        title
+    }
 }
