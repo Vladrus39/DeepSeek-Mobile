@@ -34,7 +34,9 @@ pub use context::{
     estimate_messages_tokens, estimate_text_tokens, CompressionStrategy, ContextBudget,
     ContextCompressionPlan, ContextManager,
 };
-pub use engine::{EngineApprovalContinuationResult, EngineTurnResult, MobileEngine};
+pub use engine::{
+    EngineApprovalContinuationResult, EnginePendingApprovalSnapshot, EngineTurnResult, MobileEngine,
+};
 pub use events::{AgentEvent, ApprovalRequest, PatchProposal, RiskLevel, ToolCallEvent, ToolResultEvent};
 pub use executor::{
     CommandOutput, CommandRequest, DisabledExecutor, Executor, PcGatewayExecutorPlan,
