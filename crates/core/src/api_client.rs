@@ -1,8 +1,10 @@
-//! DeepSeek API Client - Real implementation ready
+//! DeepSeek API Client with real streaming support (OpenAI-compatible SSE)
 
 use anyhow::{anyhow, Result};
+use futures_util::StreamExt;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
+use tokio::sync::mpsc;
 
 #[derive(Serialize)]
 struct ChatRequest {
@@ -25,6 +27,12 @@ struct ChatResponse {
 #[derive(Deserialize, Debug)]
 struct Choice {
     message: Option<Message>,
+    delta: Option<Delta>,
+}
+
+#[derive(Deserialize, Debug)]
+struct Delta {
+    content: Option<String>,
 }
 
 pub struct DeepSeekClient {
@@ -42,6 +50,7 @@ impl DeepSeekClient {
         }
     }
 
+    /// Non-streaming chat (simple)
     pub async fn chat(&self, model: &str, messages: Vec<Message>) -> Result<String> {
         if self.api_key.is_empty() {
             return Err(anyhow!("DEEPSEEK_API_KEY is not set"));
@@ -74,5 +83,82 @@ impl DeepSeekClient {
             .and_then(|c| c.message.as_ref())
             .map(|m| m.content.clone())
             .ok_or_else(|| anyhow!("No response from model"))
+    }
+
+    /// Streaming chat - returns a receiver for text deltas.
+    /// Enables real-time reasoning blocks in the mobile UI.
+    pub async fn chat_stream(
+        &self,
+        model: &str,
+        messages: Vec<Message>,
+    ) -> Result<tokio::sync::mpsc::Receiver<String>> {
+        if self.api_key.is_empty() {
+            return Err(anyhow!("DEEPSEEK_API_KEY is not set"));
+        }
+
+        let req = ChatRequest {
+            model: model.to_string(),
+            messages,
+            stream: true,
+        };
+
+        let response = self.client
+            .post(format!("{}/chat/completions", self.base_url))
+            .header("Authorization", format!("Bearer {}", self.api_key))
+            .header("Content-Type", "application/json")
+            .json(&req)
+            .send()
+            .await?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let text = response.text().await.unwrap_or_default();
+            return Err(anyhow!("DeepSeek API error {}: {}", status, text));
+        }
+
+        let (tx, rx) = mpsc::channel::<String>(128);
+
+        // Background task to process SSE stream
+        tokio::spawn(async move {
+            let mut stream = response.bytes_stream();
+            let mut buffer = String::new();
+
+            while let Some(chunk) = stream.next().await {
+                if let Ok(bytes) = chunk {
+                    if let Ok(text) = String::from_utf8(bytes.to_vec()) {
+                        buffer.push_str(&text);
+
+                        while let Some(pos) = buffer.find("\n\n") {
+                            let event_block = buffer[..pos].to_string();
+                            buffer = buffer[pos + 2..].to_string();
+
+                            for line in event_block.lines() {
+                                let line = line.trim();
+                                if let Some(data) = line.strip_prefix("data: ") {
+                                    let data = data.trim();
+                                    if data == "[DONE]" {
+                                        let _ = tx.send("[DONE]".to_string()).await;
+                                        return;
+                                    }
+
+                                    // Parse delta
+                                    if let Ok(parsed) = serde_json::from_str::<ChatResponse>(data) {
+                                        if let Some(choice) = parsed.choices.first() {
+                                            if let Some(delta) = &choice.delta {
+                                                if let Some(content) = &delta.content {
+                                                    let _ = tx.send(content.clone()).await;
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        Ok(rx)
     }
 }
