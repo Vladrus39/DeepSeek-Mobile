@@ -2,6 +2,7 @@ mod chat_attachment;
 mod cockpit_section_panel;
 mod document_picker;
 mod mobile_drawer;
+mod native_bridge;
 mod pc_pairing_manager;
 mod pc_pairing_panel;
 mod pc_pairing_state;
@@ -12,6 +13,7 @@ use deepseek_mobile_core::{Config, DeepSeekCore, Message};
 use dioxus::prelude::*;
 use document_picker::{DocumentPickerRequest, DocumentPickerState, PickedDocument};
 use mobile_drawer::{mobile_drawer, CockpitSection};
+use native_bridge::{NativeBridgeState, NativeMobileCommand, NativeMobileEvent};
 use pc_pairing_state::PcPairingUiState;
 
 fn main() {
@@ -23,6 +25,7 @@ fn app() -> Element {
     let mut input = use_signal(String::new);
     let mut composer = use_signal(ChatComposerState::default);
     let mut picker = use_signal(DocumentPickerState::default);
+    let mut native_bridge = use_signal(NativeBridgeState::default);
     let mut is_loading = use_signal(|| false);
     let mut drawer_open = use_signal(|| false);
     let mut active_section = use_signal(|| CockpitSection::Chat);
@@ -130,7 +133,7 @@ fn app() -> Element {
                 }
             }
 
-            if picker().is_waiting_for_native_picker() {
+            if picker().is_waiting_for_native_picker() || native_bridge().has_pending_commands() {
                 div {
                     margin_top: "8px",
                     background_color: "#1e3a8a",
@@ -140,6 +143,19 @@ fn app() -> Element {
                     color: "white",
                     font_size: "12px",
                     "Opening Android document picker..."
+                }
+            }
+
+            if let Some(error) = native_bridge().last_error {
+                div {
+                    margin_top: "8px",
+                    background_color: "#7f1d1d",
+                    border: "1px solid #dc2626",
+                    border_radius: "14px",
+                    padding: "8px 10px",
+                    color: "white",
+                    font_size: "12px",
+                    "Native bridge error: {error}"
                 }
             }
 
@@ -170,24 +186,38 @@ fn app() -> Element {
                     border_radius: "999px",
                     border: "1px solid #4b5563",
                     onclick: move |_| {
+                        let request = DocumentPickerRequest::chat_attachment();
+
                         let mut picker_state = picker();
-                        picker_state.request(DocumentPickerRequest::chat_attachment());
+                        picker_state.request(request.clone());
                         picker.set(picker_state);
 
-                        // Temporary bridge placeholder: until the native Android picker callback is wired,
-                        // simulate one selected document through the same PickedDocument contract.
-                        let mut next = composer();
-                        let index = next.attachments.len() + 1;
-                        next.add_picked_document(
+                        let mut bridge_state = native_bridge();
+                        bridge_state.enqueue(NativeMobileCommand::OpenDocumentPicker(request));
+                        native_bridge.set(bridge_state);
+
+                        // Temporary callback placeholder: until the real Android native bridge calls back,
+                        // feed a simulated DocumentsPicked event into the same event handling path.
+                        let mut bridge_state = native_bridge();
+                        let index = composer().attachments.len() + 1;
+                        bridge_state.accept_event(NativeMobileEvent::DocumentsPicked(vec![
                             PickedDocument::new(format!("picked-doc-{}", index), format!("document-{}.pdf", index))
                                 .with_uri(format!("content://deepseek-mobile/document-{}", index))
                                 .with_mime_type("application/pdf")
-                        );
-                        composer.set(next);
+                        ]));
+                        let event = bridge_state.last_event.clone();
+                        native_bridge.set(bridge_state);
 
-                        let mut picker_state = picker();
-                        picker_state.complete();
-                        picker.set(picker_state);
+                        if let Some(NativeMobileEvent::DocumentsPicked(documents)) = event {
+                            let mut next = composer();
+                            for document in documents {
+                                next.add_picked_document(document);
+                            }
+                            composer.set(next);
+                            let mut picker_state = picker();
+                            picker_state.complete();
+                            picker.set(picker_state);
+                        }
                     },
                     "+"
                 }
