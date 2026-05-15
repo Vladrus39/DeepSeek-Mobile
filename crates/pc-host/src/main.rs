@@ -4,17 +4,19 @@ use axum::http::{HeaderMap, StatusCode};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use deepseek_mobile_core::{
-    CommandOutput, PcEnvironmentDescriptor, PcGatewayCapability, PcGatewayConnectionStatus,
-    PcGatewayDirEntry, PcGatewayError, PcGatewayHealth, PcGatewayRequest, PcGatewayRequestEnvelope,
-    PcGatewayResponse, PcGatewayResponseEnvelope, PcGatewaySecurityPolicy, PcWorkspaceGrant,
+    CommandOutput, CommandRequest, PcDiagnostic, PcEnvironmentDescriptor, PcGatewayCapability,
+    PcGatewayConnectionStatus, PcGatewayDirEntry, PcGatewayError, PcGatewayHealth, PcGatewayRequest,
+    PcGatewayRequestEnvelope, PcGatewayResponse, PcGatewayResponseEnvelope, PcGatewaySecurityPolicy,
+    PcTaskDescriptor, PcTaskKind, PcWorkspaceGrant,
 };
 use std::env;
 use std::net::SocketAddr;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::fs;
 use tokio::process::Command;
+use tokio::time::timeout;
 
 #[derive(Clone)]
 struct PcHostState {
@@ -101,6 +103,16 @@ impl PcHostConfig {
             return Err(anyhow!("absolute paths are not accepted through gateway requests"));
         }
 
+        for component in relative.components() {
+            match component {
+                Component::Normal(_) | Component::CurDir => {}
+                Component::ParentDir => return Err(anyhow!("parent path segments are not accepted: {}", path)),
+                Component::RootDir | Component::Prefix(_) => {
+                    return Err(anyhow!("root or prefix path segments are not accepted: {}", path));
+                }
+            }
+        }
+
         Ok(self.workspace_root.join(relative))
     }
 
@@ -122,6 +134,20 @@ impl PcHostConfig {
             return Err(anyhow!("path escapes granted workspace: {}", canonical.display()));
         }
         Ok(canonical)
+    }
+
+    async fn ensure_parent_inside_workspace(&self, path: &Path) -> Result<()> {
+        let parent = path
+            .parent()
+            .ok_or_else(|| anyhow!("path has no parent: {}", path.display()))?;
+        let existing_parent = nearest_existing_parent(parent)?;
+        let canonical_parent = existing_parent
+            .canonicalize()
+            .with_context(|| format!("canonicalize existing parent {}", existing_parent.display()))?;
+        if !canonical_parent.starts_with(&self.workspace_root) {
+            return Err(anyhow!("parent path escapes granted workspace: {}", canonical_parent.display()));
+        }
+        Ok(())
     }
 }
 
@@ -192,6 +218,8 @@ async fn handle_gateway_request(config: &PcHostConfig, request: PcGatewayRequest
         PcGatewayRequest::Health => Ok(PcGatewayResponse::Health(config.health())),
         PcGatewayRequest::ListWorkspaces => Ok(PcGatewayResponse::Workspaces(vec![config.workspace.clone()])),
         PcGatewayRequest::ListEnvironments { .. } => Ok(PcGatewayResponse::Environments(Vec::<PcEnvironmentDescriptor>::new())),
+        PcGatewayRequest::DetectTasks { workspace_id } => detect_tasks(config, &workspace_id).await,
+        PcGatewayRequest::GetDiagnostics { workspace_id, path } => diagnostics(config, &workspace_id, path.as_deref()).await,
         PcGatewayRequest::ListDir { workspace_id, path } => list_dir(config, &workspace_id, &path).await,
         PcGatewayRequest::ReadFile { workspace_id, path } => read_file(config, &workspace_id, &path).await,
         PcGatewayRequest::WriteFile { workspace_id, path, content } => {
@@ -255,6 +283,7 @@ async fn write_file(
     content: &str,
 ) -> Result<PcGatewayResponse> {
     let requested = config.resolve_workspace_path(workspace_id, path)?;
+    config.ensure_parent_inside_workspace(&requested).await?;
     if let Some(parent) = requested.parent() {
         fs::create_dir_all(parent)
             .await
@@ -278,7 +307,7 @@ async fn write_file(
 async fn execute_command(
     config: &PcHostConfig,
     workspace_id: &str,
-    command: deepseek_mobile_core::CommandRequest,
+    command: CommandRequest,
 ) -> Result<PcGatewayResponse> {
     if workspace_id != config.workspace.id {
         return Err(anyhow!("unknown workspace id: {}", workspace_id));
@@ -293,16 +322,20 @@ async fn execute_command(
             if dir.is_absolute() {
                 return Err(anyhow!("absolute working directories are not accepted"));
             }
-            config.ensure_path_inside_workspace(&config.workspace_root.join(dir)).await?
+            let dir_text = dir.to_string_lossy();
+            let requested = config.resolve_workspace_path(workspace_id, &dir_text)?;
+            config.ensure_path_inside_workspace(&requested).await?
         }
         None => config.workspace_root.clone(),
     };
 
-    let output = Command::new(&command.program)
+    let run = Command::new(&command.program)
         .args(&command.args)
         .current_dir(&working_dir)
-        .output()
+        .output();
+    let output = timeout(Duration::from_secs(config.security_policy.max_command_seconds), run)
         .await
+        .map_err(|_| anyhow!("command timed out after {} seconds", config.security_policy.max_command_seconds))?
         .with_context(|| format!("execute command {}", command.program))?;
 
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
@@ -323,12 +356,13 @@ async fn git_text(
     if workspace_id != config.workspace.id {
         return Err(anyhow!("unknown workspace id: {}", workspace_id));
     }
-    let output = Command::new("git")
-        .args(args)
-        .current_dir(&config.workspace_root)
-        .output()
-        .await
-        .with_context(|| format!("git {}", operation))?;
+    let output = timeout(
+        Duration::from_secs(config.security_policy.max_command_seconds),
+        Command::new("git").args(args).current_dir(&config.workspace_root).output(),
+    )
+    .await
+    .map_err(|_| anyhow!("git {} timed out after {} seconds", operation, config.security_policy.max_command_seconds))?
+    .with_context(|| format!("git {}", operation))?;
     let mut text = String::new();
     text.push_str(&String::from_utf8_lossy(&output.stdout));
     text.push_str(&String::from_utf8_lossy(&output.stderr));
@@ -338,13 +372,96 @@ async fn git_text(
     })
 }
 
-fn truncate_output(mut text: String, max_bytes: usize) -> String {
+async fn detect_tasks(config: &PcHostConfig, workspace_id: &str) -> Result<PcGatewayResponse> {
+    if workspace_id != config.workspace.id {
+        return Err(anyhow!("unknown workspace id: {}", workspace_id));
+    }
+    let mut tasks = Vec::new();
+
+    if config.workspace_root.join("Cargo.toml").exists() {
+        tasks.push(task(workspace_id, "cargo-check", "Cargo check", PcTaskKind::Build, "cargo", &["check", "--workspace"]));
+        tasks.push(task(workspace_id, "cargo-test", "Cargo test", PcTaskKind::Test, "cargo", &["test", "--workspace"]));
+    }
+    if config.workspace_root.join("package.json").exists() {
+        tasks.push(task(workspace_id, "npm-install", "npm install", PcTaskKind::Install, "npm", &["install"]));
+        tasks.push(task(workspace_id, "npm-test", "npm test", PcTaskKind::Test, "npm", &["test"]));
+    }
+    if config.workspace_root.join("pyproject.toml").exists() || config.workspace_root.join("pytest.ini").exists() {
+        tasks.push(task(workspace_id, "pytest", "pytest", PcTaskKind::Test, "pytest", &[]));
+    }
+
+    Ok(PcGatewayResponse::Tasks(tasks))
+}
+
+async fn diagnostics(config: &PcHostConfig, workspace_id: &str, path: Option<&str>) -> Result<PcGatewayResponse> {
+    if workspace_id != config.workspace.id {
+        return Err(anyhow!("unknown workspace id: {}", workspace_id));
+    }
+    if let Some(path) = path {
+        let requested = config.resolve_workspace_path(workspace_id, path)?;
+        let _ = config.ensure_path_inside_workspace(&requested).await?;
+    }
+    Ok(PcGatewayResponse::Diagnostics(Vec::<PcDiagnostic>::new()))
+}
+
+fn task(
+    workspace_id: &str,
+    id: &str,
+    label: &str,
+    kind: PcTaskKind,
+    program: &str,
+    args: &[&str],
+) -> PcTaskDescriptor {
+    PcTaskDescriptor {
+        id: id.to_string(),
+        workspace_id: workspace_id.to_string(),
+        label: label.to_string(),
+        kind,
+        command: CommandRequest {
+            program: program.to_string(),
+            args: args.iter().map(|arg| arg.to_string()).collect(),
+            working_dir: None,
+            env: Vec::new(),
+        },
+        environment_id: None,
+    }
+}
+
+fn nearest_existing_parent(path: &Path) -> Result<PathBuf> {
+    let mut current = path;
+    loop {
+        if current.exists() {
+            return Ok(current.to_path_buf());
+        }
+        current = current
+            .parent()
+            .ok_or_else(|| anyhow!("no existing parent found for {}", path.display()))?;
+    }
+}
+
+fn truncate_output(text: String, max_bytes: usize) -> String {
     if text.len() <= max_bytes {
         return text;
     }
-    text.truncate(max_bytes);
-    text.push_str("\n... <truncated by pc-host policy>");
-    text
+
+    let mut cut = 0;
+    for (idx, _) in text.char_indices() {
+        if idx > max_bytes {
+            break;
+        }
+        cut = idx;
+    }
+    if cut == 0 {
+        cut = text
+            .char_indices()
+            .nth(1)
+            .map(|(idx, _)| idx)
+            .unwrap_or_else(|| text.len());
+    }
+
+    let mut truncated = text[..cut].to_string();
+    truncated.push_str("\n... <truncated by pc-host policy>");
+    truncated
 }
 
 fn host_capabilities() -> Vec<PcGatewayCapability> {
@@ -356,6 +473,8 @@ fn host_capabilities() -> Vec<PcGatewayCapability> {
         PcGatewayCapability::GitStatus,
         PcGatewayCapability::GitDiff,
         PcGatewayCapability::Diagnostics,
+        PcGatewayCapability::RunTests,
+        PcGatewayCapability::RunBuilds,
     ]
 }
 
