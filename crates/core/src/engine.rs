@@ -298,6 +298,7 @@ impl MobileEngine {
                 )?;
 
                 let tool_loop = self.process_tools_if_requested(&text, &mut turn).await?;
+                let approval_cards = approval_cards_from_pending_tool_approvals(&tool_loop.pending_tool_approvals);
                 for event in tool_loop.events {
                     self.push_event(&mut events, Some(&turn.id), event)?;
                 }
@@ -325,6 +326,7 @@ impl MobileEngine {
                         turn,
                         events,
                         final_text: Some(tool_loop.final_text),
+                        approval_cards,
                     });
                 }
 
@@ -349,6 +351,7 @@ impl MobileEngine {
                     turn,
                     events,
                     final_text: Some(tool_loop.final_text),
+                    approval_cards,
                 })
             }
             Err(error) => {
@@ -374,6 +377,7 @@ impl MobileEngine {
                     turn,
                     events,
                     final_text: None,
+                    approval_cards: Vec::new(),
                 })
             }
         }
@@ -543,6 +547,7 @@ pub struct EngineTurnResult {
     pub turn: TurnContext,
     pub events: Vec<AgentEvent>,
     pub final_text: Option<String>,
+    pub approval_cards: Vec<ApprovalCardView>,
 }
 
 #[derive(Clone, Debug)]
@@ -560,6 +565,15 @@ pub struct EnginePendingApprovalSnapshot {
     pub cards: Vec<ApprovalCardView>,
     pub session_grants: Vec<ApprovalSessionGrant>,
     pub decisions: Vec<ApprovalDecisionRecord>,
+}
+
+fn approval_cards_from_pending_tool_approvals(
+    pending: &[PendingToolCallApproval],
+) -> Vec<ApprovalCardView> {
+    pending
+        .iter()
+        .map(ApprovalCardView::from_pending_tool_approval)
+        .collect()
 }
 
 fn title_from_input(input: &str) -> String {
