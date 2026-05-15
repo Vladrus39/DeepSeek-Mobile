@@ -10,6 +10,7 @@ mod mobile_drawer;
 mod mobile_engine_runner;
 mod mobile_runtime_config;
 mod native_bridge;
+mod native_document_picker;
 mod pc_pairing_manager;
 mod pc_pairing_panel;
 mod pc_pairing_state;
@@ -22,7 +23,7 @@ use chat_attachment::ChatComposerState;
 use cockpit_section_panel::cockpit_section_panel;
 use deepseek_mobile_core::{AgentEvent, ApprovalCardView, Config};
 use dioxus::prelude::*;
-use document_picker::{DocumentPickerRequest, DocumentPickerState, PickedDocument};
+use document_picker::{DocumentPickerRequest, DocumentPickerState};
 use mobile_approval_panel::mobile_approval_panel;
 use mobile_drawer::{mobile_drawer, CockpitSection};
 use mobile_engine_runner::{
@@ -218,7 +219,7 @@ fn app() -> Element {
                     padding: "8px 10px",
                     color: "white",
                     font_size: "12px",
-                    "Opening Android document picker..."
+                    "Waiting for Android document picker callback..."
                 }
             }
 
@@ -273,34 +274,12 @@ fn app() -> Element {
                         native_bridge.set(bridge_state);
 
                         let mut next_timeline = timeline();
-                        next_timeline.push_native_command("Open Android document picker for chat attachment");
+                        next_timeline.push_native_command("Request Android OPEN_DOCUMENT picker for chat attachment");
+                        push_agent_event(
+                            &mut next_timeline,
+                            &AgentEvent::Status("Document picker request queued for native Android layer".to_string()),
+                        );
                         timeline.set(next_timeline);
-
-                        // Temporary callback placeholder: until the real Android native bridge calls back,
-                        // feed a simulated DocumentsPicked event into the same event handling path.
-                        let mut bridge_state = native_bridge();
-                        let index = composer().attachments.len() + 1;
-                        bridge_state.accept_event(NativeMobileEvent::DocumentsPicked(vec![
-                            PickedDocument::new(format!("picked-doc-{}", index), format!("document-{}.pdf", index))
-                                .with_uri(format!("content://deepseek-mobile/document-{}", index))
-                                .with_mime_type("application/pdf")
-                        ]));
-                        let event = bridge_state.last_event.clone();
-                        native_bridge.set(bridge_state);
-
-                        if let Some(NativeMobileEvent::DocumentsPicked(documents)) = event {
-                            let mut next = composer();
-                            let mut next_timeline = timeline();
-                            for document in documents {
-                                next_timeline.push_attachment(format!("{}", document.display_name));
-                                next.add_picked_document(document);
-                            }
-                            composer.set(next);
-                            timeline.set(next_timeline);
-                            let mut picker_state = picker();
-                            picker_state.complete();
-                            picker.set(picker_state);
-                        }
                     },
                     "+"
                 }
