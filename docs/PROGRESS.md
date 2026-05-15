@@ -1,16 +1,19 @@
-# Autonomous Session Update
+# Autonomous Core Session
 
-**Periodic update from Grok**
+**Status update (after significant work)**
 
-Working autonomously on core + engine.
+Working autonomously on core + engine as requested.
 
-## Recent improvements:
-- Better ContextManager foundation (history handling + compression planning)
-- Streaming methods already added in previous pushes
+## Recent progress:
+- Streaming foundation added (chat_stream + run_stream)
+- ContextManager improvements
+- Engine prepared for streaming consumption
 
-## Currently focusing on:
-- Integrating real streaming into turn execution
-- Improving message history flow
-- Tool loop robustness
+## Current focus:
+- Deeper integration of real streaming into turn execution
+- Tool calling robustness
+- Session and context handling
 
-Will continue autonomously and report again after next significant progress.
+Will continue autonomously and report again after next meaningful milestone.
+
+Last update: significant progress on streaming + context layer.
