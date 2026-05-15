@@ -4,6 +4,7 @@ mod agent_timeline_panel;
 mod chat_attachment;
 mod cockpit_section_panel;
 mod document_picker;
+mod mobile_approval_panel;
 mod mobile_drawer;
 mod mobile_engine_runner;
 mod mobile_runtime_config;
@@ -18,11 +19,12 @@ use agent_timeline::MobileTimelineState;
 use agent_timeline_panel::agent_timeline_panel;
 use chat_attachment::ChatComposerState;
 use cockpit_section_panel::cockpit_section_panel;
-use deepseek_mobile_core::{AgentEvent, Config, Message};
+use deepseek_mobile_core::{AgentEvent, ApprovalCardView, Config};
 use dioxus::prelude::*;
 use document_picker::{DocumentPickerRequest, DocumentPickerState, PickedDocument};
+use mobile_approval_panel::mobile_approval_panel;
 use mobile_drawer::{mobile_drawer, CockpitSection};
-use mobile_engine_runner::run_mobile_turn;
+use mobile_engine_runner::{continue_mobile_approval, load_default_mobile_approval_cards, run_mobile_turn};
 use native_bridge::{NativeBridgeState, NativeMobileCommand, NativeMobileEvent};
 use pc_pairing_state::PcPairingUiState;
 use saved_timeline_loader::load_default_saved_timeline;
@@ -36,7 +38,8 @@ fn app() -> Element {
     let mut input = use_signal(String::new);
     let mut composer = use_signal(ChatComposerState::default);
     let mut timeline = use_signal(MobileTimelineState::default);
-    let mut did_load_saved_timeline = use_signal(|| false);
+    let mut approval_cards = use_signal(Vec::<ApprovalCardView>::new);
+    let mut did_load_saved_runtime = use_signal(|| false);
     let mut picker = use_signal(DocumentPickerState::default);
     let mut native_bridge = use_signal(NativeBridgeState::default);
     let mut is_loading = use_signal(|| false);
@@ -44,8 +47,8 @@ fn app() -> Element {
     let mut active_section = use_signal(|| CockpitSection::Chat);
     let pc_pairing_state = use_signal(PcPairingUiState::default);
 
-    if !did_load_saved_timeline() {
-        did_load_saved_timeline.set(true);
+    if !did_load_saved_runtime() {
+        did_load_saved_runtime.set(true);
         match load_default_saved_timeline() {
             Ok(saved) => {
                 if !saved.is_empty() {
@@ -57,6 +60,18 @@ fn app() -> Element {
                 push_agent_event(
                     &mut next_timeline,
                     &AgentEvent::Error(format!("Failed to restore saved timeline: {}", error)),
+                );
+                timeline.set(next_timeline);
+            }
+        }
+
+        match load_default_mobile_approval_cards() {
+            Ok(cards) => approval_cards.set(cards),
+            Err(error) => {
+                let mut next_timeline = timeline();
+                push_agent_event(
+                    &mut next_timeline,
+                    &AgentEvent::Error(format!("Failed to restore pending approvals: {}", error)),
                 );
                 timeline.set(next_timeline);
             }
@@ -138,6 +153,46 @@ fn app() -> Element {
                 gap: "8px",
 
                 if active_section() == CockpitSection::Chat {
+                    {mobile_approval_panel(
+                        &approval_cards(),
+                        move |(approval_id, decision)| {
+                            is_loading.set(true);
+                            spawn(async move {
+                                match continue_mobile_approval(Config::default(), approval_id.clone(), decision.clone()).await {
+                                    Ok(result) => {
+                                        let mut next_timeline = timeline();
+                                        push_agent_event(
+                                            &mut next_timeline,
+                                            &AgentEvent::Status(format!("Approval decision applied: {:?}", decision)),
+                                        );
+                                        for event in &result.events {
+                                            push_agent_event(&mut next_timeline, event);
+                                        }
+                                        push_agent_event(
+                                            &mut next_timeline,
+                                            &AgentEvent::Status(format!(
+                                                "Executed tools: {} | session grants: {}",
+                                                result.executed_count,
+                                                result.session_grant_count
+                                            )),
+                                        );
+                                        timeline.set(next_timeline);
+                                        approval_cards.set(result.remaining_approval_cards);
+                                    }
+                                    Err(error) => {
+                                        let mut next_timeline = timeline();
+                                        push_agent_event(
+                                            &mut next_timeline,
+                                            &AgentEvent::Error(format!("Approval continuation failed: {}", error)),
+                                        );
+                                        timeline.set(next_timeline);
+                                    }
+                                }
+                                is_loading.set(false);
+                            });
+                        }
+                    )}
+
                     {agent_timeline_panel(&timeline())}
 
                     if is_loading() {
@@ -321,6 +376,7 @@ fn app() -> Element {
                                             )),
                                         );
                                     }
+                                    approval_cards.set(result.approval_cards);
                                     timeline.set(next_timeline);
                                 }
                                 Err(e) => {
