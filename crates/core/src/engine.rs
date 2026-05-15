@@ -206,6 +206,11 @@ impl MobileEngine {
                 }
 
                 if tool_loop.requires_user_input {
+                    if let Some(store) = self.runtime_store.as_ref() {
+                        for pending in &tool_loop.pending_tool_approvals {
+                            store.save_pending_approval(&thread.id, &turn.id, pending)?;
+                        }
+                    }
                     self.push_event(
                         &mut events,
                         Some(&turn.id),
@@ -284,6 +289,7 @@ impl MobileEngine {
         mut turn: TurnContext,
     ) -> Result<EngineApprovalContinuationResult> {
         let mut events = Vec::new();
+        let approval_id = pending.approval.id.clone();
         let registry = default_mobile_tool_registry();
         let mut coordinator = ToolExecutionCoordinator::new(&registry);
         if let Some(client) = self.pc_gateway_client.as_ref() {
@@ -301,6 +307,10 @@ impl MobileEngine {
 
         for event in outcome.events {
             self.push_event(&mut events, Some(&turn.id), event)?;
+        }
+
+        if let Some(store) = self.runtime_store.as_ref() {
+            store.delete_pending_approval(&approval_id)?;
         }
 
         let completed = !matches!(turn.status, TurnStatus::Cancelled) && !outcome.requires_user_input;
