@@ -5,6 +5,7 @@ pub mod api_client;
 pub mod approval;
 pub mod approval_card;
 pub mod approval_session;
+pub mod chat_input;
 pub mod config;
 pub mod context;
 pub mod engine;
@@ -39,6 +40,7 @@ pub use approval_card::{
 pub use approval_session::{
     can_grant_for_session, ApprovalSessionGrant, ApprovalSessionPolicy, ApprovalSessionScope,
 };
+pub use chat_input::{UserAttachmentKind, UserAttachmentRef, UserChatInput};
 pub use config::{Config, ExternalAccessMode, ModelMode, ThinkingLevel};
 pub use context::{
     estimate_messages_tokens, estimate_text_tokens, CompressionStrategy, ContextBudget,
@@ -104,5 +106,9 @@ impl DeepSeekCore {
 
     pub async fn process_with_messages(&self, messages: Vec<Message>) -> anyhow::Result<String> {
         self.agent.run_with_messages(messages).await
+    }
+
+    pub async fn process_chat_input(&self, input: UserChatInput) -> anyhow::Result<String> {
+        self.agent.run(input.to_prompt_text()).await
     }
 }
