@@ -17,6 +17,7 @@ pub mod tools;
 pub mod turn;
 pub mod workspace;
 pub mod workspace_connection;
+pub mod workspace_connection_store;
 pub mod workspace_files;
 
 pub use agent::DeepSeekAgent;
@@ -56,7 +57,9 @@ pub use turn::{TokenUsage, TurnContext, TurnStatus, TurnToolCall};
 pub use workspace::{ExecutorKind, Workspace};
 pub use workspace_connection::{
     WorkspaceBackendKind, WorkspaceConnection, WorkspaceConnectionManager, WorkspaceConnectionStatus,
+    WorkspaceSelectionPolicy,
 };
+pub use workspace_connection_store::{WorkspaceConnectionStore, WorkspaceConnectionStoreFile};
 pub use workspace_files::{WorkspaceFileEntry, WorkspaceFileService};
 
 pub struct DeepSeekCore {
