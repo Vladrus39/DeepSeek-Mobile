@@ -1,3 +1,5 @@
+mod agent_timeline;
+mod agent_timeline_panel;
 mod chat_attachment;
 mod cockpit_section_panel;
 mod document_picker;
@@ -7,6 +9,8 @@ mod pc_pairing_manager;
 mod pc_pairing_panel;
 mod pc_pairing_state;
 
+use agent_timeline::MobileTimelineState;
+use agent_timeline_panel::agent_timeline_panel;
 use chat_attachment::ChatComposerState;
 use cockpit_section_panel::cockpit_section_panel;
 use deepseek_mobile_core::{Config, DeepSeekCore, Message};
@@ -24,6 +28,7 @@ fn app() -> Element {
     let mut messages = use_signal(Vec::<(String, String)>::new);
     let mut input = use_signal(String::new);
     let mut composer = use_signal(ChatComposerState::default);
+    let mut timeline = use_signal(MobileTimelineState::default);
     let mut picker = use_signal(DocumentPickerState::default);
     let mut native_bridge = use_signal(NativeBridgeState::default);
     let mut is_loading = use_signal(|| false);
@@ -106,21 +111,7 @@ fn app() -> Element {
                 gap: "8px",
 
                 if active_section() == CockpitSection::Chat {
-                    if messages().is_empty() {
-                        {cockpit_section_panel(CockpitSection::Chat, &pc_pairing_state())}
-                    }
-
-                    for (role, content) in messages() {
-                        div {
-                            background_color: if role == "user" { "#2563eb" } else { "#1f2937" },
-                            padding: "10px 14px",
-                            border_radius: "14px",
-                            max_width: "85%",
-                            align_self: if role == "user" { "flex-end" } else { "flex-start" },
-                            white_space: "pre-wrap",
-                            "{content}"
-                        }
-                    }
+                    {agent_timeline_panel(&timeline())}
 
                     if is_loading() {
                         div {
@@ -196,6 +187,10 @@ fn app() -> Element {
                         bridge_state.enqueue(NativeMobileCommand::OpenDocumentPicker(request));
                         native_bridge.set(bridge_state);
 
+                        let mut next_timeline = timeline();
+                        next_timeline.push_native_command("Open Android document picker for chat attachment");
+                        timeline.set(next_timeline);
+
                         // Temporary callback placeholder: until the real Android native bridge calls back,
                         // feed a simulated DocumentsPicked event into the same event handling path.
                         let mut bridge_state = native_bridge();
@@ -210,10 +205,13 @@ fn app() -> Element {
 
                         if let Some(NativeMobileEvent::DocumentsPicked(documents)) = event {
                             let mut next = composer();
+                            let mut next_timeline = timeline();
                             for document in documents {
+                                next_timeline.push_attachment(format!("{}", document.display_name));
                                 next.add_picked_document(document);
                             }
                             composer.set(next);
+                            timeline.set(next_timeline);
                             let mut picker_state = picker();
                             picker_state.complete();
                             picker.set(picker_state);
@@ -255,7 +253,12 @@ fn app() -> Element {
                         let user_message = user_input.clone().into_message();
                         let prompt = user_message.content.clone();
 
-                        messages.push((user_message.role.clone(), prompt));
+                        messages.push((user_message.role.clone(), prompt.clone()));
+                        let mut next_timeline = timeline();
+                        next_timeline.push_user_message(prompt);
+                        next_timeline.push_status("DeepSeek request started");
+                        timeline.set(next_timeline);
+
                         input.set(String::new());
                         composer.set(ChatComposerState::default());
                         is_loading.set(true);
@@ -271,8 +274,19 @@ fn app() -> Element {
                                 .collect();
                             
                             match core.process_with_messages(chat_messages).await {
-                                Ok(response) => messages.push(("assistant".to_string(), response)),
-                                Err(e) => messages.push(("assistant".to_string(), format!("Error: {}", e))),
+                                Ok(response) => {
+                                    messages.push(("assistant".to_string(), response.clone()));
+                                    let mut next_timeline = timeline();
+                                    next_timeline.push_assistant_message(response);
+                                    timeline.set(next_timeline);
+                                }
+                                Err(e) => {
+                                    let error = format!("Error: {}", e);
+                                    messages.push(("assistant".to_string(), error.clone()));
+                                    let mut next_timeline = timeline();
+                                    next_timeline.push_error(error);
+                                    timeline.set(next_timeline);
+                                }
                             }
                             is_loading.set(false);
                         });
