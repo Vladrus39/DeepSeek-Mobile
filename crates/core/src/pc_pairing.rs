@@ -9,9 +9,12 @@ use crate::pc_gateway::PcGatewayTransportMode;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::fs;
+use std::io::Write;
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
+use zip::write::{FileOptions, ZipWriter};
+use zip::CompressionMethod;
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub enum PcPairingPlatform {
@@ -185,6 +188,32 @@ Security note: this bundle contains a pairing token. Do not share it with untrus
         Ok(written)
     }
 
+    pub fn write_zip(&self, output_zip: impl AsRef<Path>) -> Result<PathBuf> {
+        let output_zip = output_zip.as_ref();
+        if let Some(parent) = output_zip.parent() {
+            fs::create_dir_all(parent)
+                .with_context(|| format!("create pairing zip parent {}", parent.display()))?;
+        }
+
+        let file = fs::File::create(output_zip)
+            .with_context(|| format!("create pairing zip {}", output_zip.display()))?;
+        let mut zip = ZipWriter::new(file);
+
+        for bundle_file in self.bundle_files()? {
+            let unix_permissions = if bundle_file.executable { 0o755 } else { 0o644 };
+            let options = FileOptions::default()
+                .compression_method(CompressionMethod::Deflated)
+                .unix_permissions(unix_permissions);
+            zip.start_file(bundle_file.relative_path, options)
+                .context("start pairing zip entry")?;
+            zip.write_all(bundle_file.content.as_bytes())
+                .context("write pairing zip entry")?;
+        }
+
+        zip.finish().context("finish pairing zip")?;
+        Ok(output_zip.to_path_buf())
+    }
+
     pub fn launch_scripts(&self) -> Vec<PcPairingLaunchScript> {
         vec![
             PcPairingLaunchScript {
@@ -330,20 +359,24 @@ mod tests {
     #[test]
     fn writes_bundle_directory() {
         let bundle = sample_bundle();
-        let dir = std::env::temp_dir().join(format!(
-            "deepseek-pairing-test-{}-{}",
-            std::process::id(),
-            SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
+        let dir = temp_path("dir");
         let written = bundle.write_directory(&dir).unwrap();
         assert!(written.len() >= 6);
         assert!(dir.join("pairing.json").exists());
         assert!(dir.join("deepseek-pc-host.env").exists());
         assert!(dir.join("start-deepseek-pc-host.ps1").exists());
         let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn writes_bundle_zip() {
+        let bundle = sample_bundle();
+        let zip_path = temp_path("zip").with_extension("zip");
+        let written = bundle.write_zip(&zip_path).unwrap();
+        assert_eq!(written, zip_path);
+        assert!(zip_path.exists());
+        assert!(fs::metadata(&zip_path).unwrap().len() > 0);
+        let _ = fs::remove_file(zip_path);
     }
 
     fn sample_bundle() -> PcGatewayPairingBundle {
@@ -356,5 +389,17 @@ mod tests {
             "/work/project",
             "secret-token",
         )
+    }
+
+    fn temp_path(label: &str) -> std::path::PathBuf {
+        std::env::temp_dir().join(format!(
+            "deepseek-pairing-test-{}-{}-{}",
+            label,
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ))
     }
 }
