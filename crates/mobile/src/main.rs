@@ -1,5 +1,7 @@
+mod pc_pairing_manager;
+
+use deepseek_mobile_core::{Config, DeepSeekCore, Message};
 use dioxus::prelude::*;
-use deepseek_mobile_core::{DeepSeekCore, Config, Message};
 
 fn main() {
     dioxus_mobile::launch(app);
