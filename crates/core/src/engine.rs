@@ -12,6 +12,8 @@ use crate::events::AgentEvent;
 use crate::model_router::ModelRouter;
 use crate::runtime_store::{RuntimeThreadStore, ThreadRecord, TurnRecord};
 use crate::turn::{TurnContext, TurnStatus};
+use crate::workspace::Workspace;
+use crate::workspace_connection::WorkspaceConnectionManager;
 use anyhow::Result;
 use std::path::PathBuf;
 
@@ -24,6 +26,8 @@ pub struct MobileEngine {
     runtime_store: Option<RuntimeThreadStore>,
     thread_id: String,
     workspace: PathBuf,
+    active_workspace: Option<Workspace>,
+    connection_manager: Option<WorkspaceConnectionManager>,
 }
 
 impl MobileEngine {
@@ -37,6 +41,8 @@ impl MobileEngine {
             runtime_store: None,
             thread_id: "default".to_string(),
             workspace: PathBuf::from("."),
+            active_workspace: None,
+            connection_manager: None,
         }
     }
 
@@ -58,6 +64,29 @@ impl MobileEngine {
     pub fn with_workspace(mut self, workspace: impl Into<PathBuf>) -> Self {
         self.workspace = workspace.into();
         self
+    }
+
+    pub fn with_active_workspace(mut self, workspace: Workspace) -> Self {
+        self.workspace = workspace.root.clone();
+        self.active_workspace = Some(workspace);
+        self
+    }
+
+    pub fn with_connection_manager(mut self, manager: WorkspaceConnectionManager) -> Self {
+        if let Some(workspace) = manager.active_workspace() {
+            self.workspace = workspace.root.clone();
+            self.active_workspace = Some(workspace);
+        }
+        self.connection_manager = Some(manager);
+        self
+    }
+
+    pub fn active_workspace(&self) -> Option<&Workspace> {
+        self.active_workspace.as_ref()
+    }
+
+    pub fn connection_manager(&self) -> Option<&WorkspaceConnectionManager> {
+        self.connection_manager.as_ref()
     }
 
     pub async fn run_turn(&self, user_input: String) -> Result<EngineTurnResult> {
@@ -85,6 +114,18 @@ impl MobileEngine {
                 turn_id: turn.id.clone(),
             },
         )?;
+
+        if let Some(workspace) = self.active_workspace.as_ref() {
+            self.push_event(
+                &mut events,
+                Some(&turn.id),
+                AgentEvent::Status(format!(
+                    "Workspace backend: {:?} at {}",
+                    workspace.executor,
+                    workspace.root.display()
+                )),
+            )?;
+        }
 
         let route = self.router.route_prompt(&user_input, 0);
         self.push_event(
