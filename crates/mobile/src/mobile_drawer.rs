@@ -74,7 +74,11 @@ fn item(section: CockpitSection) -> DrawerItem {
     }
 }
 
-pub fn mobile_drawer(is_open: bool, active_section: CockpitSection) -> Element {
+pub fn mobile_drawer(
+    is_open: bool,
+    active_section: CockpitSection,
+    on_select: EventHandler<CockpitSection>,
+) -> Element {
     if !is_open {
         return rsx! {};
     }
@@ -146,8 +150,9 @@ pub fn mobile_drawer(is_open: bool, active_section: CockpitSection) -> Element {
                 gap: "10px",
 
                 for item in items {
-                    div {
+                    button {
                         background_color: if item.section == active_section { "#1e3a8a" } else { "#111827" },
+                        color: "white",
                         border: if item.section == active_section { "1px solid #3b82f6" } else { "1px solid #1f2937" },
                         border_radius: "14px",
                         padding: "12px",
@@ -155,6 +160,8 @@ pub fn mobile_drawer(is_open: bool, active_section: CockpitSection) -> Element {
                         justify_content: "space-between",
                         align_items: "center",
                         gap: "12px",
+                        text_align: "left",
+                        onclick: move |_| on_select.call(item.section),
 
                         div {
                             display: "flex",
