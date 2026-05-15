@@ -9,6 +9,7 @@ use crate::approval::{
     should_request_approval, ApprovalMode, ApprovalRisk, MobileApprovalRequest, ReviewDecision,
     ToolCategory,
 };
+use crate::approval_session::ApprovalSessionPolicy;
 use crate::events::{AgentEvent, ApprovalRequest, RiskLevel, ToolCallEvent, ToolResultEvent};
 use crate::tool_call::{parse_tool_calls_from_text, ToolCallRequest};
 use crate::tool_execution::ToolExecutionCoordinator;
@@ -68,6 +69,27 @@ pub async fn process_model_text_with_tools(
     approval_mode: &ApprovalMode,
     turn: &mut TurnContext,
 ) -> Result<ToolLoopOutcome> {
+    process_model_text_with_tools_and_session(
+        model_text,
+        registry,
+        coordinator,
+        context,
+        approval_mode,
+        None,
+        turn,
+    )
+    .await
+}
+
+pub async fn process_model_text_with_tools_and_session(
+    model_text: &str,
+    registry: &ToolRegistry,
+    coordinator: &ToolExecutionCoordinator<'_>,
+    context: &ToolContext,
+    approval_mode: &ApprovalMode,
+    mut session_policy: Option<&mut ApprovalSessionPolicy>,
+    turn: &mut TurnContext,
+) -> Result<ToolLoopOutcome> {
     let parsed = parse_tool_calls_from_text(model_text);
     if !parsed.has_tool_calls() {
         return Ok(ToolLoopOutcome::no_tools(parsed.final_text));
@@ -101,6 +123,19 @@ pub async fn process_model_text_with_tools(
         };
 
         let approval = MobileApprovalRequest::new(call.id.clone(), tool, call.arguments.clone());
+        let session_allowed = session_policy
+            .as_deref()
+            .is_some_and(|policy| policy.is_call_allowed_by_session(&approval, &call));
+
+        if session_allowed {
+            outcome.events.push(AgentEvent::Status(format!(
+                "Session approval reused for tool '{}'",
+                call.name
+            )));
+            execute_approved_call(&call, coordinator, context, turn, &mut outcome).await?;
+            continue;
+        }
+
         if should_request_approval(approval_mode, &approval.requirement, &approval.risk) {
             turn.status = TurnStatus::WaitingForApproval;
             turn.record_tool_call(TurnToolCall::new(
@@ -128,10 +163,47 @@ pub async fn continue_pending_tool_approval(
     context: &ToolContext,
     turn: &mut TurnContext,
 ) -> Result<ToolLoopOutcome> {
+    continue_pending_tool_approval_with_session(
+        pending,
+        decision,
+        coordinator,
+        context,
+        None,
+        turn,
+    )
+    .await
+}
+
+pub async fn continue_pending_tool_approval_with_session(
+    pending: &PendingToolCallApproval,
+    decision: &ReviewDecision,
+    coordinator: &ToolExecutionCoordinator<'_>,
+    context: &ToolContext,
+    session_policy: Option<&mut ApprovalSessionPolicy>,
+    turn: &mut TurnContext,
+) -> Result<ToolLoopOutcome> {
     let mut outcome = ToolLoopOutcome::empty();
     match decision {
         ReviewDecision::Approved | ReviewDecision::ApprovedForSession => {
             turn.status = TurnStatus::Running;
+            if matches!(decision, ReviewDecision::ApprovedForSession) {
+                if let Some(policy) = session_policy {
+                    if policy
+                        .grant_for_approved_call(&pending.approval, &pending.call)
+                        .is_some()
+                    {
+                        outcome.events.push(AgentEvent::Status(format!(
+                            "Session approval granted for tool '{}'",
+                            pending.call.name
+                        )));
+                    } else {
+                        outcome.events.push(AgentEvent::Status(format!(
+                            "Session approval is not allowed for tool '{}'",
+                            pending.call.name
+                        )));
+                    }
+                }
+            }
             outcome.events.push(AgentEvent::Status(format!(
                 "Approval accepted for tool '{}'",
                 pending.call.name
@@ -258,8 +330,12 @@ fn risk_level_for(category: &ToolCategory, risk: &ApprovalRisk) -> RiskLevel {
 
 #[cfg(test)]
 mod tests {
-    use super::{continue_pending_tool_approval, process_model_text_with_tools};
+    use super::{
+        continue_pending_tool_approval, continue_pending_tool_approval_with_session,
+        process_model_text_with_tools, process_model_text_with_tools_and_session,
+    };
     use crate::approval::{ApprovalMode, ReviewDecision};
+    use crate::approval_session::ApprovalSessionPolicy;
     use crate::tool_execution::ToolExecutionCoordinator;
     use crate::tools::file_ops::ReadFileTool;
     use crate::tools::{ToolContext, ToolRegistry};
@@ -307,6 +383,60 @@ mod tests {
         assert_eq!(outcome.pending_approvals.len(), 1);
         assert_eq!(outcome.pending_tool_approvals.len(), 1);
         assert_eq!(turn.status, TurnStatus::WaitingForApproval);
+    }
+
+    #[tokio::test]
+    async fn approved_for_session_reuses_same_file_path() {
+        let dir = std::env::temp_dir().join(format!(
+            "deepseek_mobile_session_approval_{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+
+        let mut registry = ToolRegistry::new();
+        registry.register(Box::new(crate::tools::file_ops::WriteFileTool));
+        let coordinator = ToolExecutionCoordinator::new(&registry);
+        let context = ToolContext::new(Workspace::new("w1", "Project", &dir, ExecutorKind::LocalAndroid));
+        let mut policy = ApprovalSessionPolicy::new();
+        let mut turn = TurnContext::new(10);
+        let first = process_model_text_with_tools(
+            r#"{"tool":"write_file","args":{"path":"README.md","content":"first"}}"#,
+            &registry,
+            &coordinator,
+            &context,
+            &ApprovalMode::Suggest,
+            &mut turn,
+        )
+        .await
+        .unwrap();
+        let pending = first.pending_tool_approvals[0].clone();
+        continue_pending_tool_approval_with_session(
+            &pending,
+            &ReviewDecision::ApprovedForSession,
+            &coordinator,
+            &context,
+            Some(&mut policy),
+            &mut turn,
+        )
+        .await
+        .unwrap();
+        assert_eq!(policy.grant_count(), 1);
+
+        let second = process_model_text_with_tools_and_session(
+            r#"{"tool":"write_file","args":{"path":"README.md","content":"second"}}"#,
+            &registry,
+            &coordinator,
+            &context,
+            &ApprovalMode::Suggest,
+            Some(&mut policy),
+            &mut turn,
+        )
+        .await
+        .unwrap();
+        assert!(!second.requires_user_input);
+        assert_eq!(std::fs::read_to_string(dir.join("README.md")).unwrap(), "second");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[tokio::test]
