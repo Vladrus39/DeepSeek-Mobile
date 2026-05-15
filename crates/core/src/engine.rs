@@ -44,6 +44,7 @@ pub struct MobileEngine {
     pc_gateway_client: Option<PcGatewayClient>,
     approval_mode: ApprovalMode,
     approval_session_policy: Arc<Mutex<ApprovalSessionPolicy>>,
+    event_observer: Option<Arc<dyn Fn(AgentEvent)>>,
 }
 
 impl MobileEngine {
@@ -67,6 +68,7 @@ impl MobileEngine {
             pc_gateway_client: None,
             approval_mode,
             approval_session_policy: Arc::new(Mutex::new(ApprovalSessionPolicy::new())),
+            event_observer: None,
         }
     }
 
@@ -112,6 +114,14 @@ impl MobileEngine {
 
     pub fn with_approval_mode(mut self, mode: ApprovalMode) -> Self {
         self.approval_mode = mode;
+        self
+    }
+
+    pub fn with_event_observer<F>(mut self, observer: F) -> Self
+    where
+        F: Fn(AgentEvent) + 'static,
+    {
+        self.event_observer = Some(Arc::new(observer));
         self
     }
 
@@ -536,6 +546,9 @@ impl MobileEngine {
                 turn_id.map(std::string::ToString::to_string),
                 event.clone(),
             )?;
+        }
+        if let Some(observer) = self.event_observer.as_ref() {
+            observer(event.clone());
         }
         events.push(event);
         Ok(())
