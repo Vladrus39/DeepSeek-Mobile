@@ -53,8 +53,8 @@ pub use pc_gateway::{
 };
 pub use pc_gateway_client::PcGatewayClient;
 pub use runtime_store::{
-    RuntimeEventRecord, RuntimeThreadStore, RuntimeTurnStatus, ThreadRecord, TurnItemKind,
-    TurnItemLifecycleStatus, TurnItemRecord, TurnRecord,
+    PendingApprovalRecord, RuntimeEventRecord, RuntimeThreadStore, RuntimeTurnStatus, ThreadRecord,
+    TurnItemKind, TurnItemLifecycleStatus, TurnItemRecord, TurnRecord,
 };
 pub use session::Session;
 pub use tool_call::{parse_tool_calls_from_text, ToolCallParseResult, ToolCallRequest, ToolCallSource};
