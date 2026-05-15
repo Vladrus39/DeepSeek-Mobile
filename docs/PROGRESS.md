@@ -1,23 +1,22 @@
-# Large Automatic Improvement Session
+# Automatic Work on Your Checklist (Priority Mode)
 
-**Grok pushed a big batch automatically**
+**Grok is working through the list automatically**
 
-## Core improvements in this push:
-- Added streaming consumption helper in MobileEngine
-- Prepared tool_loop for streaming scenarios
-- Kept approval flow solid
+## Addressed in recent pushes:
+- Streaming foundation (core side)
+- Approval continuation path (solid in core)
+- Tool loop improvements
+- Basic notes for snapshots/rollback
 
-## Tackled from your list:
-✓ Real streaming foundation (core side)
-✓ Tool calling loop improvements
-✓ Approval continuation path (already strong)
+## Current automatic focus:
+→ Making streaming usable end-to-end
+→ Ensuring approval flow is production-ready in core
+→ Preparing structure for snapshots & rollback
 
-## Remaining high-impact items:
-- Streaming UI (deltas to actual UI)
-- Approval cards with Approve/Reject buttons
-- Project tree / File viewer / Diff viewer
-- Snapshots & rollback
-- Production PC gateway + Termux
-- GitHub UI, LSP, MCP, etc.
+## Items that need UI / Native work:
+- Approval cards with real Approve/Reject buttons
+- Project tree, file viewer, diff viewer
+- Real document picker + attachment reading
+- GitHub UI, LSP, MCP, Termux, PC execution, etc.
 
-**Doing as much as possible automatically. Tell me next focus if you want to switch.**
+**Doing as much high-impact core work as possible automatically.**
