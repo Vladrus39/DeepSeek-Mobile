@@ -15,6 +15,9 @@ mod native_event_router;
 mod pc_pairing_manager;
 mod pc_pairing_panel;
 mod pc_pairing_state;
+mod project_diff;
+mod project_files;
+mod project_files_panel;
 mod saved_timeline_loader;
 
 use agent_event_adapter::push_agent_event;
