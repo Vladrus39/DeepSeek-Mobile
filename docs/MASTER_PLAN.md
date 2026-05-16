@@ -51,7 +51,11 @@ Android document picker
 
 ```text
 PC execution
+  -> MobileRuntimeConfig.workspace_connection
+  -> MobileEngine.with_workspace_connection
   -> PcGatewayClient
+  -> tool_loop *_and_pc_gateway functions
+  -> ToolExecutionCoordinator.with_pc_gateway
   -> pc-host HTTP /v1/gateway/request
   -> workspace path policy
   -> read/write/list/exec/git/task detection
@@ -157,10 +161,10 @@ Already done:
 - [x] Task detection for Cargo/npm/pytest.
 - [x] Rust diagnostics via `cargo check --message-format=json`.
 - [x] Post-edit diagnostics summary for PC `write_file` and `edit_file` calls when routed through an attached `PcGatewayClient`.
+- [x] Wire `PcGatewayClient` into `MobileEngine` / runtime configuration so PC workspace execution is reachable from normal tool_loop turns.
 
 Remaining checklist:
 
-- [ ] Wire `PcGatewayClient` into `MobileEngine` / runtime configuration so PC workspace execution is reachable from normal tool_loop turns.
 - [ ] Map `apply_patch` to PC gateway execution or implement a remote patch endpoint.
 - [ ] Add UI connection status and reconnect controls.
 - [ ] Add pairing flow end-to-end from mobile UI.
@@ -283,7 +287,7 @@ Acceptance criteria:
 | Web/search/fetch | Keep with approval | Missing |
 | Runtime HTTP/SSE API | Keep later | Missing |
 | Durable task queue | Keep | Missing |
-| LSP diagnostics | Keep, PC-first | Partial: Rust cargo diagnostics and PC write/edit summary implemented |
+| LSP diagnostics | Keep, PC-first | Partial: Rust cargo diagnostics, PC write/edit summary and core PC-client wiring implemented |
 | Snapshots/rollback | Keep, mobile-safe file-copy | Partial: core service, tools, local pre-tool hook |
 | OS sandbox | Replace/augment with executor policies | Missing |
 | MCP | Keep, PC-first | Missing |
@@ -305,7 +309,7 @@ The next implementation sequence is fixed:
 4. [x] Add `apply_patch` tool.
 5. [x] Auto-create pre-tool snapshots before destructive approved local tools.
 6. [x] Add PC diagnostics for Rust projects.
-7. [ ] Wire `PcGatewayClient` into normal `MobileEngine` turns.
+7. [x] Wire `PcGatewayClient` into normal `MobileEngine` turns.
 8. [ ] Map `apply_patch` to PC gateway execution.
 9. [ ] Add full post-edit diagnostic hook across local, Termux and PC workspaces.
 10. [ ] Add snapshot/diagnostics UI panels.
@@ -322,7 +326,8 @@ The next implementation sequence is fixed:
 - 2026-05-16: Added operation-based atomic `apply_patch` tool and registered it in the default mobile tool registry.
 - 2026-05-16: Added local pre-tool snapshots inside `tool_loop::execute_approved_call()` for destructive local/Termux tools; PC-gateway snapshot path remains separate.
 - 2026-05-16: Implemented PC-host Rust diagnostics using `cargo check --workspace --message-format=json`, mapped cargo levels to `PcDiagnosticSeverity`, and added path filtering.
-- 2026-05-16: Added PC post-edit diagnostics summary/metadata after `write_file` and `edit_file` calls inside `ToolExecutionCoordinator` when a `PcGatewayClient` is attached. Full engine wiring remains next.
+- 2026-05-16: Added PC post-edit diagnostics summary/metadata after `write_file` and `edit_file` calls inside `ToolExecutionCoordinator` when a `PcGatewayClient` is attached.
+- 2026-05-16: Wired `PcGatewayClient` through tool_loop, `MobileEngine`, `MobileRuntimeConfig`, and mobile runner so normal turns can execute PC workspace tools when a `WorkspaceConnection` is supplied. UI pairing remains separate.
 
 ## 6. Definition of done for the project
 
