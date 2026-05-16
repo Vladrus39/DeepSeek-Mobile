@@ -248,6 +248,7 @@ async fn handle_gateway_request(config: &PcHostConfig, request: PcGatewayRequest
         PcGatewayRequest::WriteFile { workspace_id, path, content } => {
             write_file(config, &workspace_id, &path, &content).await
         }
+        PcGatewayRequest::DeleteFile { workspace_id, path } => delete_file(config, &workspace_id, &path).await,
         PcGatewayRequest::ExecuteCommand { workspace_id, command, environment_id: _ } => {
             execute_command(config, &workspace_id, command).await
         }
@@ -325,6 +326,26 @@ async fn write_file(
         path: relative,
         bytes: content.len(),
     })
+}
+
+async fn delete_file(config: &PcHostConfig, workspace_id: &str, path: &str) -> Result<PcGatewayResponse> {
+    let requested = config.resolve_workspace_path(workspace_id, path)?;
+    let path = config.ensure_path_inside_workspace(&requested).await?;
+    let metadata = fs::metadata(&path)
+        .await
+        .with_context(|| format!("metadata for delete {}", path.display()))?;
+    if metadata.is_dir() {
+        return Err(anyhow!("delete_file refuses to delete directories: {}", path.display()));
+    }
+    fs::remove_file(&path)
+        .await
+        .with_context(|| format!("delete file {}", path.display()))?;
+    let relative = path
+        .strip_prefix(&config.workspace_root)
+        .unwrap_or(&path)
+        .to_string_lossy()
+        .replace('\\', "/");
+    Ok(PcGatewayResponse::FileDeleted { path: relative })
 }
 
 async fn execute_command(
@@ -581,6 +602,7 @@ fn host_capabilities() -> Vec<PcGatewayCapability> {
         PcGatewayCapability::ListWorkspaces,
         PcGatewayCapability::ReadFiles,
         PcGatewayCapability::WriteFiles,
+        PcGatewayCapability::DeleteFiles,
         PcGatewayCapability::ExecuteCommands,
         PcGatewayCapability::GitStatus,
         PcGatewayCapability::GitDiff,
