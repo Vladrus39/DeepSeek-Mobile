@@ -1,4 +1,5 @@
 use crate::mobile_drawer::CockpitSection;
+use crate::native_bridge::NativeBridgeState;
 use crate::pc_pairing_panel::pc_pairing_panel;
 use crate::pc_pairing_state::PcPairingUiState;
 use crate::project_files_panel::project_files_panel;
@@ -7,12 +8,13 @@ use dioxus::prelude::*;
 
 pub fn cockpit_section_panel(
     section: CockpitSection,
-    pc_pairing_state: &PcPairingUiState,
+    pc_pairing_state: Signal<PcPairingUiState>,
+    native_bridge: Signal<NativeBridgeState>,
     project_files_state: Signal<ProjectFilesUiState>,
 ) -> Element {
     match section {
         CockpitSection::Chat => chat_empty_state(),
-        CockpitSection::PcHost => pc_pairing_panel(pc_pairing_state),
+        CockpitSection::PcHost => pc_pairing_panel(pc_pairing_state, native_bridge),
         CockpitSection::Files => project_files_panel(project_files_state),
         CockpitSection::Terminal => placeholder_panel(
             "Terminal",
