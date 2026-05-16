@@ -7,6 +7,7 @@
 pub mod file_ops;
 pub mod git;
 pub mod shell;
+pub mod snapshots;
 
 use crate::config::ExternalAccessMode;
 use crate::workspace::Workspace;
@@ -213,6 +214,9 @@ pub fn default_mobile_tool_registry() -> ToolRegistry {
     registry.register(Box::new(file_ops::FileOpsTool));
     registry.register(Box::new(shell::ShellTool));
     registry.register(Box::new(git::GitTool));
+    registry.register(Box::new(snapshots::CreateSnapshotTool));
+    registry.register(Box::new(snapshots::ListSnapshotsTool));
+    registry.register(Box::new(snapshots::RestoreSnapshotTool));
     registry
 }
 
@@ -241,5 +245,8 @@ mod tests {
         assert!(names.contains(&"edit_file".to_string()));
         assert!(names.contains(&"exec_shell".to_string()));
         assert!(names.contains(&"git".to_string()));
+        assert!(names.contains(&"snapshot_create".to_string()));
+        assert!(names.contains(&"snapshot_list".to_string()));
+        assert!(names.contains(&"snapshot_restore".to_string()));
     }
 }
