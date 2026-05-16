@@ -12,6 +12,7 @@ pub fn pc_pairing_panel(state: &PcPairingUiState) -> Element {
     let status_badge = status_badge_text(&state.status);
     let active_route = state.active_route_text();
     let endpoint_rows = state.endpoint_health_rows();
+    let discovery_rows = state.discovery_rows();
 
     rsx! {
         div {
@@ -62,15 +63,8 @@ pub fn pc_pairing_panel(state: &PcPairingUiState) -> Element {
                 flex_direction: "column",
                 gap: "6px",
 
-                div {
-                    color: "#d1d5db",
-                    font_size: "13px",
-                    "Status"
-                }
-                div {
-                    white_space: "pre-wrap",
-                    "{status_text}"
-                }
+                div { color: "#d1d5db", font_size: "13px", "Status" }
+                div { white_space: "pre-wrap", "{status_text}" }
             }
 
             div {
@@ -81,11 +75,7 @@ pub fn pc_pairing_panel(state: &PcPairingUiState) -> Element {
                 flex_direction: "column",
                 gap: "6px",
 
-                div {
-                    color: "#d1d5db",
-                    font_size: "13px",
-                    "Active route"
-                }
+                div { color: "#d1d5db", font_size: "13px", "Active route" }
                 div {
                     color: "#e5e7eb",
                     font_size: "13px",
@@ -102,11 +92,28 @@ pub fn pc_pairing_panel(state: &PcPairingUiState) -> Element {
                 flex_direction: "column",
                 gap: "8px",
 
-                div {
-                    color: "#d1d5db",
-                    font_size: "13px",
-                    "Endpoint health"
+                div { color: "#d1d5db", font_size: "13px", "Discovery candidates" }
+                for row in discovery_rows {
+                    div {
+                        color: "#e5e7eb",
+                        font_size: "12px",
+                        white_space: "pre-wrap",
+                        border_top: "1px solid #374151",
+                        padding_top: "8px",
+                        "{row}"
+                    }
                 }
+            }
+
+            div {
+                background_color: "#1f2937",
+                border_radius: "12px",
+                padding: "12px",
+                display: "flex",
+                flex_direction: "column",
+                gap: "8px",
+
+                div { color: "#d1d5db", font_size: "13px", "Endpoint health" }
                 for row in endpoint_rows {
                     div {
                         color: "#e5e7eb",
@@ -127,11 +134,7 @@ pub fn pc_pairing_panel(state: &PcPairingUiState) -> Element {
                 flex_direction: "column",
                 gap: "6px",
 
-                div {
-                    color: "#d1d5db",
-                    font_size: "13px",
-                    "Pairing file"
-                }
+                div { color: "#d1d5db", font_size: "13px", "Pairing file" }
                 div {
                     color: "#e5e7eb",
                     font_size: "13px",
