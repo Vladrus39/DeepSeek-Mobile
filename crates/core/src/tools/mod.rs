@@ -6,6 +6,7 @@
 
 pub mod file_ops;
 pub mod git;
+pub mod github;
 pub mod patch;
 pub mod shell;
 pub mod snapshots;
@@ -219,6 +220,11 @@ pub fn default_mobile_tool_registry() -> ToolRegistry {
     registry.register(Box::new(snapshots::CreateSnapshotTool));
     registry.register(Box::new(snapshots::ListSnapshotsTool));
     registry.register(Box::new(snapshots::RestoreSnapshotTool));
+    registry.register(Box::new(github::GitHubRepoTool));
+    registry.register(Box::new(github::GitHubPRTool));
+    registry.register(Box::new(github::GitHubIssueTool));
+    registry.register(Box::new(github::GitHubBrowseTool));
+    registry.register(Box::new(github::GitHubPushFileTool));
     registry
 }
 
@@ -251,5 +257,7 @@ mod tests {
         assert!(names.contains(&"snapshot_create".to_string()));
         assert!(names.contains(&"snapshot_list".to_string()));
         assert!(names.contains(&"snapshot_restore".to_string()));
+        assert!(names.contains(&"github_repo".to_string()));
+        assert!(names.contains(&"github_browse".to_string()));
     }
 }

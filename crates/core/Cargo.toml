@@ -14,3 +14,4 @@ zip = { workspace = true }
 
 # Из оригинального DeepSeek-TUI
 futures-util = "0.3"
+base64 = "0.22"

@@ -5,6 +5,7 @@ pub mod api_client;
 pub mod approval;
 pub mod approval_card;
 pub mod approval_session;
+pub mod auto_commit;
 pub mod approval_session_runtime;
 pub mod chat_input;
 pub mod config;
@@ -12,6 +13,7 @@ pub mod context;
 pub mod engine;
 pub mod events;
 pub mod executor;
+pub mod github;
 pub mod model_router;
 pub mod pc_gateway;
 pub mod pc_gateway_client;
@@ -59,6 +61,8 @@ pub use executor::{
     CommandOutput, CommandRequest, DisabledExecutor, Executor, PcGatewayExecutorPlan,
     PcGatewayPlannedExecutor,
 };
+pub use github::{GitHubBranch, GitHubClient, GitHubCommitResult, GitHubContentEntry, GitHubFileContent,
+    GitHubIssue, GitHubPullRequest, GitHubRepo, GitHubRepoInfo};
 pub use model_router::{ModelRouter, RouteDecision, TaskProfile};
 pub use pc_gateway::{
     is_private_or_loopback_http_url, validate_gateway_base_url,

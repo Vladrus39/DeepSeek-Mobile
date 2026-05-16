@@ -10,6 +10,10 @@ pub struct Config {
     pub model_mode: ModelMode,
     pub thinking_level: ThinkingLevel,
     pub external_access: ExternalAccessMode,
+    pub github_token: Option<String>,
+    pub github_repo: Option<String>,
+    pub github_branch: Option<String>,
+    pub auto_commit_push: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -44,6 +48,10 @@ impl Default for Config {
             model_mode: ModelMode::Auto,
             thinking_level: ThinkingLevel::High,
             external_access: ExternalAccessMode::WorkspaceOnly,
+            github_token: None,
+            github_repo: None,
+            github_branch: None,
+            auto_commit_push: false,
         }
     }
 }
@@ -62,6 +70,26 @@ impl Config {
 
     pub fn with_external_access(mut self, mode: ExternalAccessMode) -> Self {
         self.external_access = mode;
+        self
+    }
+
+    pub fn with_github_token(mut self, token: String) -> Self {
+        self.github_token = Some(token);
+        self
+    }
+
+    pub fn with_github_repo(mut self, repo: String) -> Self {
+        self.github_repo = Some(repo);
+        self
+    }
+
+    pub fn with_github_branch(mut self, branch: String) -> Self {
+        self.github_branch = Some(branch);
+        self
+    }
+
+    pub fn with_auto_commit_push(mut self, enabled: bool) -> Self {
+        self.auto_commit_push = enabled;
         self
     }
 }
