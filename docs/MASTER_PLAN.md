@@ -50,6 +50,17 @@ Android document picker
 ```
 
 ```text
+Android PC discovery
+  -> android/bridge Kotlin NSD/mDNS discovery
+  -> _deepseek-pc-gateway._tcp. service records
+  -> NativeBridgeState PC discovery callbacks
+  -> route_native_mobile_event
+  -> PcPairingUiState discovery report
+  -> PcGatewayDiscoveryService endpoint validation and /health probing
+  -> PcGatewayClient route scoring/failover
+```
+
+```text
 PC execution
   -> MobileRuntimeConfig.workspace_connection
   -> MobileEngine.with_workspace_connection
@@ -184,10 +195,10 @@ Already done:
 - [x] Add active endpoint cache and route health scoring.
 - [x] Add mobile PC connection status display with active route and endpoint health.
 - [x] Add PC gateway discovery core contract for mDNS/manual/subnet candidates and mobile discovery display.
+- [x] Add Android NSD/mDNS adapter for PC-host discovery.
 
 Remaining checklist:
 
-- [ ] Add Android NSD/mDNS adapter for PC-host discovery.
 - [ ] Add reconnect controls for PC gateway.
 - [ ] Add pairing flow end-to-end from mobile UI.
 - [ ] Add PC-host logs and health detail.
@@ -229,6 +240,7 @@ Already done:
 
 - [x] Android document picker Kotlin bridge module.
 - [x] Attachment text/source ingestion through local sandbox path.
+- [x] Android NSD/mDNS PC-host discovery bridge and Rust callback route.
 
 Remaining checklist:
 
@@ -312,7 +324,7 @@ Acceptance criteria:
 | Runtime HTTP/SSE API | Keep later | Missing |
 | Durable task queue | Keep | Missing |
 | LSP diagnostics | Keep, PC-first plus local/Termux fallback | Partial: Rust cargo diagnostics and post-edit hooks implemented; TS/Python/UI/model-context still pending |
-| PC connectivity | Keep multi-transport, offline-first | Partial: endpoint candidates, client failover, route health scoring, discovery core contract and UI status display implemented |
+| PC connectivity | Keep multi-transport, offline-first | Partial: endpoint candidates, client failover, route health scoring, Android NSD discovery and UI status display implemented |
 | Snapshots/rollback | Keep, mobile-safe file-copy | Partial: core service, tools, local pre-tool hook |
 | OS sandbox | Replace/augment with executor policies | Missing |
 | MCP | Keep, PC-first | Missing |
@@ -341,8 +353,8 @@ The next implementation sequence is fixed:
 11. [x] Add active endpoint cache and route health scoring.
 12. [x] Add mobile PC connection status display with active route and endpoint health.
 13. [x] Add PC gateway discovery core contract and mobile discovery display.
-14. [ ] Add snapshot/diagnostics UI panels.
-15. [ ] Add Android NSD/mDNS adapter for PC-host discovery.
+14. [x] Add Android NSD/mDNS adapter for PC-host discovery.
+15. [ ] Add snapshot/diagnostics UI panels.
 16. [ ] Add reconnect controls for PC gateway.
 17. [ ] Add pairing flow end-to-end from mobile UI.
 18. [ ] Add Termux executor bridge.
@@ -366,6 +378,7 @@ The next implementation sequence is fixed:
 - 2026-05-16: Added runtime PC gateway endpoint health scoring in `PcGatewayClient`, including success/failure counters, last latency, last error, active endpoint selection, and health-aware endpoint ordering.
 - 2026-05-16: Extended PC pairing UI state and panel to show active PC route, endpoint health rows, latency, route score and last endpoint error.
 - 2026-05-16: Added `PcGatewayDiscoveryService` for mDNS/manual/subnet discovery records, `/health` probing, discovery reports, and mobile panel display of discovery candidates.
+- 2026-05-16: Added Android NSD/mDNS discovery bridge for DeepSeek PC Host, required Android network/multicast permissions, Rust native discovery payloads, and route_native_mobile_event integration into PcPairingUiState.
 
 ## 6. Definition of done for the project
 
