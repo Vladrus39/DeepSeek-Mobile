@@ -68,7 +68,7 @@ PC execution
   -> endpoint_plan: direct/local routes first, tunnel/internet fallback later
   -> runtime endpoint health scoring: success/failure/latency/last error
   -> PcGatewayDiscoveryService converts mDNS/manual/subnet records to endpoint candidates and probes /health
-  -> mobile PC pairing panel shows discovery candidates, active route and endpoint health rows
+  -> mobile PC pairing panel shows discovery candidates, active route, endpoint health rows and reconnect controls
   -> tool_loop *_and_pc_gateway functions
   -> ToolExecutionCoordinator.with_pc_gateway
   -> pc-host HTTP /v1/gateway/request
@@ -196,10 +196,10 @@ Already done:
 - [x] Add mobile PC connection status display with active route and endpoint health.
 - [x] Add PC gateway discovery core contract for mDNS/manual/subnet candidates and mobile discovery display.
 - [x] Add Android NSD/mDNS adapter for PC-host discovery.
+- [x] Add reconnect controls for PC gateway.
 
 Remaining checklist:
 
-- [ ] Add reconnect controls for PC gateway.
 - [ ] Add pairing flow end-to-end from mobile UI.
 - [ ] Add PC-host logs and health detail.
 - [ ] Add command allow/deny policy presets.
@@ -324,7 +324,7 @@ Acceptance criteria:
 | Runtime HTTP/SSE API | Keep later | Missing |
 | Durable task queue | Keep | Missing |
 | LSP diagnostics | Keep, PC-first plus local/Termux fallback | Partial: Rust cargo diagnostics and post-edit hooks implemented; TS/Python/UI/model-context still pending |
-| PC connectivity | Keep multi-transport, offline-first | Partial: endpoint candidates, client failover, route health scoring, Android NSD discovery and UI status display implemented |
+| PC connectivity | Keep multi-transport, offline-first | Partial: endpoint candidates, client failover, route health scoring, Android NSD discovery, reconnect controls and UI status display implemented |
 | Snapshots/rollback | Keep, mobile-safe file-copy | Partial: core service, tools, local pre-tool hook |
 | OS sandbox | Replace/augment with executor policies | Missing |
 | MCP | Keep, PC-first | Missing |
@@ -354,8 +354,8 @@ The next implementation sequence is fixed:
 12. [x] Add mobile PC connection status display with active route and endpoint health.
 13. [x] Add PC gateway discovery core contract and mobile discovery display.
 14. [x] Add Android NSD/mDNS adapter for PC-host discovery.
-15. [ ] Add snapshot/diagnostics UI panels.
-16. [ ] Add reconnect controls for PC gateway.
+15. [x] Add reconnect controls for PC gateway.
+16. [ ] Add snapshot/diagnostics UI panels.
 17. [ ] Add pairing flow end-to-end from mobile UI.
 18. [ ] Add Termux executor bridge.
 19. [ ] Add Git UI.
@@ -379,6 +379,7 @@ The next implementation sequence is fixed:
 - 2026-05-16: Extended PC pairing UI state and panel to show active PC route, endpoint health rows, latency, route score and last endpoint error.
 - 2026-05-16: Added `PcGatewayDiscoveryService` for mDNS/manual/subnet discovery records, `/health` probing, discovery reports, and mobile panel display of discovery candidates.
 - 2026-05-16: Added Android NSD/mDNS discovery bridge for DeepSeek PC Host, required Android network/multicast permissions, Rust native discovery payloads, and route_native_mobile_event integration into PcPairingUiState.
+- 2026-05-16: Added PC gateway reconnect controls in PcPairingUiState and PcHost panel: scan again, retry active route, use best discovered route, and forget bad routes.
 
 ## 6. Definition of done for the project
 
