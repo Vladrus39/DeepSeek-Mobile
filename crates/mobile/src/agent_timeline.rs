@@ -50,6 +50,7 @@ impl MobileTimelineItem {
 pub struct MobileTimelineState {
     next_id: u64,
     pub items: Vec<MobileTimelineItem>,
+    live_assistant_item_id: Option<String>,
 }
 
 impl MobileTimelineState {
@@ -73,6 +74,7 @@ impl MobileTimelineState {
     }
 
     pub fn push_user_message(&mut self, body: impl Into<String>) -> String {
+        self.finish_live_assistant_message();
         self.push(
             MobileTimelineItemKind::UserMessage,
             MobileTimelineItemStatus::Done,
@@ -82,12 +84,53 @@ impl MobileTimelineState {
     }
 
     pub fn push_assistant_message(&mut self, body: impl Into<String>) -> String {
-        self.push(
+        let id = self.push(
             MobileTimelineItemKind::AssistantMessage,
             MobileTimelineItemStatus::Done,
             "DeepSeek response",
             body,
-        )
+        );
+        self.live_assistant_item_id = None;
+        id
+    }
+
+    pub fn start_live_assistant_message(&mut self) -> String {
+        if let Some(id) = self.live_assistant_item_id.clone() {
+            return id;
+        }
+        let id = self.push(
+            MobileTimelineItemKind::AssistantMessage,
+            MobileTimelineItemStatus::Running,
+            "DeepSeek response",
+            "",
+        );
+        self.live_assistant_item_id = Some(id.clone());
+        id
+    }
+
+    pub fn append_live_assistant_delta(&mut self, delta: &str) -> String {
+        let id = self.start_live_assistant_message();
+        if let Some(item) = self.items.iter_mut().find(|item| item.id == id) {
+            item.body.push_str(delta);
+            item.status = MobileTimelineItemStatus::Running;
+        }
+        id
+    }
+
+    pub fn finish_live_assistant_message(&mut self) {
+        if let Some(id) = self.live_assistant_item_id.take() {
+            if let Some(item) = self.items.iter_mut().find(|item| item.id == id) {
+                item.status = MobileTimelineItemStatus::Done;
+            }
+        }
+    }
+
+    pub fn fail_live_assistant_message(&mut self) {
+        if let Some(id) = self.live_assistant_item_id.take() {
+            if let Some(item) = self.items.iter_mut().find(|item| item.id == id) {
+                item.status = MobileTimelineItemStatus::Failed;
+            }
+        }
     }
 
     pub fn push_attachment(&mut self, body: impl Into<String>) -> String {
@@ -118,6 +161,7 @@ impl MobileTimelineState {
     }
 
     pub fn push_error(&mut self, body: impl Into<String>) -> String {
+        self.fail_live_assistant_message();
         self.push(
             MobileTimelineItemKind::Error,
             MobileTimelineItemStatus::Failed,
@@ -160,7 +204,7 @@ pub fn timeline_status_label(status: &MobileTimelineItemStatus) -> &'static str 
 
 #[cfg(test)]
 mod tests {
-    use super::{timeline_kind_label, MobileTimelineItemKind, MobileTimelineState};
+    use super::{timeline_kind_label, MobileTimelineItemKind, MobileTimelineItemStatus, MobileTimelineState};
 
     #[test]
     fn timeline_pushes_items_in_order() {
@@ -177,5 +221,17 @@ mod tests {
     fn timeline_labels_are_stable() {
         assert_eq!(timeline_kind_label(&MobileTimelineItemKind::ToolCall), "TOOL");
         assert_eq!(timeline_kind_label(&MobileTimelineItemKind::Approval), "APPROVAL");
+    }
+
+    #[test]
+    fn streaming_deltas_append_to_one_live_assistant_item() {
+        let mut timeline = MobileTimelineState::default();
+        timeline.append_live_assistant_delta("hel");
+        timeline.append_live_assistant_delta("lo");
+        assert_eq!(timeline.len(), 1);
+        assert_eq!(timeline.items[0].body, "hello");
+        assert_eq!(timeline.items[0].status, MobileTimelineItemStatus::Running);
+        timeline.finish_live_assistant_message();
+        assert_eq!(timeline.items[0].status, MobileTimelineItemStatus::Done);
     }
 }
