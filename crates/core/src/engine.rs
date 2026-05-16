@@ -85,6 +85,15 @@ impl MobileEngine {
         self
     }
 
+    pub fn with_approval_session(mut self, approval_session: ApprovalSessionPolicy) -> Self {
+        self.approval_session = approval_session;
+        self
+    }
+
+    pub fn approval_session(&self) -> &ApprovalSessionPolicy {
+        &self.approval_session
+    }
+
     pub fn with_event_observer<F>(mut self, observer: F) -> Self
     where
         F: Fn(AgentEvent) + 'static,
