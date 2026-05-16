@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!--
+        No storage permission is required for ACTION_OPEN_DOCUMENT.
+        The bridge copies selected content:// streams into app-private filesDir.
+    -->
+</manifest>
