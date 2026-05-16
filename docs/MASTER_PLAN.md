@@ -128,7 +128,7 @@ Already done:
 
 Remaining checklist:
 
-- [ ] Auto-create pre-tool snapshot before approved local write/shell/git operations.
+- [x] Auto-create pre-tool snapshot before approved local write/shell/git operations.
 - [ ] Add PC-gateway snapshot path for remote workspaces.
 - [ ] Auto-create post-turn snapshot after successful turns with file changes.
 - [ ] Emit snapshot events to the mobile timeline.
@@ -277,7 +277,7 @@ Acceptance criteria:
 | Runtime HTTP/SSE API | Keep later | Missing |
 | Durable task queue | Keep | Missing |
 | LSP diagnostics | Keep, PC-first | Missing |
-| Snapshots/rollback | Keep, mobile-safe file-copy | Partial |
+| Snapshots/rollback | Keep, mobile-safe file-copy | Partial: core service, tools, local pre-tool hook |
 | OS sandbox | Replace/augment with executor policies | Missing |
 | MCP | Keep, PC-first | Missing |
 | Skills | Keep after core | Missing |
@@ -296,7 +296,7 @@ The next implementation sequence is fixed:
 2. [ ] Fix compile/test failures surfaced by CI.
 3. [x] Fix approval-session grant persistence.
 4. [x] Add `apply_patch` tool.
-5. [ ] Auto-create pre-tool snapshots before destructive approved tools.
+5. [x] Auto-create pre-tool snapshots before destructive approved local tools.
 6. [ ] Add PC diagnostics for Rust projects.
 7. [ ] Add snapshot/diagnostics UI panels.
 8. [ ] Add Termux executor bridge.
@@ -310,6 +310,7 @@ The next implementation sequence is fixed:
 - 2026-05-16: Added CI `cargo check --workspace` and `cargo test --workspace` jobs plus Android bridge static checks.
 - 2026-05-16: Fixed approval-session persistence for mutable `MobileEngine` and stateless mobile runner callbacks via `ApprovalSessionRuntimeStore`.
 - 2026-05-16: Added operation-based atomic `apply_patch` tool and registered it in the default mobile tool registry.
+- 2026-05-16: Added local pre-tool snapshots inside `tool_loop::execute_approved_call()` for destructive local/Termux tools; PC-gateway snapshot path remains separate.
 
 ## 6. Definition of done for the project
 
