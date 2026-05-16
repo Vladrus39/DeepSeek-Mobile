@@ -7,13 +7,13 @@
 //! on Android.
 
 use crate::executor::CommandRequest;
-use crate::pc_gateway::PcGatewayResponse;
+use crate::pc_gateway::{PcDiagnostic, PcDiagnosticSeverity, PcGatewayResponse};
 use crate::pc_gateway_client::PcGatewayClient;
 use crate::tool_call::ToolCallRequest;
 use crate::tools::{ToolContext, ToolRegistry, ToolResult};
 use crate::workspace::ExecutorKind;
 use anyhow::{anyhow, Result};
-use serde_json::{json, Value};
+use serde_json::{json, Map, Value};
 use std::path::PathBuf;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -107,7 +107,10 @@ impl<'a> ToolExecutionCoordinator<'a> {
             "write_file" => {
                 let path = required_str(&call.arguments, "path")?;
                 let content = required_str(&call.arguments, "content")?;
-                gateway_response_to_tool_result(client.write_file(workspace_id, path, content).await?)
+                let response = client.write_file(workspace_id.clone(), path, content).await?;
+                let mut result = gateway_response_to_tool_result(response)?;
+                attach_post_edit_diagnostics(client, &workspace_id, Some(path.to_string()), &mut result).await?;
+                Ok(result)
             }
             "list_dir" => {
                 let path = optional_str(&call.arguments, "path").unwrap_or(".");
@@ -167,11 +170,105 @@ impl<'a> ToolExecutionCoordinator<'a> {
             return Err(anyhow!("search text not found in {}", path));
         }
         let updated = content.replace(search, replace);
-        let write = client.write_file(workspace_id, path, updated).await?;
+        let write = client.write_file(workspace_id.clone(), path, updated).await?;
         let mut result = gateway_response_to_tool_result(write)?;
         result.content = format!("Replaced {} occurrence(s) in {}", count, path);
+        attach_post_edit_diagnostics(client, &workspace_id, Some(path.to_string()), &mut result).await?;
         Ok(result)
     }
+}
+
+async fn attach_post_edit_diagnostics(
+    client: &PcGatewayClient,
+    workspace_id: &str,
+    path: Option<String>,
+    result: &mut ToolResult,
+) -> Result<()> {
+    match client.get_diagnostics(workspace_id.to_string(), path.clone()).await {
+        Ok(PcGatewayResponse::Diagnostics(diagnostics)) => {
+            let summary = diagnostic_summary(&diagnostics);
+            if !summary.is_empty() {
+                result.content.push_str("\n\nPost-edit diagnostics:\n");
+                result.content.push_str(&summary);
+            }
+            merge_metadata(
+                result,
+                json!({
+                    "post_edit_diagnostics": diagnostics,
+                    "post_edit_diagnostics_path": path,
+                    "post_edit_diagnostics_summary": summary,
+                }),
+            );
+        }
+        Ok(other) => {
+            merge_metadata(
+                result,
+                json!({
+                    "post_edit_diagnostics_error": format!("unexpected diagnostics response: {:?}", other),
+                    "post_edit_diagnostics_path": path,
+                }),
+            );
+        }
+        Err(error) => {
+            merge_metadata(
+                result,
+                json!({
+                    "post_edit_diagnostics_error": error.to_string(),
+                    "post_edit_diagnostics_path": path,
+                }),
+            );
+        }
+    }
+    Ok(())
+}
+
+fn diagnostic_summary(diagnostics: &[PcDiagnostic]) -> String {
+    if diagnostics.is_empty() {
+        return "No diagnostics reported.".to_string();
+    }
+    let error_count = diagnostics
+        .iter()
+        .filter(|item| item.severity == PcDiagnosticSeverity::Error)
+        .count();
+    let warning_count = diagnostics
+        .iter()
+        .filter(|item| item.severity == PcDiagnosticSeverity::Warning)
+        .count();
+    let mut lines = vec![format!(
+        "{} diagnostic(s): {} error(s), {} warning(s)",
+        diagnostics.len(),
+        error_count,
+        warning_count
+    )];
+    for item in diagnostics.iter().take(8) {
+        lines.push(format!(
+            "- {:?} {}:{}:{} — {}",
+            item.severity, item.path, item.line, item.column, item.message
+        ));
+    }
+    if diagnostics.len() > 8 {
+        lines.push(format!("- ... {} more diagnostic(s)", diagnostics.len() - 8));
+    }
+    lines.join("\n")
+}
+
+fn merge_metadata(result: &mut ToolResult, new_metadata: Value) {
+    let mut base = match result.metadata.take() {
+        Some(Value::Object(object)) => object,
+        Some(other) => {
+            let mut object = Map::new();
+            object.insert("previous_metadata".to_string(), other);
+            object
+        }
+        None => Map::new(),
+    };
+
+    if let Value::Object(object) = new_metadata {
+        for (key, value) in object {
+            base.insert(key, value);
+        }
+    }
+    result.metadata = Some(Value::Object(base));
 }
 
 fn gateway_response_to_tool_result(response: PcGatewayResponse) -> Result<ToolResult> {
@@ -248,11 +345,12 @@ fn shell_words(command: &str) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{command_request_from_shell, ToolExecutionCoordinator, ToolExecutionTarget};
+    use super::{command_request_from_shell, diagnostic_summary, merge_metadata, ToolExecutionCoordinator, ToolExecutionTarget};
+    use crate::pc_gateway::{PcDiagnostic, PcDiagnosticSeverity};
     use crate::tool_call::{ToolCallRequest, ToolCallSource};
-    use crate::tools::{ToolContext, ToolRegistry};
+    use crate::tools::{ToolContext, ToolRegistry, ToolResult};
     use crate::workspace::{ExecutorKind, Workspace};
-    use serde_json::json;
+    use serde_json::{json, Value};
 
     #[test]
     fn routes_pc_workspace_tools_to_pc_gateway() {
@@ -279,5 +377,29 @@ mod tests {
         let request = command_request_from_shell("cargo check --workspace", "/project".into()).unwrap();
         assert_eq!(request.program, "cargo");
         assert_eq!(request.args, vec!["check", "--workspace"]);
+    }
+
+    #[test]
+    fn summarizes_post_edit_diagnostics() {
+        let diagnostics = vec![PcDiagnostic {
+            path: "src/main.rs".to_string(),
+            line: 10,
+            column: 5,
+            severity: PcDiagnosticSeverity::Error,
+            message: "cannot find value".to_string(),
+            source: Some("cargo check".to_string()),
+        }];
+        let summary = diagnostic_summary(&diagnostics);
+        assert!(summary.contains("1 diagnostic"));
+        assert!(summary.contains("cannot find value"));
+    }
+
+    #[test]
+    fn merges_post_edit_diagnostics_metadata() {
+        let mut result = ToolResult::success("ok").with_metadata(json!({"path":"src/main.rs"}));
+        merge_metadata(&mut result, json!({"post_edit_diagnostics_summary":"No diagnostics reported."}));
+        let metadata = result.metadata.unwrap();
+        assert_eq!(metadata["path"], Value::String("src/main.rs".to_string()));
+        assert_eq!(metadata["post_edit_diagnostics_summary"], Value::String("No diagnostics reported.".to_string()));
     }
 }
