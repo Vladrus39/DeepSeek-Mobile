@@ -1,17 +1,14 @@
 use crate::mobile_drawer::CockpitSection;
 use crate::pc_pairing_panel::pc_pairing_panel;
 use crate::pc_pairing_state::PcPairingUiState;
+use crate::project_files_panel::project_files_panel;
 use dioxus::prelude::*;
 
 pub fn cockpit_section_panel(section: CockpitSection, pc_pairing_state: &PcPairingUiState) -> Element {
     match section {
         CockpitSection::Chat => chat_empty_state(),
         CockpitSection::PcHost => pc_pairing_panel(pc_pairing_state),
-        CockpitSection::Files => placeholder_panel(
-            "Files",
-            "Project tree, opened files and diffs will live here.",
-            &["Workspace tree", "Open file", "Diff viewer", "Apply patch preview"],
-        ),
+        CockpitSection::Files => project_files_panel(),
         CockpitSection::Terminal => placeholder_panel(
             "Terminal",
             "Command output from PC-host, Termux or remote executors.",
