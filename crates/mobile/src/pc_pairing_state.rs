@@ -1,5 +1,5 @@
 use crate::pc_pairing_manager::{MobilePcPairingExport, MobilePcPairingRequest, PcPairingManager};
-use deepseek_mobile_core::PcGatewayEndpointHealth;
+use deepseek_mobile_core::{PcGatewayDiscoveryReport, PcGatewayDiscoveryStatus, PcGatewayEndpointHealth};
 use std::path::{Path, PathBuf};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -18,6 +18,7 @@ pub struct PcPairingUiState {
     pub status: PcPairingUiStatus,
     pub request: Option<MobilePcPairingRequest>,
     pub export: Option<MobilePcPairingExport>,
+    pub discovery_report: Option<PcGatewayDiscoveryReport>,
     pub active_endpoint: Option<PcGatewayEndpointHealth>,
     pub endpoint_health: Vec<PcGatewayEndpointHealth>,
     pub last_error: Option<String>,
@@ -29,6 +30,7 @@ impl Default for PcPairingUiState {
             status: PcPairingUiStatus::NotConfigured,
             request: None,
             export: None,
+            discovery_report: None,
             active_endpoint: None,
             endpoint_health: Vec::new(),
             last_error: None,
@@ -40,6 +42,7 @@ impl PcPairingUiState {
     pub fn configure(&mut self, request: MobilePcPairingRequest) {
         self.request = Some(request);
         self.export = None;
+        self.discovery_report = None;
         self.active_endpoint = None;
         self.endpoint_health.clear();
         self.last_error = None;
@@ -79,6 +82,19 @@ impl PcPairingUiState {
 
     pub fn mark_offline(&mut self) {
         self.status = PcPairingUiStatus::Offline;
+    }
+
+    pub fn apply_discovery_report(&mut self, report: PcGatewayDiscoveryReport) {
+        let has_online = report.candidates.iter().any(|candidate| candidate.status == PcGatewayDiscoveryStatus::Online);
+        let has_candidates = !report.endpoint_candidates().is_empty();
+        self.discovery_report = Some(report);
+        if has_online {
+            self.mark_online();
+        } else if has_candidates {
+            self.mark_waiting_for_pc();
+        } else {
+            self.mark_offline();
+        }
     }
 
     pub fn apply_endpoint_health(&mut self, active: Option<PcGatewayEndpointHealth>, all: Vec<PcGatewayEndpointHealth>) {
@@ -167,6 +183,38 @@ impl PcPairingUiState {
             })
             .collect()
     }
+
+    pub fn discovery_rows(&self) -> Vec<String> {
+        let Some(report) = self.discovery_report.as_ref() else {
+            return vec!["No discovery scan has been imported yet.".to_string()];
+        };
+        if report.candidates.is_empty() {
+            return vec!["Discovery scan returned no PC gateway candidates.".to_string()];
+        }
+        report
+            .candidates
+            .iter()
+            .map(|candidate| {
+                let latency = candidate
+                    .latency_ms
+                    .map(|value| format!("{} ms", value))
+                    .unwrap_or_else(|| "not probed".to_string());
+                let message = candidate
+                    .message
+                    .as_ref()
+                    .map(|message| format!(" | {}", message))
+                    .unwrap_or_default();
+                format!(
+                    "{:?} — {:?} — {} — {}{}",
+                    candidate.source,
+                    candidate.status,
+                    candidate.endpoint.base_url,
+                    latency,
+                    message
+                )
+            })
+            .collect()
+    }
 }
 
 fn format_latency(latency_ms: Option<u128>) -> String {
@@ -179,7 +227,7 @@ fn format_latency(latency_ms: Option<u128>) -> String {
 mod tests {
     use super::{PcPairingUiState, PcPairingUiStatus};
     use crate::pc_pairing_manager::MobilePcPairingRequest;
-    use deepseek_mobile_core::PcGatewayEndpointHealth;
+    use deepseek_mobile_core::{PcGatewayDiscoveryService, PcGatewayEndpointHealth, DEFAULT_PC_GATEWAY_PORT};
     use std::fs;
     use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -245,6 +293,16 @@ mod tests {
         assert!(state.status_text().contains("same-lan"));
         assert!(state.active_route_text().contains("42 ms"));
         assert_eq!(state.endpoint_health_rows().len(), 1);
+    }
+
+    #[test]
+    fn discovery_report_is_visible_in_rows() {
+        let mut state = PcPairingUiState::default();
+        let report = PcGatewayDiscoveryService::default()
+            .from_manual_hosts(vec!["192.168.1.10".to_string()], DEFAULT_PC_GATEWAY_PORT);
+        state.apply_discovery_report(report);
+        assert_eq!(state.status, PcPairingUiStatus::WaitingForPc);
+        assert!(state.discovery_rows()[0].contains("192.168.1.10"));
     }
 
     fn sample_request() -> MobilePcPairingRequest {
