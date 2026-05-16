@@ -10,12 +10,15 @@ use crate::approval_card::ApprovalCardView;
 use crate::approval_session::{ApprovalSessionGrant, ApprovalSessionPolicy};
 use crate::events::{AgentEvent, ToolCallEvent, ToolResultEvent};
 use crate::runtime_store::ApprovalDecisionRecord;
+use crate::snapshots::WorkspaceSnapshotService;
 use crate::tool_call::{parse_tool_calls_from_text, ToolCallRequest};
 use crate::tool_execution::ToolExecutionCoordinator;
 use crate::tools::{ToolContext, ToolRegistry, ToolResult};
 use crate::turn::{TurnContext, TurnToolCall};
+use crate::workspace::ExecutorKind;
 use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -169,8 +172,13 @@ pub async fn execute_approved_call(
     call: &ToolCallRequest,
 ) -> Result<ToolResult> {
     turn.record_tool_call(TurnToolCall::new(&call.id, &call.name, call.arguments.clone()));
+    let pre_snapshot_id = create_pre_tool_snapshot_if_needed(context, call)?;
     let coordinator = ToolExecutionCoordinator::new(registry);
-    coordinator.execute(call, context).await
+    let mut result = coordinator.execute(call, context).await?;
+    if let Some(snapshot_id) = pre_snapshot_id {
+        attach_pre_snapshot_metadata(&mut result, snapshot_id);
+    }
+    Ok(result)
 }
 
 pub fn decision_record(
@@ -186,6 +194,74 @@ pub fn decision_record(
         decision: format!("{:?}", decision),
         created_at_unix: current_unix_time(),
     }
+}
+
+fn create_pre_tool_snapshot_if_needed(
+    context: &ToolContext,
+    call: &ToolCallRequest,
+) -> Result<Option<String>> {
+    if !should_create_pre_tool_snapshot(call) || !supports_local_snapshots(context) {
+        return Ok(None);
+    }
+
+    let store_root = context
+        .workspace
+        .root
+        .join(".deepseek-mobile")
+        .join("snapshots");
+    let service = WorkspaceSnapshotService::new(context.workspace.clone(), store_root);
+    let snapshot = service.create_snapshot(format!(
+        "pre-tool snapshot before {} ({})",
+        call.name, call.id
+    ))?;
+    Ok(Some(snapshot.id))
+}
+
+fn supports_local_snapshots(context: &ToolContext) -> bool {
+    matches!(
+        context.workspace.executor,
+        ExecutorKind::LocalAndroid | ExecutorKind::Termux
+    )
+}
+
+fn should_create_pre_tool_snapshot(call: &ToolCallRequest) -> bool {
+    match call.name.as_str() {
+        "write_file" | "edit_file" | "apply_patch" | "delete_file" | "snapshot_restore" => true,
+        "file_ops" => file_ops_may_modify(&call.arguments),
+        "exec_shell" | "shell" | "run_command" | "terminal" => true,
+        "git" => git_operation_may_modify(&call.arguments),
+        "git_commit" | "git_push" | "git_pull" | "git_checkout" | "git_reset" => true,
+        _ => false,
+    }
+}
+
+fn file_ops_may_modify(arguments: &Value) -> bool {
+    arguments
+        .get("operation")
+        .and_then(Value::as_str)
+        .map(|operation| {
+            matches!(
+                operation,
+                "write" | "write_file" | "edit" | "edit_file" | "delete" | "remove" | "rm"
+            )
+        })
+        .unwrap_or(true)
+}
+
+fn git_operation_may_modify(arguments: &Value) -> bool {
+    let operation = arguments
+        .get("operation")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    !matches!(operation, "status" | "diff" | "log" | "show")
+}
+
+fn attach_pre_snapshot_metadata(result: &mut ToolResult, snapshot_id: String) {
+    let mut metadata = result.metadata.take().unwrap_or_else(|| json!({}));
+    if let Value::Object(object) = &mut metadata {
+        object.insert("pre_snapshot_id".to_string(), Value::String(snapshot_id));
+    }
+    result.metadata = Some(metadata);
 }
 
 fn push_execution_result(
@@ -240,9 +316,14 @@ fn current_unix_time() -> u64 {
 
 #[cfg(test)]
 mod tests {
-    use super::PendingToolCallApproval;
-    use crate::approval::{MobileApprovalRequest, ApprovalRisk, ToolCategory};
+    use super::{
+        pending_approval_is_serializable as _, should_create_pre_tool_snapshot,
+        supports_local_snapshots, PendingToolCallApproval,
+    };
+    use crate::approval::{ApprovalRisk, MobileApprovalRequest, ToolCategory};
     use crate::tool_call::{ToolCallRequest, ToolCallSource};
+    use crate::tools::ToolContext;
+    use crate::workspace::{ExecutorKind, Workspace};
     use serde_json::json;
 
     #[test]
@@ -258,5 +339,53 @@ mod tests {
         };
         let encoded = serde_json::to_string(&pending).expect("serialize pending approval");
         assert!(encoded.contains("write_file"));
+    }
+
+    #[test]
+    fn destructive_tools_request_pre_snapshot() {
+        assert!(should_create_pre_tool_snapshot(&ToolCallRequest::new(
+            "write_file",
+            json!({"path":"README.md","content":"x"}),
+            ToolCallSource::Manual,
+        )));
+        assert!(should_create_pre_tool_snapshot(&ToolCallRequest::new(
+            "apply_patch",
+            json!({"operations":[]}),
+            ToolCallSource::Manual,
+        )));
+        assert!(should_create_pre_tool_snapshot(&ToolCallRequest::new(
+            "exec_shell",
+            json!({"command":"cargo test"}),
+            ToolCallSource::Manual,
+        )));
+    }
+
+    #[test]
+    fn read_only_tools_do_not_request_pre_snapshot() {
+        assert!(!should_create_pre_tool_snapshot(&ToolCallRequest::new(
+            "read_file",
+            json!({"path":"README.md"}),
+            ToolCallSource::Manual,
+        )));
+        assert!(!should_create_pre_tool_snapshot(&ToolCallRequest::new(
+            "git",
+            json!({"operation":"status"}),
+            ToolCallSource::Manual,
+        )));
+        assert!(!should_create_pre_tool_snapshot(&ToolCallRequest::new(
+            "git",
+            json!({"operation":"diff"}),
+            ToolCallSource::Manual,
+        )));
+    }
+
+    #[test]
+    fn snapshots_are_only_local_for_now() {
+        let local = ToolContext::new(Workspace::new("w1", "Local", "/tmp/local", ExecutorKind::LocalAndroid));
+        let termux = ToolContext::new(Workspace::new("w2", "Termux", "/tmp/termux", ExecutorKind::Termux));
+        let pc = ToolContext::new(Workspace::new("w3", "PC", "/tmp/pc", ExecutorKind::PcGateway));
+        assert!(supports_local_snapshots(&local));
+        assert!(supports_local_snapshots(&termux));
+        assert!(!supports_local_snapshots(&pc));
     }
 }
