@@ -6,6 +6,7 @@
 
 pub mod file_ops;
 pub mod git;
+pub mod patch;
 pub mod shell;
 pub mod snapshots;
 
@@ -212,6 +213,7 @@ pub fn default_mobile_tool_registry() -> ToolRegistry {
     registry.register(Box::new(file_ops::ListDirTool));
     registry.register(Box::new(file_ops::EditFileTool));
     registry.register(Box::new(file_ops::FileOpsTool));
+    registry.register(Box::new(patch::ApplyPatchTool));
     registry.register(Box::new(shell::ShellTool));
     registry.register(Box::new(git::GitTool));
     registry.register(Box::new(snapshots::CreateSnapshotTool));
@@ -243,6 +245,7 @@ mod tests {
         assert!(names.contains(&"write_file".to_string()));
         assert!(names.contains(&"list_dir".to_string()));
         assert!(names.contains(&"edit_file".to_string()));
+        assert!(names.contains(&"apply_patch".to_string()));
         assert!(names.contains(&"exec_shell".to_string()));
         assert!(names.contains(&"git".to_string()));
         assert!(names.contains(&"snapshot_create".to_string()));
