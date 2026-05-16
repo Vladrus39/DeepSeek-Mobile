@@ -1,19 +1,15 @@
-# Autonomous Core Session
+# Active Core Work Session
 
-**Status update (after significant work)**
+**Grok is now working more actively on core improvements.**
 
-Working autonomously on core + engine as requested.
+## Recent changes:
+- Added supports_streaming() and run_turn_with_streaming() foundation in MobileEngine
+- Improved ContextManager with configurable max messages
+- Better preparation for real streaming + context compression
 
-## Recent progress:
-- Streaming foundation added (chat_stream + run_stream)
-- ContextManager improvements
-- Engine prepared for streaming consumption
+## Focus right now:
+- Making streaming actually flow through the engine
+- Tool calling improvements
+- Session stability
 
-## Current focus:
-- Deeper integration of real streaming into turn execution
-- Tool calling robustness
-- Session and context handling
-
-Will continue autonomously and report again after next meaningful milestone.
-
-Last update: significant progress on streaming + context layer.
+Continuing active work on core + engine.

@@ -1,25 +1,25 @@
-//! Context Manager - improved for better message history handling
+//! ContextManager - improved version
 
 use crate::api_client::Message;
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct ContextManager {
-    // TODO: Add smarter compression / summarization logic
+    max_messages: usize,
 }
 
 impl ContextManager {
+    pub fn new(max_messages: usize) -> Self {
+        Self { max_messages }
+    }
+
     pub fn plan_for_messages(&self, messages: &[Message]) -> CompressionPlan {
-        // Simple heuristic for now
-        if messages.len() > 20 {
+        if messages.len() > self.max_messages {
             CompressionPlan {
                 should_compress: true,
                 strategy: CompressionStrategy::TruncateOld,
             }
         } else {
-            CompressionPlan {
-                should_compress: false,
-                strategy: CompressionStrategy::None,
-            }
+            CompressionPlan { should_compress: false, strategy: CompressionStrategy::None }
         }
     }
 }
