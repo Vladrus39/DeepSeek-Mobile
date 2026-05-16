@@ -12,12 +12,41 @@ use crate::pc_gateway::{
 };
 use anyhow::{anyhow, Result};
 use reqwest::Client;
+use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
+use std::sync::{Arc, Mutex};
+use std::time::Instant;
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PcGatewayEndpointHealth {
+    pub label: String,
+    pub base_url: String,
+    pub success_count: u64,
+    pub failure_count: u64,
+    pub last_latency_ms: Option<u128>,
+    pub last_error: Option<String>,
+}
+
+impl PcGatewayEndpointHealth {
+    pub fn score(&self) -> i64 {
+        let latency_penalty = self
+            .last_latency_ms
+            .map(|latency| (latency / 100).min(100) as i64)
+            .unwrap_or(0);
+        (self.success_count as i64 * 20) - (self.failure_count as i64 * 30) - latency_penalty
+    }
+
+    pub fn is_healthy(&self) -> bool {
+        self.success_count > 0 && self.failure_count <= self.success_count + 2
+    }
+}
 
 #[derive(Clone)]
 pub struct PcGatewayClient {
     http: Client,
     config: PcGatewayConfig,
     policy: PcGatewaySecurityPolicy,
+    endpoint_health: Arc<Mutex<BTreeMap<String, PcGatewayEndpointHealth>>>,
 }
 
 impl PcGatewayClient {
@@ -26,6 +55,7 @@ impl PcGatewayClient {
             http: Client::new(),
             config,
             policy: PcGatewaySecurityPolicy::default(),
+            endpoint_health: Arc::new(Mutex::new(BTreeMap::new())),
         }
     }
 
@@ -43,7 +73,41 @@ impl PcGatewayClient {
     }
 
     pub fn endpoint_plan(&self) -> Vec<PcGatewayEndpointCandidate> {
-        self.config.endpoint_plan()
+        let mut plan = self.config.endpoint_plan();
+        let health = self.endpoint_health_snapshot_by_url();
+        plan.sort_by(|left, right| {
+            let left_health = health.get(&left.base_url).map(PcGatewayEndpointHealth::score).unwrap_or(0);
+            let right_health = health.get(&right.base_url).map(PcGatewayEndpointHealth::score).unwrap_or(0);
+            let left_score = left.priority as i64 + left_health;
+            let right_score = right.priority as i64 + right_health;
+            right_score
+                .cmp(&left_score)
+                .then(right.priority.cmp(&left.priority))
+                .then(left.label.cmp(&right.label))
+                .then(left.base_url.cmp(&right.base_url))
+        });
+        plan
+    }
+
+    pub fn endpoint_health_snapshot(&self) -> Vec<PcGatewayEndpointHealth> {
+        let mut values: Vec<_> = self
+            .endpoint_health_snapshot_by_url()
+            .into_values()
+            .collect();
+        values.sort_by(|left, right| {
+            right
+                .score()
+                .cmp(&left.score())
+                .then(left.label.cmp(&right.label))
+                .then(left.base_url.cmp(&right.base_url))
+        });
+        values
+    }
+
+    pub fn active_endpoint(&self) -> Option<PcGatewayEndpointHealth> {
+        self.endpoint_health_snapshot()
+            .into_iter()
+            .find(PcGatewayEndpointHealth::is_healthy)
     }
 
     pub async fn health(&self) -> Result<PcGatewayHealth> {
@@ -197,15 +261,23 @@ impl PcGatewayClient {
         let mut errors = Vec::new();
         for endpoint in self.endpoint_plan() {
             if let Err(error) = endpoint.validate(self.config.allow_http_on_local_network) {
+                self.record_endpoint_failure(&endpoint, error.clone());
                 errors.push(format!("{} {} rejected: {}", endpoint.label, endpoint.base_url, error));
                 continue;
             }
+            let started_at = Instant::now();
             match self.send_to_endpoint(request.clone(), &endpoint).await {
-                Ok(response) => return Ok(response),
-                Err(error) => errors.push(format!(
-                    "{} {} failed: {}",
-                    endpoint.label, endpoint.base_url, error
-                )),
+                Ok(response) => {
+                    self.record_endpoint_success(&endpoint, started_at.elapsed().as_millis());
+                    return Ok(response);
+                }
+                Err(error) => {
+                    self.record_endpoint_failure(&endpoint, error.to_string());
+                    errors.push(format!(
+                        "{} {} failed: {}",
+                        endpoint.label, endpoint.base_url, error
+                    ));
+                }
             }
         }
 
@@ -244,11 +316,52 @@ impl PcGatewayClient {
             response => Ok(response),
         }
     }
+
+    fn record_endpoint_success(&self, endpoint: &PcGatewayEndpointCandidate, latency_ms: u128) {
+        if let Ok(mut health) = self.endpoint_health.lock() {
+            let item = health
+                .entry(endpoint.base_url.clone())
+                .or_insert_with(|| health_record(endpoint));
+            item.label = endpoint.label.clone();
+            item.success_count = item.success_count.saturating_add(1);
+            item.last_latency_ms = Some(latency_ms);
+            item.last_error = None;
+        }
+    }
+
+    fn record_endpoint_failure(&self, endpoint: &PcGatewayEndpointCandidate, error: String) {
+        if let Ok(mut health) = self.endpoint_health.lock() {
+            let item = health
+                .entry(endpoint.base_url.clone())
+                .or_insert_with(|| health_record(endpoint));
+            item.label = endpoint.label.clone();
+            item.failure_count = item.failure_count.saturating_add(1);
+            item.last_error = Some(error);
+        }
+    }
+
+    fn endpoint_health_snapshot_by_url(&self) -> BTreeMap<String, PcGatewayEndpointHealth> {
+        self.endpoint_health
+            .lock()
+            .map(|health| health.clone())
+            .unwrap_or_default()
+    }
+}
+
+fn health_record(endpoint: &PcGatewayEndpointCandidate) -> PcGatewayEndpointHealth {
+    PcGatewayEndpointHealth {
+        label: endpoint.label.clone(),
+        base_url: endpoint.base_url.clone(),
+        success_count: 0,
+        failure_count: 0,
+        last_latency_ms: None,
+        last_error: None,
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::PcGatewayClient;
+    use super::{PcGatewayClient, PcGatewayEndpointHealth};
     use crate::executor::CommandRequest;
     use crate::pc_gateway::{PcGatewayConfig, PcGatewayEndpointCandidate, PcGatewayTransportMode};
     use std::path::PathBuf;
@@ -291,6 +404,29 @@ mod tests {
         assert_eq!(plan[0].label, "direct-link");
         assert_eq!(plan[1].label, "same-lan");
         assert_eq!(plan[2].label, "primary");
+    }
+
+    #[test]
+    fn endpoint_health_score_rewards_success_and_penalizes_failure() {
+        let good = PcGatewayEndpointHealth {
+            label: "same-lan".to_string(),
+            base_url: "http://192.168.1.10:8787".to_string(),
+            success_count: 3,
+            failure_count: 0,
+            last_latency_ms: Some(20),
+            last_error: None,
+        };
+        let bad = PcGatewayEndpointHealth {
+            label: "same-lan".to_string(),
+            base_url: "http://192.168.1.10:8787".to_string(),
+            success_count: 0,
+            failure_count: 3,
+            last_latency_ms: Some(20),
+            last_error: Some("timeout".to_string()),
+        };
+        assert!(good.score() > bad.score());
+        assert!(good.is_healthy());
+        assert!(!bad.is_healthy());
     }
 
     #[test]
