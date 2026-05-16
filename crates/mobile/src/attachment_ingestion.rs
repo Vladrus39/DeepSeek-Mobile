@@ -9,6 +9,7 @@ pub const MAX_INGEST_CHARS: usize = 120_000;
 pub enum AttachmentIngestionStatus {
     NotReadable,
     NoLocalPath,
+    NeedsNativeSandboxCopy { uri: String },
     TooLarge { size_bytes: u64, max_bytes: u64 },
     UnsupportedKind,
     Read { char_count: usize, truncated: bool },
@@ -30,6 +31,12 @@ pub fn ingest_attachment_text(mut attachment: ChatAttachmentDraft) -> Attachment
     }
 
     let Some(path) = attachment.path.clone() else {
+        if let Some(uri) = attachment.uri.clone() {
+            return AttachmentIngestionResult {
+                attachment,
+                status: AttachmentIngestionStatus::NeedsNativeSandboxCopy { uri },
+            };
+        }
         return AttachmentIngestionResult {
             attachment,
             status: AttachmentIngestionStatus::NoLocalPath,
@@ -101,6 +108,10 @@ pub fn ingestion_status_message(result: &AttachmentIngestionResult) -> Option<St
             char_count,
             if *truncated { ", truncated" } else { "" }
         )),
+        AttachmentIngestionStatus::NeedsNativeSandboxCopy { uri } => Some(format!(
+            "Attachment has Android content URI but no sandbox copy yet: {} ({})",
+            result.attachment.display_name, uri
+        )),
         AttachmentIngestionStatus::TooLarge {
             size_bytes,
             max_bytes,
@@ -123,8 +134,38 @@ fn is_text_ingestable(attachment: &ChatAttachmentDraft) -> bool {
         || attachment
             .mime_type
             .as_deref()
-            .map(|mime| mime.starts_with("text/") || mime == "application/json")
+            .map(is_text_mime_type)
             .unwrap_or(false)
+        || is_source_like_name(&attachment.display_name)
+}
+
+fn is_text_mime_type(mime: &str) -> bool {
+    mime.starts_with("text/")
+        || matches!(
+            mime,
+            "application/json"
+                | "application/javascript"
+                | "application/typescript"
+                | "application/xml"
+                | "application/x-yaml"
+                | "application/toml"
+                | "application/x-sh"
+                | "application/x-python-code"
+        )
+}
+
+fn is_source_like_name(name: &str) -> bool {
+    let lower = name.to_ascii_lowercase();
+    [
+        ".rs", ".py", ".js", ".ts", ".tsx", ".jsx", ".json", ".md", ".toml", ".yaml",
+        ".yml", ".txt", ".html", ".css", ".xml", ".sh", ".bash", ".zsh", ".sql",
+        ".go", ".java", ".kt", ".swift", ".c", ".h", ".cpp", ".hpp", ".cs", ".php",
+        ".rb", ".lua", ".dockerfile",
+    ]
+    .iter()
+    .any(|suffix| lower.ends_with(suffix))
+        || lower == "dockerfile"
+        || lower == "makefile"
 }
 
 fn read_error_label(error: io::Error) -> String {
@@ -167,6 +208,18 @@ mod tests {
     }
 
     #[test]
+    fn reports_content_uri_without_sandbox_copy() {
+        let attachment = ChatAttachmentDraft::new_document("a1", "main.rs")
+            .with_uri("content://docs/main.rs")
+            .with_mime_type("text/plain");
+        let result = ingest_attachment_text(attachment);
+        assert!(matches!(
+            result.status,
+            AttachmentIngestionStatus::NeedsNativeSandboxCopy { .. }
+        ));
+    }
+
+    #[test]
     fn skips_attachment_without_local_path() {
         let attachment = ChatAttachmentDraft::new_document("a1", "attachment.txt")
             .with_mime_type("text/plain");
@@ -189,6 +242,16 @@ mod tests {
             AttachmentIngestionStatus::TooLarge { .. }
         ));
 
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn source_like_filename_is_ingestable_even_without_text_mime() {
+        let path = unique_path("Cargo.toml");
+        fs::write(&path, "[package]\nname = \"demo\"\n").expect("write test file");
+        let attachment = ChatAttachmentDraft::new_document("a1", "Cargo.toml").with_path(&path);
+        let result = ingest_attachment_text(attachment);
+        assert!(matches!(result.status, AttachmentIngestionStatus::Read { .. }));
         let _ = fs::remove_file(path);
     }
 }
