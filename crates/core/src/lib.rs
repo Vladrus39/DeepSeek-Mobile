@@ -27,6 +27,7 @@ pub mod turn;
 pub mod workspace;
 pub mod workspace_connection;
 pub mod workspace_connection_store;
+pub mod workspace_diagnostics;
 pub mod workspace_files;
 
 pub use agent::DeepSeekAgent;
@@ -62,8 +63,8 @@ pub use pc_gateway::{
     is_private_or_loopback_http_url, validate_gateway_base_url,
     validate_gateway_base_url_for_transport, PcDiagnostic, PcDiagnosticSeverity,
     PcEnvironmentDescriptor, PcEnvironmentKind, PcGatewayCapability, PcGatewayConfig,
-    PcGatewayConnectionStatus, PcGatewayDirEntry, PcGatewayError, PcGatewayHealth,
-    PcGatewayPairingRequest, PcGatewayPairingResponse, PcGatewayRequest,
+    PcGatewayConnectionStatus, PcGatewayDirEntry, PcGatewayEndpointCandidate, PcGatewayError,
+    PcGatewayHealth, PcGatewayPairingRequest, PcGatewayPairingResponse, PcGatewayRequest,
     PcGatewayRequestEnvelope, PcGatewayResponse, PcGatewayResponseEnvelope,
     PcGatewaySecurityPolicy, PcGatewayTransportMode, PcGatewayTrustLevel, PcPreviewDescriptor,
     PcTaskDescriptor, PcTaskKind, PcTerminalSession, PcWorkspaceGrant, PcWorkspaceIndexSummary,
@@ -94,6 +95,9 @@ pub use workspace_connection::{
     WorkspaceSelectionPolicy,
 };
 pub use workspace_connection_store::{WorkspaceConnectionStore, WorkspaceConnectionStoreFile};
+pub use workspace_diagnostics::{
+    WorkspaceDiagnosticsReport, WorkspaceDiagnosticsService, WorkspaceDiagnosticsStatus,
+};
 pub use workspace_files::{WorkspaceFileEntry, WorkspaceFileService};
 
 pub struct DeepSeekCore {
