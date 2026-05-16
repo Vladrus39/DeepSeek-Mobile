@@ -102,6 +102,14 @@ pub enum AndroidDocumentPickerCallback {
 }
 
 impl AndroidDocumentPickerCallback {
+    pub fn request_id(&self) -> &str {
+        match self {
+            Self::Picked { request_id, .. }
+            | Self::Cancelled { request_id }
+            | Self::Failed { request_id, .. } => request_id,
+        }
+    }
+
     pub fn into_native_event(self) -> NativeMobileEvent {
         match self {
             Self::Picked { documents, .. } => NativeMobileEvent::DocumentsPicked(
@@ -138,6 +146,14 @@ mod tests {
         assert_eq!(command.category, "android.intent.category.OPENABLE");
         assert!(command.allow_multiple);
         assert!(command.mime_types.contains(&"application/pdf".to_string()));
+    }
+
+    #[test]
+    fn callback_exposes_request_id_for_bridge_correlation() {
+        let callback = AndroidDocumentPickerCallback::Cancelled {
+            request_id: "req-42".to_string(),
+        };
+        assert_eq!(callback.request_id(), "req-42");
     }
 
     #[test]
