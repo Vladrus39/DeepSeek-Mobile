@@ -1,6 +1,7 @@
 # DeepSeek Mobile master implementation plan
 
 Created: 2026-05-16
+Last updated: 2026-05-16
 
 This is the working plan for completing DeepSeek Mobile without losing any original DeepSeek TUI capability that matters for a phone-first coding agent.
 
@@ -16,6 +17,7 @@ Current project audit: `docs/PROJECT_AUDIT.md`.
 4. Every newly added subsystem must be connected end-to-end: core contract, tool/engine wiring, runtime persistence, UI surface or documented host integration.
 5. No silent placeholders. A partial implementation must expose its missing runtime dependency clearly.
 6. Every feature must have at least one test or a documented manual verification path.
+7. Update this master plan after every closed implementation item.
 
 ## 1. Current system map
 
@@ -77,20 +79,21 @@ Goal: repository must build, tests must run, and all already-added pieces must b
 
 Checklist:
 
-- [ ] Run `cargo check --workspace` in CI and fix every compile error.
-- [ ] Run `cargo test --workspace` in CI and fix failing tests.
-- [ ] Verify `ToolExecutionCoordinator` is used by `tool_loop` for all tool calls.
-- [ ] Fix approval-session grant persistence across turns.
-- [ ] Add a lightweight system-map test for default tool registry names.
+- [x] Add CI step for `cargo check --workspace`.
+- [x] Add CI step for `cargo test --workspace`.
+- [ ] Fix every compile/test failure surfaced by CI.
+- [x] Verify `ToolExecutionCoordinator` is used by `tool_loop` for all tool calls.
+- [x] Fix approval-session grant persistence across turns.
+- [x] Add a lightweight system-map test for default tool registry names.
 - [ ] Add manual Android bridge verification notes until a final Android host exists.
-- [ ] Make CI failure visible on every push and pull request.
+- [x] Make CI failure visible on every push and pull request.
 
 Acceptance criteria:
 
 - `cargo check --workspace` passes.
 - `cargo test --workspace` passes.
-- Session approval grants are not lost between turns in one engine instance.
-- The default registry includes file, shell, git and snapshot tools.
+- Session approval grants are not lost between turns in one engine instance or stateless mobile runner callback.
+- The default registry includes file, shell, git, snapshot and patch tools.
 
 ### P1 — Core tool parity
 
@@ -98,8 +101,9 @@ Goal: close the most important original DeepSeek TUI tool gaps while keeping mob
 
 Checklist:
 
-- [ ] Add `apply_patch` as a first-class tool.
-- [ ] Add `delete_file` with approval.
+- [x] Add `apply_patch` as a first-class tool.
+- [ ] Add optional unified-diff parser compatibility for `apply_patch`.
+- [ ] Add `delete_file` as a first-class tool with approval.
 - [ ] Add `move_file` / `copy_file` with approval when writing.
 - [ ] Add `read_many_files` or bounded project search.
 - [ ] Upgrade `git` tool from contract placeholder to real routed operations.
@@ -124,7 +128,8 @@ Already done:
 
 Remaining checklist:
 
-- [ ] Auto-create pre-turn snapshot before approved write/shell/git operations.
+- [ ] Auto-create pre-tool snapshot before approved local write/shell/git operations.
+- [ ] Add PC-gateway snapshot path for remote workspaces.
 - [ ] Auto-create post-turn snapshot after successful turns with file changes.
 - [ ] Emit snapshot events to the mobile timeline.
 - [ ] Add mobile restore panel.
@@ -265,7 +270,7 @@ Acceptance criteria:
 | OpenAI-compatible DeepSeek streaming | Keep | Mostly done |
 | Reasoning block streaming | Keep later | Partial |
 | File tools | Keep and adapt | Partial |
-| Apply patch | Keep | Missing |
+| Apply patch | Keep mobile-safe operation batch first; add unified diff later | Partial/done core |
 | Shell execution | Route to PC/Termux | Partial |
 | Git tools | Keep with mobile UI | Partial |
 | Web/search/fetch | Keep with approval | Missing |
@@ -287,19 +292,26 @@ Acceptance criteria:
 
 The next implementation sequence is fixed:
 
-1. Strengthen CI from `cargo check` to `cargo check + cargo test`.
-2. Fix compile/test failures surfaced by CI.
-3. Fix approval-session grant persistence.
-4. Add `apply_patch` tool.
-5. Auto-create pre-turn snapshots before destructive approved tools.
-6. Add PC diagnostics for Rust projects.
-7. Add snapshot/diagnostics UI panels.
-8. Add Termux executor bridge.
-9. Add Git UI.
-10. Add background tasks.
-11. Add MCP/skills.
+1. [x] Strengthen CI from `cargo check` to `cargo check + cargo test`.
+2. [ ] Fix compile/test failures surfaced by CI.
+3. [x] Fix approval-session grant persistence.
+4. [x] Add `apply_patch` tool.
+5. [ ] Auto-create pre-tool snapshots before destructive approved tools.
+6. [ ] Add PC diagnostics for Rust projects.
+7. [ ] Add snapshot/diagnostics UI panels.
+8. [ ] Add Termux executor bridge.
+9. [ ] Add Git UI.
+10. [ ] Add background tasks.
+11. [ ] Add MCP/skills.
 
-## 5. Definition of done for the project
+## 5. Implementation progress log
+
+- 2026-05-16: Added master audit in `docs/PROJECT_AUDIT.md`.
+- 2026-05-16: Added CI `cargo check --workspace` and `cargo test --workspace` jobs plus Android bridge static checks.
+- 2026-05-16: Fixed approval-session persistence for mutable `MobileEngine` and stateless mobile runner callbacks via `ApprovalSessionRuntimeStore`.
+- 2026-05-16: Added operation-based atomic `apply_patch` tool and registered it in the default mobile tool registry.
+
+## 6. Definition of done for the project
 
 DeepSeek Mobile reaches v1 when all of the following are true:
 
