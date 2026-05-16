@@ -1,5 +1,5 @@
 use crate::document_picker::{DocumentPickerRequest, PickedDocument};
-use crate::native_document_picker::AndroidDocumentPickerCommand;
+use crate::native_document_picker::{AndroidDocumentPickerCallback, AndroidDocumentPickerCommand};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum NativeMobileCommand {
@@ -22,6 +22,7 @@ pub struct NativeBridgeState {
     pub pending_commands: Vec<NativeMobileCommand>,
     pub last_event: Option<NativeMobileEvent>,
     pub last_error: Option<String>,
+    pub active_document_picker_request_id: Option<String>,
 }
 
 impl NativeBridgeState {
@@ -48,10 +49,35 @@ impl NativeBridgeState {
             .position(|command| matches!(command, NativeMobileCommand::OpenDocumentPicker(_)))?;
         match self.pending_commands.remove(command_index) {
             NativeMobileCommand::OpenDocumentPicker(request) => {
-                Some(AndroidDocumentPickerCommand::from_request(&request))
+                let command = AndroidDocumentPickerCommand::from_request(&request);
+                self.active_document_picker_request_id = Some(command.request_id.clone());
+                Some(command)
             }
             _ => None,
         }
+    }
+
+    pub fn accept_android_document_picker_callback(
+        &mut self,
+        callback: AndroidDocumentPickerCallback,
+    ) -> NativeMobileEvent {
+        let callback_request_id = callback.request_id().to_string();
+        let event = if self
+            .active_document_picker_request_id
+            .as_deref()
+            .map(|active| active == callback_request_id)
+            .unwrap_or(false)
+        {
+            self.active_document_picker_request_id = None;
+            callback.into_native_event()
+        } else {
+            NativeMobileEvent::DocumentPickerFailed(format!(
+                "stale Android document picker callback: expected {:?}, got {}",
+                self.active_document_picker_request_id, callback_request_id
+            ))
+        };
+        self.accept_event(event.clone());
+        event
     }
 
     pub fn accept_event(&mut self, event: NativeMobileEvent) {
@@ -67,12 +93,17 @@ impl NativeBridgeState {
     pub fn has_pending_commands(&self) -> bool {
         !self.pending_commands.is_empty()
     }
+
+    pub fn is_waiting_for_document_picker_callback(&self) -> bool {
+        self.active_document_picker_request_id.is_some()
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::{NativeBridgeState, NativeMobileCommand, NativeMobileEvent};
     use crate::document_picker::{DocumentPickerRequest, PickedDocument};
+    use crate::native_document_picker::{AndroidDocumentPickerCallback, AndroidPickedDocumentPayload};
 
     #[test]
     fn bridge_queues_document_picker_command() {
@@ -95,7 +126,34 @@ mod tests {
             .expect("android picker command");
         assert_eq!(command.action, "android.intent.action.OPEN_DOCUMENT");
         assert!(command.allow_multiple);
+        assert_eq!(state.active_document_picker_request_id.as_deref(), Some(command.request_id.as_str()));
+        assert!(state.is_waiting_for_document_picker_callback());
         assert!(!state.has_pending_commands());
+    }
+
+    #[test]
+    fn bridge_accepts_android_picker_callback_only_for_active_request() {
+        let mut state = NativeBridgeState::default();
+        state.enqueue_document_picker(DocumentPickerRequest::chat_attachment());
+        let command = state.pop_next_android_document_picker_command().unwrap();
+        let event = state.accept_android_document_picker_callback(AndroidDocumentPickerCallback::Picked {
+            request_id: command.request_id,
+            documents: vec![AndroidPickedDocumentPayload::new("1", "main.rs")
+                .with_local_path("/tmp/main.rs")],
+        });
+        assert!(matches!(event, NativeMobileEvent::DocumentsPicked(_)));
+        assert!(!state.is_waiting_for_document_picker_callback());
+        assert!(state.last_error.is_none());
+    }
+
+    #[test]
+    fn bridge_rejects_stale_android_picker_callback() {
+        let mut state = NativeBridgeState::default();
+        let event = state.accept_android_document_picker_callback(AndroidDocumentPickerCallback::Cancelled {
+            request_id: "old-request".to_string(),
+        });
+        assert!(matches!(event, NativeMobileEvent::DocumentPickerFailed(_)));
+        assert!(state.last_error.as_deref().unwrap().contains("stale Android document picker callback"));
     }
 
     #[test]
