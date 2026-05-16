@@ -4,11 +4,13 @@ use axum::http::{HeaderMap, StatusCode};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use deepseek_mobile_core::{
-    CommandOutput, CommandRequest, PcDiagnostic, PcEnvironmentDescriptor, PcGatewayCapability,
-    PcGatewayConnectionStatus, PcGatewayDirEntry, PcGatewayError, PcGatewayHealth, PcGatewayRequest,
-    PcGatewayRequestEnvelope, PcGatewayResponse, PcGatewayResponseEnvelope, PcGatewaySecurityPolicy,
-    PcTaskDescriptor, PcTaskKind, PcWorkspaceGrant,
+    CommandOutput, CommandRequest, PcDiagnostic, PcDiagnosticSeverity, PcEnvironmentDescriptor,
+    PcGatewayCapability, PcGatewayConnectionStatus, PcGatewayDirEntry, PcGatewayError,
+    PcGatewayHealth, PcGatewayRequest, PcGatewayRequestEnvelope, PcGatewayResponse,
+    PcGatewayResponseEnvelope, PcGatewaySecurityPolicy, PcTaskDescriptor, PcTaskKind,
+    PcWorkspaceGrant,
 };
+use serde::Deserialize;
 use std::env;
 use std::net::SocketAddr;
 use std::path::{Component, Path, PathBuf};
@@ -32,6 +34,27 @@ struct PcHostConfig {
     workspace: PcWorkspaceGrant,
     workspace_root: PathBuf,
     security_policy: PcGatewaySecurityPolicy,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct CargoCheckMessage {
+    reason: Option<String>,
+    message: Option<CargoDiagnosticMessage>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct CargoDiagnosticMessage {
+    message: String,
+    level: String,
+    spans: Vec<CargoDiagnosticSpan>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct CargoDiagnosticSpan {
+    file_name: String,
+    line_start: u32,
+    column_start: u32,
+    is_primary: bool,
 }
 
 impl PcHostConfig {
@@ -397,11 +420,105 @@ async fn diagnostics(config: &PcHostConfig, workspace_id: &str, path: Option<&st
     if workspace_id != config.workspace.id {
         return Err(anyhow!("unknown workspace id: {}", workspace_id));
     }
-    if let Some(path) = path {
+    let requested_path = if let Some(path) = path {
         let requested = config.resolve_workspace_path(workspace_id, path)?;
-        let _ = config.ensure_path_inside_workspace(&requested).await?;
+        let checked = config.ensure_path_inside_workspace(&requested).await?;
+        Some(checked.strip_prefix(&config.workspace_root).unwrap_or(&checked).to_path_buf())
+    } else {
+        None
+    };
+
+    let mut diagnostics = Vec::new();
+    if config.workspace_root.join("Cargo.toml").exists() {
+        diagnostics.extend(rust_cargo_diagnostics(config, requested_path.as_deref()).await?);
     }
-    Ok(PcGatewayResponse::Diagnostics(Vec::<PcDiagnostic>::new()))
+    diagnostics.sort_by(|left, right| {
+        left.path
+            .cmp(&right.path)
+            .then(left.line.cmp(&right.line))
+            .then(left.column.cmp(&right.column))
+            .then(left.message.cmp(&right.message))
+    });
+    Ok(PcGatewayResponse::Diagnostics(diagnostics))
+}
+
+async fn rust_cargo_diagnostics(config: &PcHostConfig, requested_path: Option<&Path>) -> Result<Vec<PcDiagnostic>> {
+    let output = timeout(
+        Duration::from_secs(config.security_policy.max_command_seconds),
+        Command::new("cargo")
+            .args(["check", "--workspace", "--message-format=json"])
+            .current_dir(&config.workspace_root)
+            .output(),
+    )
+    .await
+    .map_err(|_| anyhow!("cargo check diagnostics timed out after {} seconds", config.security_policy.max_command_seconds))?
+    .context("execute cargo check diagnostics")?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let mut diagnostics = Vec::new();
+    for line in stdout.lines() {
+        let Ok(message) = serde_json::from_str::<CargoCheckMessage>(line) else {
+            continue;
+        };
+        if message.reason.as_deref() != Some("compiler-message") {
+            continue;
+        }
+        let Some(message) = message.message else {
+            continue;
+        };
+        diagnostics.extend(cargo_message_to_diagnostics(config, requested_path, message));
+    }
+    Ok(diagnostics)
+}
+
+fn cargo_message_to_diagnostics(
+    config: &PcHostConfig,
+    requested_path: Option<&Path>,
+    message: CargoDiagnosticMessage,
+) -> Vec<PcDiagnostic> {
+    let severity = cargo_level_to_severity(&message.level);
+    message
+        .spans
+        .into_iter()
+        .filter(|span| span.is_primary)
+        .filter_map(|span| {
+            let path = Path::new(&span.file_name);
+            let absolute = if path.is_absolute() {
+                path.to_path_buf()
+            } else {
+                config.workspace_root.join(path)
+            };
+            let Ok(relative) = absolute.strip_prefix(&config.workspace_root) else {
+                return None;
+            };
+            if let Some(requested) = requested_path {
+                if normalize_path(relative) != normalize_path(requested) {
+                    return None;
+                }
+            }
+            Some(PcDiagnostic {
+                path: normalize_path(relative),
+                line: span.line_start,
+                column: span.column_start,
+                severity: severity.clone(),
+                message: message.message.clone(),
+                source: Some("cargo check".to_string()),
+            })
+        })
+        .collect()
+}
+
+fn cargo_level_to_severity(level: &str) -> PcDiagnosticSeverity {
+    match level {
+        "error" => PcDiagnosticSeverity::Error,
+        "warning" => PcDiagnosticSeverity::Warning,
+        "note" | "help" => PcDiagnosticSeverity::Hint,
+        _ => PcDiagnosticSeverity::Info,
+    }
+}
+
+fn normalize_path(path: &Path) -> String {
+    path.to_string_lossy().replace('\\', "/")
 }
 
 fn task(
@@ -478,4 +595,24 @@ fn current_unix_time() -> u64 {
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_secs())
         .unwrap_or_default()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{cargo_level_to_severity, normalize_path};
+    use deepseek_mobile_core::PcDiagnosticSeverity;
+    use std::path::Path;
+
+    #[test]
+    fn maps_cargo_levels_to_gateway_severity() {
+        assert_eq!(cargo_level_to_severity("error"), PcDiagnosticSeverity::Error);
+        assert_eq!(cargo_level_to_severity("warning"), PcDiagnosticSeverity::Warning);
+        assert_eq!(cargo_level_to_severity("help"), PcDiagnosticSeverity::Hint);
+        assert_eq!(cargo_level_to_severity("unknown"), PcDiagnosticSeverity::Info);
+    }
+
+    #[test]
+    fn normalizes_windows_paths_for_protocol() {
+        assert_eq!(normalize_path(Path::new("src\\main.rs")), "src/main.rs");
+    }
 }
