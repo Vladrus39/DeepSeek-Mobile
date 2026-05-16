@@ -12,6 +12,7 @@ use crate::pc_gateway_client::PcGatewayClient;
 use crate::tool_call::ToolCallRequest;
 use crate::tools::{ToolContext, ToolRegistry, ToolResult};
 use crate::workspace::ExecutorKind;
+use crate::workspace_diagnostics::WorkspaceDiagnosticsService;
 use anyhow::{anyhow, Result};
 use serde_json::{json, Map, Value};
 use std::collections::{BTreeMap, BTreeSet};
@@ -117,7 +118,16 @@ impl<'a> ToolExecutionCoordinator<'a> {
     pub async fn execute(&self, call: &ToolCallRequest, context: &ToolContext) -> Result<ToolResult> {
         match self.route(call, context).target {
             ToolExecutionTarget::LocalAndroid | ToolExecutionTarget::Termux => {
-                self.registry.execute(&call.name, call.arguments.clone(), context)
+                let mut result = self.registry.execute(&call.name, call.arguments.clone(), context)?;
+                if result.success && should_run_local_post_edit_diagnostics(call) {
+                    attach_local_post_edit_diagnostics(
+                        context,
+                        extract_primary_path_for_diagnostics(call),
+                        &mut result,
+                    )
+                    .await?;
+                }
+                Ok(result)
             }
             ToolExecutionTarget::PcGateway => self.execute_on_pc_gateway(call, context).await,
             ToolExecutionTarget::RemoteYlit => Err(anyhow!(
@@ -259,6 +269,56 @@ impl<'a> ToolExecutionCoordinator<'a> {
         attach_post_edit_diagnostics(client, &workspace_id, None, &mut result).await?;
         Ok(result)
     }
+}
+
+fn should_run_local_post_edit_diagnostics(call: &ToolCallRequest) -> bool {
+    match call.name.as_str() {
+        "write_file" | "edit_file" | "apply_patch" => true,
+        "file_ops" => file_ops_may_modify(&call.arguments),
+        _ => false,
+    }
+}
+
+fn file_ops_may_modify(arguments: &Value) -> bool {
+    arguments
+        .get("operation")
+        .and_then(Value::as_str)
+        .map(|operation| matches!(operation, "write" | "write_file" | "edit" | "edit_file"))
+        .unwrap_or(false)
+}
+
+fn extract_primary_path_for_diagnostics(call: &ToolCallRequest) -> Option<String> {
+    match call.name.as_str() {
+        "write_file" | "edit_file" => optional_str(&call.arguments, "path").map(str::to_string),
+        "file_ops" => optional_str(&call.arguments, "path").map(str::to_string),
+        _ => None,
+    }
+}
+
+async fn attach_local_post_edit_diagnostics(
+    context: &ToolContext,
+    path: Option<String>,
+    result: &mut ToolResult,
+) -> Result<()> {
+    let report = WorkspaceDiagnosticsService::new(context.workspace.clone())
+        .run_post_edit_diagnostics(path.clone())
+        .await;
+    let summary = report.summary();
+    result.content.push_str("\n\nPost-edit diagnostics:\n");
+    result.content.push_str(&summary);
+    merge_metadata(
+        result,
+        json!({
+            "post_edit_diagnostics_status": report.status,
+            "post_edit_diagnostics_provider": report.provider,
+            "post_edit_diagnostics": report.diagnostics,
+            "post_edit_diagnostics_path": path,
+            "post_edit_diagnostics_summary": summary,
+            "post_edit_diagnostics_message": report.message,
+            "post_edit_diagnostics_source": "workspace_diagnostics"
+        }),
+    );
+    Ok(())
 }
 
 async fn remote_read_optional(
@@ -599,7 +659,7 @@ fn shell_words(command: &str) -> Vec<String> {
 mod tests {
     use super::{
         command_request_from_shell, diagnostic_summary, merge_metadata, parse_remote_patch_operations,
-        ToolExecutionCoordinator, ToolExecutionTarget,
+        should_run_local_post_edit_diagnostics, ToolExecutionCoordinator, ToolExecutionTarget,
     };
     use crate::pc_gateway::{PcDiagnostic, PcDiagnosticSeverity};
     use crate::tool_call::{ToolCallRequest, ToolCallSource};
@@ -632,6 +692,30 @@ mod tests {
         let request = command_request_from_shell("cargo check --workspace", "/project".into()).unwrap();
         assert_eq!(request.program, "cargo");
         assert_eq!(request.args, vec!["check", "--workspace"]);
+    }
+
+    #[test]
+    fn local_post_edit_hook_runs_only_after_file_changes() {
+        assert!(should_run_local_post_edit_diagnostics(&ToolCallRequest::new(
+            "write_file",
+            json!({"path":"src/lib.rs","content":"x"}),
+            ToolCallSource::Manual,
+        )));
+        assert!(should_run_local_post_edit_diagnostics(&ToolCallRequest::new(
+            "edit_file",
+            json!({"path":"src/lib.rs","search":"a","replace":"b"}),
+            ToolCallSource::Manual,
+        )));
+        assert!(should_run_local_post_edit_diagnostics(&ToolCallRequest::new(
+            "apply_patch",
+            json!({"operations":[{"type":"append","path":"src/lib.rs","content":"x"}]}),
+            ToolCallSource::Manual,
+        )));
+        assert!(!should_run_local_post_edit_diagnostics(&ToolCallRequest::new(
+            "read_file",
+            json!({"path":"src/lib.rs"}),
+            ToolCallSource::Manual,
+        )));
     }
 
     #[test]
