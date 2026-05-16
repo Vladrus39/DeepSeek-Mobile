@@ -7,8 +7,8 @@ on:
     branches: ["main"]
 
 jobs:
-  cargo-check:
-    name: Cargo check
+  rust:
+    name: Rust workspace
     runs-on: ubuntu-latest
 
     steps:
@@ -23,3 +23,22 @@ jobs:
 
       - name: Check workspace
         run: cargo check --workspace
+
+      - name: Test workspace
+        run: cargo test --workspace
+
+  android-bridge-static-check:
+    name: Android bridge static check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Verify Android bridge files exist
+        run: |
+          test -f android/bridge/build.gradle.kts
+          test -f android/bridge/src/main/AndroidManifest.xml
+          test -f android/bridge/src/main/kotlin/com/deepseek/mobile/bridge/DeepSeekDocumentPickerBridge.kt
+          grep -q "ACTION_OPEN_DOCUMENT" android/bridge/src/main/kotlin/com/deepseek/mobile/bridge/DeepSeekDocumentPickerBridge.kt
+          grep -q "copyUriToSandbox" android/bridge/src/main/kotlin/com/deepseek/mobile/bridge/DeepSeekDocumentPickerBridge.kt
