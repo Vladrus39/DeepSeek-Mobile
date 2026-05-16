@@ -1,24 +1,19 @@
 use crate::project_diff::{build_text_diff_preview, diff_line_color};
-use crate::project_files::{
-    choose_default_preview_file, read_project_file, scan_project_tree, ProjectEntryKind,
-    ProjectFilePreview, ProjectTreeSnapshot, DEFAULT_MAX_FILE_BYTES, DEFAULT_MAX_TREE_ENTRIES,
-};
+use crate::project_files::{ProjectEntryKind, ProjectFilePreview, ProjectTreeSnapshot};
+use crate::project_files_state::ProjectFilesUiState;
 use dioxus::prelude::*;
-use std::path::PathBuf;
 
-const DEFAULT_WORKSPACE_ROOT: &str = ".";
+pub fn project_files_panel(mut state: Signal<ProjectFilesUiState>) -> Element {
+    if !state().loaded {
+        let mut next = state();
+        next.refresh();
+        state.set(next);
+    }
 
-pub fn project_files_panel() -> Element {
-    let workspace_root = PathBuf::from(DEFAULT_WORKSPACE_ROOT);
-    let snapshot = scan_project_tree(&workspace_root, DEFAULT_MAX_TREE_ENTRIES).unwrap_or(ProjectTreeSnapshot {
-        root: workspace_root.to_string_lossy().to_string(),
-        entries: Vec::new(),
-        truncated: false,
-    });
-    let selected_path = choose_default_preview_file(&snapshot);
-    let preview = selected_path
-        .as_deref()
-        .and_then(|path| read_project_file(&workspace_root, path, DEFAULT_MAX_FILE_BYTES).ok());
+    let snapshot = state().snapshot.clone();
+    let preview = state().preview.clone();
+    let selected_path = state().selected_path.clone();
+    let last_error = state().last_error.clone();
 
     rsx! {
         div {
@@ -31,15 +26,26 @@ pub fn project_files_panel() -> Element {
             flex_direction: "column",
             gap: "12px",
 
-            {header_card(&snapshot)}
-            {tree_card(&snapshot)}
+            {header_card(&snapshot, state)}
+            if let Some(error) = last_error {
+                div {
+                    background_color: "#7f1d1d",
+                    border: "1px solid #dc2626",
+                    border_radius: "12px",
+                    padding: "10px",
+                    color: "white",
+                    font_size: "12px",
+                    "{error}"
+                }
+            }
+            {tree_card(&snapshot, selected_path.as_deref(), state)}
             {file_preview_card(preview.as_ref())}
             {diff_preview_card(preview.as_ref())}
         }
     }
 }
 
-fn header_card(snapshot: &ProjectTreeSnapshot) -> Element {
+fn header_card(snapshot: &ProjectTreeSnapshot, mut state: Signal<ProjectFilesUiState>) -> Element {
     rsx! {
         div {
             background_color: "#0f172a",
@@ -48,9 +54,29 @@ fn header_card(snapshot: &ProjectTreeSnapshot) -> Element {
             padding: "12px",
             display: "flex",
             flex_direction: "column",
-            gap: "6px",
+            gap: "8px",
 
-            div { font_size: "18px", font_weight: "bold", "Project files" }
+            div {
+                display: "flex",
+                justify_content: "space-between",
+                align_items: "center",
+                gap: "8px",
+                div { font_size: "18px", font_weight: "bold", "Project files" }
+                button {
+                    background_color: "#1d4ed8",
+                    color: "white",
+                    border: "1px solid #3b82f6",
+                    border_radius: "999px",
+                    padding: "6px 10px",
+                    font_size: "12px",
+                    onclick: move |_| {
+                        let mut next = state();
+                        next.refresh();
+                        state.set(next);
+                    },
+                    "Refresh"
+                }
+            }
             div { color: "#9ca3af", font_size: "12px", "Root: {snapshot.root}" }
             div {
                 display: "flex",
@@ -81,7 +107,11 @@ fn stat_badge(label: &'static str, value: String) -> Element {
     }
 }
 
-fn tree_card(snapshot: &ProjectTreeSnapshot) -> Element {
+fn tree_card(
+    snapshot: &ProjectTreeSnapshot,
+    selected_path: Option<&str>,
+    mut state: Signal<ProjectFilesUiState>,
+) -> Element {
     rsx! {
         div {
             background_color: "#020617",
@@ -97,30 +127,58 @@ fn tree_card(snapshot: &ProjectTreeSnapshot) -> Element {
             if snapshot.entries.is_empty() {
                 div { color: "#9ca3af", font_size: "12px", "No files found in workspace root yet." }
             } else {
-                for entry in snapshot.entries.iter().take(80) {
-                    div {
-                        display: "flex",
-                        justify_content: "space-between",
-                        gap: "8px",
-                        padding: "6px 8px",
-                        border_radius: "10px",
-                        background_color: if matches!(entry.kind, ProjectEntryKind::Directory) { "#0f172a" } else { "#111827" },
-                        margin_left: "{entry.depth * 12}px",
+                for entry in snapshot.entries.iter().take(120) {
+                    if matches!(entry.kind, ProjectEntryKind::File) {
+                        button {
+                            background_color: if selected_path == Some(entry.path.as_str()) { "#1e3a8a" } else { "#111827" },
+                            color: "white",
+                            border: if selected_path == Some(entry.path.as_str()) { "1px solid #3b82f6" } else { "1px solid #1f2937" },
+                            border_radius: "10px",
+                            padding: "6px 8px",
+                            display: "flex",
+                            justify_content: "space-between",
+                            gap: "8px",
+                            text_align: "left",
+                            margin_left: "{entry.depth * 12}px",
+                            onclick: {
+                                let path = entry.path.clone();
+                                move |_| {
+                                    let mut next = state();
+                                    next.open_file(path.clone());
+                                    state.set(next);
+                                }
+                            },
 
-                        div {
-                            color: if matches!(entry.kind, ProjectEntryKind::Directory) { "#93c5fd" } else { "#e5e7eb" },
-                            font_size: "12px",
-                            white_space: "nowrap",
-                            overflow: "hidden",
-                            text_overflow: "ellipsis",
-                            if matches!(entry.kind, ProjectEntryKind::Directory) {
-                                "▸ {entry.name}"
-                            } else {
+                            div {
+                                color: "#e5e7eb",
+                                font_size: "12px",
+                                white_space: "nowrap",
+                                overflow: "hidden",
+                                text_overflow: "ellipsis",
                                 "• {entry.name}"
                             }
+                            if let Some(size_bytes) = entry.size_bytes {
+                                div { color: "#6b7280", font_size: "11px", "{size_bytes} B" }
+                            }
                         }
-                        if let Some(size_bytes) = entry.size_bytes {
-                            div { color: "#6b7280", font_size: "11px", "{size_bytes} B" }
+                    } else {
+                        div {
+                            display: "flex",
+                            justify_content: "space-between",
+                            gap: "8px",
+                            padding: "6px 8px",
+                            border_radius: "10px",
+                            background_color: "#0f172a",
+                            margin_left: "{entry.depth * 12}px",
+
+                            div {
+                                color: "#93c5fd",
+                                font_size: "12px",
+                                white_space: "nowrap",
+                                overflow: "hidden",
+                                text_overflow: "ellipsis",
+                                "▸ {entry.name}"
+                            }
                         }
                     }
                 }
@@ -156,7 +214,7 @@ fn file_preview_card(preview: Option<&ProjectFilePreview>) -> Element {
                     "{preview.content}"
                 }
             } else {
-                div { color: "#9ca3af", font_size: "12px", "Select or create a text/source file to preview it here." }
+                div { color: "#9ca3af", font_size: "12px", "Tap a source/text file to preview it here." }
             }
         }
     }
