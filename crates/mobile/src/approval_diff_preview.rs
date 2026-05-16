@@ -61,7 +61,7 @@ mod tests {
             subtitle: "This may modify workspace files".to_string(),
             tool_name: "write_file".to_string(),
             category: ToolCategory::FileWrite,
-            risk: ApprovalRisk::Moderate,
+            risk: ApprovalRisk::Benign,
             severity: ApprovalCardSeverity::Warning,
             status: ApprovalCardStatus::Pending,
             description: "Write project file".to_string(),
