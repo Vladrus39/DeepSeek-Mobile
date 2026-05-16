@@ -40,8 +40,8 @@ mod tests {
         let runtime = MobileRuntimeConfig::from_base_dir(&base_dir).with_thread_id("thread-a");
         let store = RuntimeThreadStore::open(runtime.runtime_store_root.clone()).expect("open runtime store");
         store
-            .append_event("thread-a", None, AgentEvent::Status("restored".to_string()))
-            .expect("append event");
+            .save_event("thread-a", "turn-a", &AgentEvent::Status("restored".to_string()))
+            .expect("save event");
 
         let timeline = load_saved_timeline(&runtime).expect("load saved timeline");
         assert_eq!(timeline.len(), 1);

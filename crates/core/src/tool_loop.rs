@@ -17,7 +17,7 @@ use crate::tool_execution::ToolExecutionCoordinator;
 use crate::tools::{ToolContext, ToolRegistry, ToolResult};
 use crate::turn::{TurnContext, TurnToolCall};
 use crate::workspace::ExecutorKind;
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::time::{SystemTime, UNIX_EPOCH};

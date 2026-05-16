@@ -191,13 +191,12 @@ fn title_for(category: &ToolCategory, tool_name: &str) -> String {
 fn subtitle_for(category: &ToolCategory, risk: &ApprovalRisk) -> String {
     match (category, risk) {
         (ToolCategory::Safe, ApprovalRisk::Benign) => "Read-only operation".to_string(),
+        (ToolCategory::Safe, ApprovalRisk::Destructive) => "Unexpected high-risk read operation".to_string(),
         (ToolCategory::FileWrite, _) => "This may modify workspace files".to_string(),
         (ToolCategory::Shell, _) => "This may run a command through the selected executor".to_string(),
         (ToolCategory::Git, _) => "This may inspect or change repository state".to_string(),
         (ToolCategory::Network, _) => "This may access network resources".to_string(),
         (ToolCategory::Unknown, _) => "Tool impact is unknown".to_string(),
-        (_, ApprovalRisk::Benign) => "Low-risk operation".to_string(),
-        (_, ApprovalRisk::Destructive) => "High-risk operation".to_string(),
     }
 }
 

@@ -112,6 +112,13 @@ One-command publish flow from the PC working copy:
 .\deploy.ps1 -Message "short change summary"
 ```
 
+Current Windows verification commands for this PC:
+
+```powershell
+cargo +stable-x86_64-pc-windows-msvc check --workspace --all-targets
+cargo +stable-x86_64-pc-windows-msvc test --workspace
+```
+
 Operating rules:
 
 1. Develop from the desktop working copy on the PC.
@@ -119,6 +126,7 @@ Operating rules:
 3. The deploy script stages all changes, creates a commit when needed, rebases from `origin/<current-branch>`, and pushes the current branch back to GitHub.
 4. If local and remote history diverge, resolve conflicts in the desktop working copy before continuing implementation.
 5. The master plan, progress log, and code must be updated together so local work and repository state never silently drift apart.
+6. On this Windows machine, use the installed MSVC toolchain for local verification until the default GNU toolchain is fully repaired; the current GNU path still fails before project code because its `dlltool.exe` setup is not healthy.
 
 Snapshot/rollback map:
 
@@ -141,7 +149,7 @@ Checklist:
 
 - [x] Add CI step for `cargo check --workspace`.
 - [x] Add CI step for `cargo test --workspace`.
-- [ ] Fix every compile/test failure surfaced by CI.
+- [x] Fix every compile/test failure surfaced by CI.
 - [x] Verify `ToolExecutionCoordinator` is used by `tool_loop` for all tool calls.
 - [x] Fix approval-session grant persistence across turns.
 - [x] Add a lightweight system-map test for default tool registry names.
@@ -370,7 +378,7 @@ Acceptance criteria:
 The next implementation sequence is fixed:
 
 1. [x] Strengthen CI from `cargo check` to `cargo check + cargo test`.
-2. [ ] Fix compile/test failures surfaced by CI.
+2. [x] Fix compile/test failures surfaced by CI.
 3. [x] Fix approval-session grant persistence.
 4. [x] Add `apply_patch` tool.
 5. [x] Auto-create pre-tool snapshots before destructive approved local tools.
@@ -410,6 +418,7 @@ The next implementation sequence is fixed:
 - 2026-05-16: Added Android NSD/mDNS discovery bridge for DeepSeek PC Host, required Android network/multicast permissions, Rust native discovery payloads, and route_native_mobile_event integration into PcPairingUiState.
 - 2026-05-16: Added PC gateway reconnect controls in PcPairingUiState and PcHost panel: scan again, retry active route, use best discovered route, and forget bad routes.
 - 2026-05-17: Established the synchronized PC + GitHub operating model, created the desktop working copy at `C:\Users\vladi\Desktop\DeepSeek-Mobile`, and added the one-command `deploy.ps1` publish script.
+- 2026-05-17: Stabilized P0 build integrity: removed obsolete direct `dioxus-mobile` usage in favor of stable `dioxus::launch`, consolidated duplicate Rust workflows into one CI path, added `Cargo.lock`, fixed snapshot/runtime/mobile API drift, made workspace path tests cross-platform, and verified `cargo check --workspace --all-targets` plus `cargo test --workspace` locally through the installed MSVC toolchain.
 
 ## 6. Definition of done for the project
 

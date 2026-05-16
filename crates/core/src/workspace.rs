@@ -74,9 +74,13 @@ mod tests {
         Workspace::new(
             "test",
             "Test Workspace",
-            PathBuf::from("/safe/workspace"),
+            workspace_root(),
             ExecutorKind::LocalAndroid,
         )
+    }
+
+    fn workspace_root() -> PathBuf {
+        std::env::temp_dir().join("deepseek-mobile-safe-workspace")
     }
 
     #[test]
@@ -96,13 +100,22 @@ mod tests {
     #[test]
     fn accepts_absolute_paths_inside_workspace() {
         let workspace = workspace();
-        assert!(workspace.contains("/safe/workspace/src/lib.rs"));
+        assert!(workspace.contains(workspace.root.join("src").join("lib.rs")));
     }
 
     #[test]
     fn rejects_absolute_paths_outside_workspace() {
         let workspace = workspace();
-        assert!(!workspace.contains("/safe/other/lib.rs"));
-        assert!(!workspace.contains("/etc/passwd"));
+        let sibling = workspace
+            .root
+            .parent()
+            .expect("workspace root parent")
+            .join("other")
+            .join("lib.rs");
+        let separate = std::env::temp_dir()
+            .join("deepseek-mobile-outside-workspace")
+            .join("passwd");
+        assert!(!workspace.contains(sibling));
+        assert!(!workspace.contains(separate));
     }
 }

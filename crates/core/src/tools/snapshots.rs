@@ -34,7 +34,7 @@ impl ToolSpec for CreateSnapshotTool {
 
     fn execute(&self, input: Value, context: &ToolContext) -> Result<ToolResult> {
         let reason = optional_str(&input, "reason").unwrap_or("manual snapshot");
-        let service = snapshot_service(input, context)?;
+        let service = snapshot_service(&input, context)?;
         let snapshot = service.create_snapshot(reason)?;
         Ok(ToolResult::success(format!(
             "Created snapshot {} with {} file(s), {} bytes",
@@ -67,7 +67,7 @@ impl ToolSpec for ListSnapshotsTool {
     }
 
     fn execute(&self, input: Value, context: &ToolContext) -> Result<ToolResult> {
-        let service = snapshot_service(input, context)?;
+        let service = snapshot_service(&input, context)?;
         let snapshots = service.list_snapshots()?;
         Ok(ToolResult::success(serde_json::to_string_pretty(&snapshots)?)
             .with_metadata(serde_json::to_value(snapshots)?))
@@ -108,7 +108,7 @@ impl ToolSpec for RestoreSnapshotTool {
 
     fn execute(&self, input: Value, context: &ToolContext) -> Result<ToolResult> {
         let snapshot_id = required_str(&input, "snapshot_id")?;
-        let service = snapshot_service(input, context)?;
+        let service = snapshot_service(&input, context)?;
         let report = service.restore_snapshot(snapshot_id)?;
         Ok(ToolResult::success(format!(
             "Restored snapshot {}: restored {}, removed {}, skipped {}",
@@ -118,8 +118,8 @@ impl ToolSpec for RestoreSnapshotTool {
     }
 }
 
-fn snapshot_service(input: Value, context: &ToolContext) -> Result<WorkspaceSnapshotService> {
-    let store_root = optional_str(&input, "store_root")
+fn snapshot_service(input: &Value, context: &ToolContext) -> Result<WorkspaceSnapshotService> {
+    let store_root = optional_str(input, "store_root")
         .map(|path| context.resolve_path(path))
         .transpose()?
         .unwrap_or_else(|| context.workspace.root.join(".deepseek-mobile").join("snapshots"));

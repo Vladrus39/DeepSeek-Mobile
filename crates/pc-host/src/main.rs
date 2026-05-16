@@ -178,6 +178,7 @@ impl PcHostConfig {
 async fn main() -> Result<()> {
     let config = PcHostConfig::from_env()?;
     let bind_addr = config.bind_addr;
+    let gateway_label = config.gateway_label.clone();
     let state = PcHostState {
         config: Arc::new(config),
     };
@@ -190,7 +191,7 @@ async fn main() -> Result<()> {
     let listener = tokio::net::TcpListener::bind(bind_addr)
         .await
         .with_context(|| format!("bind PC host on {}", bind_addr))?;
-    println!("deepseek-pc-host listening on http://{}", bind_addr);
+    println!("deepseek-pc-host '{}' listening on http://{}", gateway_label, bind_addr);
     axum::serve(listener, app).await?;
     Ok(())
 }

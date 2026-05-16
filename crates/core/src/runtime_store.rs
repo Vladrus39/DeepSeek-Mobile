@@ -207,6 +207,20 @@ impl RuntimeThreadStore {
         Ok(record)
     }
 
+    pub fn load_events(&self, thread_id: &str) -> Result<Vec<RuntimeEventRecord>> {
+        let mut records: Vec<RuntimeEventRecord> =
+            read_json_dir::<RuntimeEventRecord>(self.root.join("events"))?
+            .into_iter()
+            .filter(|record| record.thread_id == thread_id)
+            .collect();
+        records.sort_by(|left, right| {
+            left.created_at_unix
+                .cmp(&right.created_at_unix)
+                .then(left.id.cmp(&right.id))
+        });
+        Ok(records)
+    }
+
     pub fn save_pending_approval(
         &self,
         thread_id: impl Into<String>,

@@ -5,7 +5,7 @@ edition = "2021"
 
 [dependencies]
 dioxus = { workspace = true }
-dioxus-mobile = { workspace = true }
 deepseek-mobile-core = { workspace = true }
 tokio = { workspace = true }
 anyhow = "1"
+serde_json = { workspace = true }

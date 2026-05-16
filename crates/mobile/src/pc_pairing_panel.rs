@@ -1,7 +1,5 @@
 use crate::native_bridge::NativeBridgeState;
-use crate::pc_pairing_state::{
-    PcPairingUiState, PcPairingUiStatus, PcReconnectAction, PcReconnectEffect,
-};
+use crate::pc_pairing_state::{PcPairingUiState, PcPairingUiStatus, PcReconnectEffect};
 use dioxus::prelude::*;
 
 pub fn pc_pairing_panel(mut state: Signal<PcPairingUiState>, mut native_bridge: Signal<NativeBridgeState>) -> Element {
@@ -248,7 +246,8 @@ fn status_badge_color(status: &PcPairingUiStatus) -> &'static str {
 
 #[cfg(test)]
 mod tests {
-    use super::{status_badge_text, PcPairingUiStatus, PcReconnectAction};
+    use super::{status_badge_text, PcPairingUiStatus};
+    use crate::pc_pairing_state::PcReconnectAction;
 
     #[test]
     fn status_badges_match_pairing_state() {

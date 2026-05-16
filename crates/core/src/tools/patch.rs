@@ -10,7 +10,6 @@ use crate::workspace_files::WorkspaceFileService;
 use anyhow::{anyhow, Result};
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet};
-use std::path::PathBuf;
 
 pub struct ApplyPatchTool;
 

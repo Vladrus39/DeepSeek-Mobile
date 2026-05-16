@@ -47,12 +47,13 @@ pub fn push_agent_event(timeline: &mut MobileTimelineState, event: &AgentEvent) 
                 },
                 "Turn finished",
                 format!(
-                    "turn_id={} status={:?} prompt_tokens={} completion_tokens={} total_tokens={}{}",
+                    "turn_id={} status={:?} input_tokens={} output_tokens={} reasoning_tokens={} total_tokens={}{}",
                     turn_id,
                     status,
-                    usage.prompt_tokens,
-                    usage.completion_tokens,
-                    usage.total_tokens,
+                    usage.input_tokens,
+                    usage.output_tokens,
+                    usage.reasoning_tokens,
+                    usage.input_tokens + usage.output_tokens + usage.reasoning_tokens,
                     error
                         .as_ref()
                         .map(|message| format!(" error={}", message))

@@ -2,25 +2,20 @@
 
 use crate::config::Config;
 use crate::api_client::{DeepSeekClient, Message};
-use crate::tools::ToolRegistry;
 use anyhow::Result;
-use std::sync::Arc;
 use tokio::sync::mpsc;
 
 pub struct DeepSeekAgent {
     config: Config,
-    tools: Arc<ToolRegistry>,
     client: DeepSeekClient,
 }
 
 impl DeepSeekAgent {
     pub fn new(config: Config) -> Self {
-        let mut tools = ToolRegistry::new();
         let client = DeepSeekClient::new(config.api_key.clone());
 
         Self {
             config: config.clone(),
-            tools: Arc::new(tools),
             client,
         }
     }

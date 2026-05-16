@@ -28,7 +28,7 @@ use agent_timeline::MobileTimelineState;
 use agent_timeline_panel::agent_timeline_panel;
 use chat_attachment::ChatComposerState;
 use cockpit_section_panel::cockpit_section_panel;
-use deepseek_mobile_core::{AgentEvent, ApprovalCardView, Config};
+use deepseek_mobile_core::{AgentEvent, ApprovalCardView, Config, ReviewDecision};
 use dioxus::prelude::*;
 use document_picker::{DocumentPickerRequest, DocumentPickerState};
 use mobile_approval_panel::mobile_approval_panel;
@@ -42,7 +42,7 @@ use project_files_state::ProjectFilesUiState;
 use saved_timeline_loader::load_default_saved_timeline;
 
 fn main() {
-    dioxus_mobile::launch(app);
+    dioxus::launch(app);
 }
 
 fn app() -> Element {
@@ -105,10 +105,10 @@ fn app() -> Element {
             {mobile_drawer(
                 drawer_open(),
                 active_section(),
-                move |section| {
+                EventHandler::new(move |section| {
                     active_section.set(section);
                     drawer_open.set(false);
-                }
+                })
             )}
 
             div {
@@ -160,7 +160,7 @@ fn app() -> Element {
                 if active_section() == CockpitSection::Chat {
                     {mobile_approval_panel(
                         &approval_cards(),
-                        move |(approval_id, decision)| {
+                        EventHandler::new(move |(approval_id, decision): (String, ReviewDecision)| {
                             is_loading.set(true);
                             spawn(async move {
                                 match continue_mobile_approval(Config::default(), approval_id.clone(), decision.clone()).await {
@@ -180,7 +180,7 @@ fn app() -> Element {
                                 }
                                 is_loading.set(false);
                             });
-                        }
+                        })
                     )}
 
                     {agent_timeline_panel(&timeline())}
@@ -324,11 +324,12 @@ fn app() -> Element {
 
                         spawn(async move {
                             let config = Config::default();
-                            let mut event_timeline = timeline;
+                            let event_timeline = timeline;
                             match run_mobile_turn_streaming(config, user_input, move |event| {
-                                let mut next_timeline = event_timeline();
+                                let mut timeline_signal = event_timeline;
+                                let mut next_timeline = timeline_signal();
                                 push_agent_event(&mut next_timeline, &event);
-                                event_timeline.set(next_timeline);
+                                timeline_signal.set(next_timeline);
                             }).await {
                                 Ok(result) => {
                                     if let Some(final_text) = result.final_text.clone() {
@@ -337,7 +338,7 @@ fn app() -> Element {
 
                                     let mut next_timeline = timeline();
                                     push_agent_event(&mut next_timeline, &AgentEvent::Status(format!("Runtime store: {} | workspace: {} | thread: {}", result.runtime_store_root, result.workspace_root, result.thread_id)));
-                                    if result.awaiting_approval {
+                                    if result.has_pending_approvals() {
                                         push_agent_event(&mut next_timeline, &AgentEvent::Status("Waiting for user approval".to_string()));
                                     }
                                     timeline.set(next_timeline);
