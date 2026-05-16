@@ -2,12 +2,14 @@ use crate::agent_timeline::MobileTimelineState;
 use crate::chat_attachment::ChatComposerState;
 use crate::document_picker::DocumentPickerState;
 use crate::native_bridge::{NativeBridgeState, NativeMobileEvent};
+use crate::pc_pairing_state::PcPairingUiState;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct NativeEventRouteResult {
     pub composer: ChatComposerState,
     pub picker: DocumentPickerState,
     pub native_bridge: NativeBridgeState,
+    pub pc_pairing: PcPairingUiState,
     pub timeline: MobileTimelineState,
 }
 
@@ -15,6 +17,7 @@ pub fn route_native_mobile_event(
     mut composer: ChatComposerState,
     mut picker: DocumentPickerState,
     mut native_bridge: NativeBridgeState,
+    mut pc_pairing: PcPairingUiState,
     mut timeline: MobileTimelineState,
     event: NativeMobileEvent,
 ) -> NativeEventRouteResult {
@@ -41,6 +44,24 @@ pub fn route_native_mobile_event(
             timeline.push_error(format!("Android document picker failed: {}", error));
             picker.fail(error);
         }
+        NativeMobileEvent::PcGatewayDiscoveryStarted { service_type, .. } => {
+            pc_pairing.mark_waiting_for_pc();
+            timeline.push_status(format!("Android PC gateway discovery started: {}", service_type));
+        }
+        NativeMobileEvent::PcGatewayDiscoveryUpdated(report) => {
+            let count = report.candidates.len();
+            pc_pairing.apply_discovery_report(report);
+            timeline.push_status(format!("Android PC gateway discovery candidate update: {} candidate(s)", count));
+        }
+        NativeMobileEvent::PcGatewayDiscoveryCompleted(report) => {
+            let count = report.candidates.len();
+            pc_pairing.apply_discovery_report(report);
+            timeline.push_status(format!("Android PC gateway discovery completed: {} candidate(s)", count));
+        }
+        NativeMobileEvent::PcGatewayDiscoveryFailed(error) => {
+            pc_pairing.set_error(error.clone());
+            timeline.push_error(format!("Android PC gateway discovery failed: {}", error));
+        }
         NativeMobileEvent::FileShared => {
             timeline.push_status("Native share completed");
         }
@@ -53,6 +74,7 @@ pub fn route_native_mobile_event(
         composer,
         picker,
         native_bridge,
+        pc_pairing,
         timeline,
     }
 }
@@ -64,6 +86,9 @@ mod tests {
     use crate::chat_attachment::ChatComposerState;
     use crate::document_picker::{DocumentPickerRequest, DocumentPickerState, PickedDocument};
     use crate::native_bridge::{NativeBridgeState, NativeMobileEvent};
+    use crate::native_pc_discovery::AndroidPcGatewayMdnsRecordPayload;
+    use crate::pc_pairing_state::{PcPairingUiState, PcPairingUiStatus};
+    use deepseek_mobile_core::PcGatewayDiscoveryService;
 
     #[test]
     fn routes_documents_picked_into_composer() {
@@ -74,6 +99,7 @@ mod tests {
             ChatComposerState::default(),
             picker,
             NativeBridgeState::default(),
+            PcPairingUiState::default(),
             MobileTimelineState::default(),
             NativeMobileEvent::DocumentsPicked(vec![
                 PickedDocument::new("doc-1", "main.rs")
@@ -99,6 +125,7 @@ mod tests {
             ChatComposerState::default(),
             picker,
             NativeBridgeState::default(),
+            PcPairingUiState::default(),
             MobileTimelineState::default(),
             NativeMobileEvent::DocumentPickerCancelled,
         );
@@ -116,11 +143,29 @@ mod tests {
             ChatComposerState::default(),
             picker,
             NativeBridgeState::default(),
+            PcPairingUiState::default(),
             MobileTimelineState::default(),
             NativeMobileEvent::DocumentPickerFailed("permission denied".to_string()),
         );
 
         assert_eq!(result.picker.last_error.as_deref(), Some("permission denied"));
         assert_eq!(result.native_bridge.last_error.as_deref(), Some("permission denied"));
+    }
+
+    #[test]
+    fn routes_pc_discovery_report_into_pairing_state() {
+        let report = PcGatewayDiscoveryService::default().from_mdns_records(vec![
+            AndroidPcGatewayMdnsRecordPayload::new("Laptop", "192.168.1.10", 8787).into_core_record(),
+        ]);
+        let result = route_native_mobile_event(
+            ChatComposerState::default(),
+            DocumentPickerState::default(),
+            NativeBridgeState::default(),
+            PcPairingUiState::default(),
+            MobileTimelineState::default(),
+            NativeMobileEvent::PcGatewayDiscoveryCompleted(report),
+        );
+        assert_eq!(result.pc_pairing.status, PcPairingUiStatus::WaitingForPc);
+        assert!(result.pc_pairing.discovery_rows()[0].contains("192.168.1.10"));
     }
 }
