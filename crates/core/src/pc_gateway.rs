@@ -97,6 +97,60 @@ impl PcGatewayTransportMode {
                 | PcGatewayTransportMode::LoopbackHttp
         )
     }
+
+    pub fn default_priority(&self) -> u16 {
+        match self {
+            PcGatewayTransportMode::LoopbackHttp => 130,
+            PcGatewayTransportMode::DirectWifiHttps | PcGatewayTransportMode::DirectWifiHttp => 120,
+            PcGatewayTransportMode::LocalNetworkHttps | PcGatewayTransportMode::LocalNetworkHttp => 110,
+            PcGatewayTransportMode::TunnelHttps => 60,
+            PcGatewayTransportMode::InternetHttps => 40,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PcGatewayEndpointCandidate {
+    pub label: String,
+    pub base_url: String,
+    pub transport_mode: PcGatewayTransportMode,
+    pub priority: u16,
+}
+
+impl PcGatewayEndpointCandidate {
+    pub fn new(
+        label: impl Into<String>,
+        base_url: impl Into<String>,
+        transport_mode: PcGatewayTransportMode,
+    ) -> Self {
+        Self {
+            label: label.into(),
+            base_url: base_url.into(),
+            priority: transport_mode.default_priority(),
+            transport_mode,
+        }
+    }
+
+    pub fn with_priority(mut self, priority: u16) -> Self {
+        self.priority = priority;
+        self
+    }
+
+    pub fn requires_internet(&self) -> bool {
+        self.transport_mode.requires_internet()
+    }
+
+    pub fn is_local_only(&self) -> bool {
+        self.transport_mode.is_local_only()
+    }
+
+    pub fn validate(&self, allow_http_on_local_network: bool) -> Result<(), String> {
+        validate_gateway_base_url_for_transport(
+            &self.base_url,
+            &self.transport_mode,
+            allow_http_on_local_network,
+        )
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -109,6 +163,8 @@ pub struct PcGatewayConfig {
     pub trust_level: PcGatewayTrustLevel,
     pub transport_mode: PcGatewayTransportMode,
     pub allow_http_on_local_network: bool,
+    #[serde(default)]
+    pub endpoint_candidates: Vec<PcGatewayEndpointCandidate>,
 }
 
 impl PcGatewayConfig {
@@ -127,6 +183,7 @@ impl PcGatewayConfig {
             trust_level: PcGatewayTrustLevel::Unpaired,
             transport_mode: PcGatewayTransportMode::InternetHttps,
             allow_http_on_local_network: false,
+            endpoint_candidates: Vec::new(),
         }
     }
 
@@ -176,8 +233,39 @@ impl PcGatewayConfig {
         config
     }
 
+    pub fn with_endpoint_candidate(mut self, candidate: PcGatewayEndpointCandidate) -> Self {
+        self.endpoint_candidates.push(candidate);
+        self
+    }
+
+    pub fn add_endpoint_candidate(&mut self, candidate: PcGatewayEndpointCandidate) {
+        self.endpoint_candidates.push(candidate);
+    }
+
+    pub fn endpoint_plan(&self) -> Vec<PcGatewayEndpointCandidate> {
+        let mut candidates = vec![PcGatewayEndpointCandidate::new(
+            "primary",
+            self.base_url.clone(),
+            self.transport_mode.clone(),
+        )];
+        candidates.extend(self.endpoint_candidates.clone());
+        candidates.sort_by(|left, right| {
+            right
+                .priority
+                .cmp(&left.priority)
+                .then(left.label.cmp(&right.label))
+                .then(left.base_url.cmp(&right.base_url))
+        });
+        candidates.dedup_by(|left, right| left.base_url == right.base_url);
+        candidates
+    }
+
     pub fn requires_internet(&self) -> bool {
         self.transport_mode.requires_internet()
+    }
+
+    pub fn can_use_without_internet(&self) -> bool {
+        self.endpoint_plan().iter().any(|candidate| candidate.is_local_only())
     }
 
     pub fn is_local_only(&self) -> bool {
@@ -577,8 +665,8 @@ fn current_unix_time() -> u64 {
 mod tests {
     use super::{
         is_private_or_loopback_http_url, validate_gateway_base_url, validate_gateway_base_url_for_transport,
-        PcGatewayCapability, PcGatewayConfig, PcGatewaySecurityPolicy, PcGatewayTransportMode,
-        PcWorkspaceGrant,
+        PcGatewayCapability, PcGatewayConfig, PcGatewayEndpointCandidate, PcGatewaySecurityPolicy,
+        PcGatewayTransportMode, PcWorkspaceGrant,
     };
     use crate::executor::CommandRequest;
     use std::path::PathBuf;
@@ -611,6 +699,7 @@ mod tests {
         );
         assert!(config.validate_base_url().is_ok());
         assert!(config.is_local_only());
+        assert!(config.can_use_without_internet());
         assert!(!config.requires_internet());
     }
 
@@ -624,7 +713,33 @@ mod tests {
         );
         assert!(config.validate_base_url().is_ok());
         assert!(config.is_local_only());
+        assert!(config.can_use_without_internet());
         assert!(!config.requires_internet());
+    }
+
+    #[test]
+    fn endpoint_plan_prefers_direct_and_local_routes_before_internet() {
+        let config = PcGatewayConfig::tunnel_https(
+            "pc-1",
+            "Laptop",
+            "https://pc.example.test",
+            "phone-1",
+        )
+        .with_endpoint_candidate(PcGatewayEndpointCandidate::new(
+            "same-lan",
+            "http://192.168.1.10:8787",
+            PcGatewayTransportMode::LocalNetworkHttp,
+        ))
+        .with_endpoint_candidate(PcGatewayEndpointCandidate::new(
+            "direct-link",
+            "http://169.254.12.10:8787",
+            PcGatewayTransportMode::DirectWifiHttp,
+        ));
+        let plan = config.endpoint_plan();
+        assert_eq!(plan[0].label, "direct-link");
+        assert_eq!(plan[1].label, "same-lan");
+        assert_eq!(plan[2].label, "primary");
+        assert!(config.can_use_without_internet());
     }
 
     #[test]
