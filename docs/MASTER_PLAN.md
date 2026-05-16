@@ -60,8 +60,9 @@ PC execution
   -> pc-host HTTP /v1/gateway/request
   -> workspace path policy
   -> read/write/list/exec/git/task detection
+  -> remote apply_patch via PC read/write/delete operations with rollback
   -> diagnostics via cargo check JSON for Rust workspaces
-  -> post-edit diagnostics summary for PC write/edit file calls when a PcGatewayClient is attached
+  -> post-edit diagnostics summary for PC write/edit/apply_patch calls when a PcGatewayClient is attached
   -> PcGatewayResponse
   -> ToolResult
   -> AgentEvent timeline
@@ -109,8 +110,10 @@ Goal: close the most important original DeepSeek TUI tool gaps while keeping mob
 Checklist:
 
 - [x] Add `apply_patch` as a first-class tool.
+- [x] Map operation-based `apply_patch` to PC gateway execution.
 - [ ] Add optional unified-diff parser compatibility for `apply_patch`.
-- [ ] Add `delete_file` as a first-class tool with approval.
+- [ ] Add `delete_file` as a first-class local tool with approval.
+- [x] Add `DeleteFile` support to PC gateway client/host.
 - [ ] Add `move_file` / `copy_file` with approval when writing.
 - [ ] Add `read_many_files` or bounded project search.
 - [ ] Upgrade `git` tool from contract placeholder to real routed operations.
@@ -161,14 +164,14 @@ Already done:
 - [x] Read/write/list/exec/git status/git diff.
 - [x] Task detection for Cargo/npm/pytest.
 - [x] Rust diagnostics via `cargo check --message-format=json`.
-- [x] Post-edit diagnostics summary for PC `write_file` and `edit_file` calls when routed through an attached `PcGatewayClient`.
+- [x] Post-edit diagnostics summary for PC `write_file`, `edit_file` and `apply_patch` calls when routed through an attached `PcGatewayClient`.
 - [x] Wire `PcGatewayClient` into `MobileEngine` / runtime configuration so PC workspace execution is reachable from normal tool_loop turns.
 - [x] Add multi-endpoint PC gateway routing model for direct Wi-Fi, same-LAN, tunnel and internet candidates.
 - [x] Add client-side endpoint failover: local/direct candidates are tried before tunnel/internet candidates.
+- [x] Map `apply_patch` to PC gateway execution using remote read/write/delete operations with rollback.
 
 Remaining checklist:
 
-- [ ] Map `apply_patch` to PC gateway execution or implement a remote patch endpoint.
 - [ ] Add active endpoint cache and route health scoring.
 - [ ] Add mDNS / local discovery for PC-host endpoints.
 - [ ] Add UI connection status and reconnect controls.
@@ -195,7 +198,7 @@ Checklist:
 - [ ] Implement Python diagnostics via `pyright`/`ruff`/`pytest` where available.
 - [x] Add diagnostic severity mapping to `PcDiagnostic` for Rust cargo levels.
 - [ ] Add full post-edit diagnostic hook after `write_file`, `edit_file`, `apply_patch` across local, Termux and PC workspaces.
-- [x] Add PC post-edit diagnostics summary for `write_file` and `edit_file` results when a `PcGatewayClient` is attached.
+- [x] Add PC post-edit diagnostics summary for `write_file`, `edit_file` and `apply_patch` results when a `PcGatewayClient` is attached.
 - [ ] Surface diagnostics in mobile UI.
 - [ ] Inject diagnostics into next model turn as context.
 
@@ -287,13 +290,13 @@ Acceptance criteria:
 | OpenAI-compatible DeepSeek streaming | Keep | Mostly done |
 | Reasoning block streaming | Keep later | Partial |
 | File tools | Keep and adapt | Partial |
-| Apply patch | Keep mobile-safe operation batch first; add unified diff later | Partial/done core |
+| Apply patch | Keep mobile-safe operation batch first; add unified diff later | Partial: local + PC operation batches implemented |
 | Shell execution | Route to PC/Termux | Partial |
 | Git tools | Keep with mobile UI | Partial |
 | Web/search/fetch | Keep with approval | Missing |
 | Runtime HTTP/SSE API | Keep later | Missing |
 | Durable task queue | Keep | Missing |
-| LSP diagnostics | Keep, PC-first | Partial: Rust cargo diagnostics, PC write/edit summary and core PC-client wiring implemented |
+| LSP diagnostics | Keep, PC-first | Partial: Rust cargo diagnostics, PC write/edit/apply_patch summary and core PC-client wiring implemented |
 | PC connectivity | Keep multi-transport, offline-first | Partial: endpoint candidates and client failover implemented |
 | Snapshots/rollback | Keep, mobile-safe file-copy | Partial: core service, tools, local pre-tool hook |
 | OS sandbox | Replace/augment with executor policies | Missing |
@@ -318,7 +321,7 @@ The next implementation sequence is fixed:
 6. [x] Add PC diagnostics for Rust projects.
 7. [x] Wire `PcGatewayClient` into normal `MobileEngine` turns.
 8. [x] Add multi-endpoint PC gateway route candidates and client failover.
-9. [ ] Map `apply_patch` to PC gateway execution.
+9. [x] Map `apply_patch` to PC gateway execution.
 10. [ ] Add full post-edit diagnostic hook across local, Termux and PC workspaces.
 11. [ ] Add snapshot/diagnostics UI panels.
 12. [ ] Add Termux executor bridge.
@@ -337,6 +340,7 @@ The next implementation sequence is fixed:
 - 2026-05-16: Added PC post-edit diagnostics summary/metadata after `write_file` and `edit_file` calls inside `ToolExecutionCoordinator` when a `PcGatewayClient` is attached.
 - 2026-05-16: Wired `PcGatewayClient` through tool_loop, `MobileEngine`, `MobileRuntimeConfig`, and mobile runner so normal turns can execute PC workspace tools when a `WorkspaceConnection` is supplied. UI pairing remains separate.
 - 2026-05-16: Added PC gateway endpoint candidates for direct Wi-Fi, same-LAN, tunnel and internet routes; `PcGatewayClient` now attempts endpoints by priority so local/offline routes are preferred before tunnel/internet fallback.
+- 2026-05-16: Added `DeleteFile` support to PC gateway client/host and mapped operation-based `apply_patch` to PC gateway execution with remote backup/rollback and post-edit diagnostics.
 
 ## 6. Definition of done for the project
 
