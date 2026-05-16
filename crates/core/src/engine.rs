@@ -10,15 +10,18 @@ use crate::approval_card::{approval_cards_from_records, ApprovalCardView};
 use crate::approval_session::ApprovalSessionPolicy;
 use crate::config::Config;
 use crate::events::AgentEvent;
+use crate::pc_gateway_client::PcGatewayClient;
 use crate::runtime_store::{RuntimeThreadStore, TurnRecord};
 use crate::tool_loop::{
-    continue_pending_tool_approval_with_session, process_model_text_with_tools_and_session,
-    ToolLoopExecutionRecord, ToolLoopOutcome,
+    continue_pending_tool_approval_with_session_and_pc_gateway,
+    process_model_text_with_tools_and_session_and_pc_gateway, ToolLoopExecutionRecord,
+    ToolLoopOutcome,
 };
 use crate::tools::{default_mobile_tool_registry, ToolContext, ToolRegistry};
 use crate::turn::{TurnContext, TurnStatus};
 use crate::workspace::{ExecutorKind, Workspace};
-use anyhow::Result;
+use crate::workspace_connection::WorkspaceConnection;
+use anyhow::{anyhow, Result};
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -48,6 +51,7 @@ pub struct MobileEngine {
     runtime_store: Option<RuntimeThreadStore>,
     thread_id: String,
     workspace: Workspace,
+    pc_gateway: Option<PcGatewayClient>,
     approval_session: ApprovalSessionPolicy,
     event_observer: Option<Arc<dyn Fn(AgentEvent)>>,
 }
@@ -65,6 +69,7 @@ impl MobileEngine {
                 PathBuf::from("."),
                 ExecutorKind::LocalAndroid,
             ),
+            pc_gateway: None,
             approval_session: ApprovalSessionPolicy::new(),
             event_observer: None,
         }
@@ -83,6 +88,33 @@ impl MobileEngine {
     pub fn with_workspace(mut self, workspace_root: impl Into<PathBuf>) -> Self {
         self.workspace.root = workspace_root.into();
         self
+    }
+
+    pub fn with_workspace_model(mut self, workspace: Workspace) -> Self {
+        self.workspace = workspace;
+        self
+    }
+
+    pub fn with_pc_gateway(mut self, client: PcGatewayClient) -> Self {
+        self.pc_gateway = Some(client);
+        self
+    }
+
+    pub fn with_workspace_connection(mut self, connection: &WorkspaceConnection) -> Result<Self> {
+        self.workspace = connection.to_workspace();
+        if let Some(gateway_config) = connection.pc_gateway.clone() {
+            self.pc_gateway = Some(PcGatewayClient::new(gateway_config));
+        }
+        if matches!(self.workspace.executor, ExecutorKind::PcGateway) && self.pc_gateway.is_none() {
+            return Err(anyhow!(
+                "PC gateway workspace selected but connection has no PcGatewayConfig"
+            ));
+        }
+        Ok(self)
+    }
+
+    pub fn has_pc_gateway(&self) -> bool {
+        self.pc_gateway.is_some()
     }
 
     pub fn with_approval_session(mut self, approval_session: ApprovalSessionPolicy) -> Self {
@@ -160,12 +192,13 @@ impl MobileEngine {
         };
 
         let context = ToolContext::new(self.workspace.clone());
-        let outcome = process_model_text_with_tools_and_session(
+        let outcome = process_model_text_with_tools_and_session_and_pc_gateway(
             answer.clone(),
             &self.registry,
             &context,
             &mut turn,
             &mut self.approval_session,
+            self.pc_gateway.as_ref(),
         )
         .await?;
 
@@ -249,13 +282,14 @@ impl MobileEngine {
         };
         let pending_record = store.load_pending_approval(approval_id)?;
         let context = ToolContext::new(self.workspace.clone());
-        let outcome = continue_pending_tool_approval_with_session(
+        let outcome = continue_pending_tool_approval_with_session_and_pc_gateway(
             pending_record.pending,
             decision.clone(),
             &self.registry,
             &context,
             &mut turn,
             &mut self.approval_session,
+            self.pc_gateway.as_ref(),
         )
         .await?;
 
@@ -326,10 +360,32 @@ impl MobileEngine {
 mod tests {
     use super::MobileEngine;
     use crate::config::Config;
+    use crate::pc_gateway::PcGatewayConfig;
+    use crate::workspace::ExecutorKind;
+    use crate::workspace_connection::WorkspaceConnection;
 
     #[test]
     fn engine_reports_streaming_support() {
         let engine = MobileEngine::new(Config::default());
         assert!(engine.supports_streaming());
+    }
+
+    #[test]
+    fn engine_can_be_configured_from_pc_workspace_connection() {
+        let mut gateway = PcGatewayConfig::new("pc-1", "Laptop", "http://127.0.0.1:8787", "phone-1");
+        gateway.allow_http_on_local_network = true;
+        let connection = WorkspaceConnection::pc_gateway(
+            "pc",
+            "Laptop",
+            "w1",
+            "Project",
+            "/pc/project",
+            gateway,
+        );
+        let engine = MobileEngine::new(Config::default())
+            .with_workspace_connection(&connection)
+            .expect("configure pc gateway");
+        assert!(engine.has_pc_gateway());
+        assert_eq!(engine.workspace.executor, ExecutorKind::PcGateway);
     }
 }
