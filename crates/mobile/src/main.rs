@@ -13,6 +13,7 @@ mod mobile_runtime_config;
 mod native_bridge;
 mod native_document_picker;
 mod native_event_router;
+mod native_pc_discovery;
 mod pc_pairing_manager;
 mod pc_pairing_panel;
 mod pc_pairing_state;
@@ -227,7 +228,20 @@ fn app() -> Element {
                     padding: "8px 10px",
                     color: "white",
                     font_size: "12px",
-                    "Waiting for Android document picker callback..."
+                    "Waiting for Android native callback..."
+                }
+            }
+
+            if native_bridge().is_waiting_for_pc_discovery_callback() {
+                div {
+                    margin_top: "8px",
+                    background_color: "#064e3b",
+                    border: "1px solid #10b981",
+                    border_radius: "14px",
+                    padding: "8px 10px",
+                    color: "white",
+                    font_size: "12px",
+                    "Scanning local network for DeepSeek PC Host..."
                 }
             }
 
@@ -362,23 +376,21 @@ fn app() -> Element {
                                             result.thread_id
                                         )),
                                     );
-                                    if result.has_pending_approvals() {
+                                    if result.awaiting_approval {
                                         push_agent_event(
                                             &mut next_timeline,
-                                            &AgentEvent::Status(format!(
-                                                "Pending approvals: {}",
-                                                result.approval_card_count
-                                            )),
+                                            &AgentEvent::Status("Waiting for user approval".to_string()),
                                         );
                                     }
-                                    approval_cards.set(result.approval_cards);
                                     timeline.set(next_timeline);
+                                    approval_cards.set(result.approval_cards);
                                 }
-                                Err(e) => {
-                                    let error = format!("Error: {}", e);
-                                    messages.push(("assistant".to_string(), error.clone()));
+                                Err(err) => {
                                     let mut next_timeline = timeline();
-                                    push_agent_event(&mut next_timeline, &AgentEvent::Error(error));
+                                    push_agent_event(
+                                        &mut next_timeline,
+                                        &AgentEvent::Error(format!("MobileEngine error: {}", err)),
+                                    );
                                     timeline.set(next_timeline);
                                 }
                             }
