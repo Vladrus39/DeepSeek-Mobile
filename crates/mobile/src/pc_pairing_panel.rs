@@ -99,33 +99,40 @@ pub fn pc_pairing_panel(mut state: Signal<PcPairingUiState>, mut native_bridge: 
 
                 div { color: "#d1d5db", font_size: "13px", "Reconnect controls" }
                 for control in reconnect_controls {
-                    button {
-                        background_color: if control.enabled { "#2563eb" } else { "#374151" },
-                        color: "white",
-                        padding: "10px 12px",
-                        border_radius: "10px",
-                        border: "1px solid #4b5563",
-                        text_align: "left",
-                        disabled: !control.enabled,
-                        onclick: move |_| {
-                            let action = control.action.clone();
-                            let mut next_state = state();
-                            let effect = next_state.apply_reconnect_action(action.clone());
-                            state.set(next_state);
+                    {
+                        let control_enabled = control.enabled;
+                        let control_label = control.label;
+                        let control_description = control.description;
+                        let action_for_click = control.action.clone();
+                        rsx! {
+                            button {
+                                background_color: if control_enabled { "#2563eb" } else { "#374151" },
+                                color: "white",
+                                padding: "10px 12px",
+                                border_radius: "10px",
+                                border: "1px solid #4b5563",
+                                text_align: "left",
+                                disabled: !control_enabled,
+                                onclick: move |_| {
+                                    let mut next_state = state();
+                                    let effect = next_state.apply_reconnect_action(action_for_click.clone());
+                                    state.set(next_state);
 
-                            match effect {
-                                PcReconnectEffect::StartDiscovery { request_id } => {
-                                    let mut bridge = native_bridge();
-                                    bridge.enqueue_pc_gateway_discovery(request_id);
-                                    native_bridge.set(bridge);
-                                }
-                                PcReconnectEffect::RetryRoute { .. }
-                                | PcReconnectEffect::SelectedRoute { .. }
-                                | PcReconnectEffect::None => {}
+                                    match effect {
+                                        PcReconnectEffect::StartDiscovery { request_id } => {
+                                            let mut bridge = native_bridge();
+                                            bridge.enqueue_pc_gateway_discovery(request_id);
+                                            native_bridge.set(bridge);
+                                        }
+                                        PcReconnectEffect::RetryRoute { .. }
+                                        | PcReconnectEffect::SelectedRoute { .. }
+                                        | PcReconnectEffect::None => {}
+                                    }
+                                },
+                                div { font_weight: "bold", "{control_label}" }
+                                div { color: "#d1d5db", font_size: "12px", "{control_description}" }
                             }
-                        },
-                        div { font_weight: "bold", "{control.label}" }
-                        div { color: "#d1d5db", font_size: "12px", "{control.description}" }
+                        }
                     }
                 }
             }
