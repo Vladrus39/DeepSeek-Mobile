@@ -31,10 +31,10 @@ pub fn project_files_panel() -> Element {
             flex_direction: "column",
             gap: "12px",
 
-            header_card(&snapshot)
-            tree_card(&snapshot)
-            file_preview_card(preview.as_ref())
-            diff_preview_card(preview.as_ref())
+            {header_card(&snapshot)}
+            {tree_card(&snapshot)}
+            {file_preview_card(preview.as_ref())}
+            {diff_preview_card(preview.as_ref())}
         }
     }
 }
@@ -56,12 +56,12 @@ fn header_card(snapshot: &ProjectTreeSnapshot) -> Element {
                 display: "flex",
                 gap: "8px",
                 flex_wrap: "wrap",
-                stat_badge("Dirs", snapshot.directory_count().to_string())
-                stat_badge("Files", snapshot.file_count().to_string())
+                {stat_badge("Dirs", snapshot.directory_count().to_string())}
+                {stat_badge("Files", snapshot.file_count().to_string())}
                 if snapshot.truncated {
-                    stat_badge("Tree", "truncated".to_string())
+                    {stat_badge("Tree", "truncated".to_string())}
                 } else {
-                    stat_badge("Tree", "complete".to_string())
+                    {stat_badge("Tree", "complete".to_string())}
                 }
             }
         }
