@@ -176,21 +176,23 @@ fn current_unix_time() -> u64 {
 #[cfg(test)]
 mod tests {
     use super::{can_grant_for_session, ApprovalSessionPolicy};
-    use crate::approval::{MobileApprovalRequest, ToolCategory};
+    use crate::approval::{ApprovalRisk, MobileApprovalRequest, ToolCategory};
     use crate::tool_call::{ToolCallRequest, ToolCallSource};
-    use crate::tools::file_ops::WriteFileTool;
-    use crate::tools::shell::ShellTool;
     use serde_json::json;
 
     #[test]
     fn file_write_session_grant_matches_same_path_only() {
-        let tool = WriteFileTool;
         let call = ToolCallRequest::new(
             "write_file",
             json!({"path":"README.md","content":"x"}),
             ToolCallSource::Manual,
         );
-        let approval = MobileApprovalRequest::new(call.id.clone(), &tool, call.arguments.clone());
+        let approval = MobileApprovalRequest::new(
+            "write_file",
+            ToolCategory::FileWrite,
+            ApprovalRisk::Benign,
+            call.arguments.clone(),
+        );
         let mut policy = ApprovalSessionPolicy::new();
         assert!(policy.grant_for_approved_call(&approval, &call).is_some());
         assert!(policy.is_call_allowed_by_session(&approval, &call));
@@ -200,19 +202,28 @@ mod tests {
             json!({"path":"src/lib.rs","content":"x"}),
             ToolCallSource::Manual,
         );
-        let other_approval = MobileApprovalRequest::new(other_call.id.clone(), &tool, other_call.arguments.clone());
+        let other_approval = MobileApprovalRequest::new(
+            "write_file",
+            ToolCategory::FileWrite,
+            ApprovalRisk::Benign,
+            other_call.arguments.clone(),
+        );
         assert!(!policy.is_call_allowed_by_session(&other_approval, &other_call));
     }
 
     #[test]
     fn duplicate_session_grant_does_not_grow_policy() {
-        let tool = WriteFileTool;
         let call = ToolCallRequest::new(
             "write_file",
             json!({"path":"README.md","content":"x"}),
             ToolCallSource::Manual,
         );
-        let approval = MobileApprovalRequest::new(call.id.clone(), &tool, call.arguments.clone());
+        let approval = MobileApprovalRequest::new(
+            "write_file",
+            ToolCategory::FileWrite,
+            ApprovalRisk::Benign,
+            call.arguments.clone(),
+        );
         let mut policy = ApprovalSessionPolicy::new();
         let first = policy.grant_for_approved_call(&approval, &call).unwrap();
         let second = policy.grant_for_approved_call(&approval, &call).unwrap();
@@ -222,13 +233,17 @@ mod tests {
 
     #[test]
     fn shell_tools_cannot_be_granted_for_session() {
-        let tool = ShellTool;
         let call = ToolCallRequest::new(
             "exec_shell",
-            json!({"command":"rm -rf /tmp/x"}),
+            json!({"command":"cargo check"}),
             ToolCallSource::Manual,
         );
-        let approval = MobileApprovalRequest::new(call.id.clone(), &tool, call.arguments.clone());
+        let approval = MobileApprovalRequest::new(
+            "exec_shell",
+            ToolCategory::Shell,
+            ApprovalRisk::Destructive,
+            call.arguments.clone(),
+        );
         assert_eq!(approval.category, ToolCategory::Shell);
         assert!(!can_grant_for_session(&approval));
         let mut policy = ApprovalSessionPolicy::new();
