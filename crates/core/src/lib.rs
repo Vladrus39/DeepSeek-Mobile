@@ -5,6 +5,7 @@ pub mod api_client;
 pub mod approval;
 pub mod approval_card;
 pub mod approval_session;
+pub mod approval_session_runtime;
 pub mod chat_input;
 pub mod config;
 pub mod context;
@@ -41,6 +42,7 @@ pub use approval_card::{
 pub use approval_session::{
     can_grant_for_session, ApprovalSessionGrant, ApprovalSessionPolicy, ApprovalSessionScope,
 };
+pub use approval_session_runtime::{ApprovalSessionRuntimeRecord, ApprovalSessionRuntimeStore};
 pub use chat_input::{UserAttachmentKind, UserAttachmentRef, UserChatInput};
 pub use config::{Config, ExternalAccessMode, ModelMode, ThinkingLevel};
 pub use context::{
