@@ -54,6 +54,7 @@ PC execution
   -> MobileRuntimeConfig.workspace_connection
   -> MobileEngine.with_workspace_connection
   -> PcGatewayClient
+  -> endpoint_plan: direct/local routes first, tunnel/internet fallback later
   -> tool_loop *_and_pc_gateway functions
   -> ToolExecutionCoordinator.with_pc_gateway
   -> pc-host HTTP /v1/gateway/request
@@ -162,10 +163,14 @@ Already done:
 - [x] Rust diagnostics via `cargo check --message-format=json`.
 - [x] Post-edit diagnostics summary for PC `write_file` and `edit_file` calls when routed through an attached `PcGatewayClient`.
 - [x] Wire `PcGatewayClient` into `MobileEngine` / runtime configuration so PC workspace execution is reachable from normal tool_loop turns.
+- [x] Add multi-endpoint PC gateway routing model for direct Wi-Fi, same-LAN, tunnel and internet candidates.
+- [x] Add client-side endpoint failover: local/direct candidates are tried before tunnel/internet candidates.
 
 Remaining checklist:
 
 - [ ] Map `apply_patch` to PC gateway execution or implement a remote patch endpoint.
+- [ ] Add active endpoint cache and route health scoring.
+- [ ] Add mDNS / local discovery for PC-host endpoints.
 - [ ] Add UI connection status and reconnect controls.
 - [ ] Add pairing flow end-to-end from mobile UI.
 - [ ] Add PC-host logs and health detail.
@@ -177,6 +182,7 @@ Remaining checklist:
 Acceptance criteria:
 
 - A phone can connect to PC, inspect project, edit files, run tests, view output, and recover from disconnect.
+- PC execution must work without public internet when phone and PC have a direct/private route.
 
 ### P4 — LSP and diagnostics
 
@@ -288,6 +294,7 @@ Acceptance criteria:
 | Runtime HTTP/SSE API | Keep later | Missing |
 | Durable task queue | Keep | Missing |
 | LSP diagnostics | Keep, PC-first | Partial: Rust cargo diagnostics, PC write/edit summary and core PC-client wiring implemented |
+| PC connectivity | Keep multi-transport, offline-first | Partial: endpoint candidates and client failover implemented |
 | Snapshots/rollback | Keep, mobile-safe file-copy | Partial: core service, tools, local pre-tool hook |
 | OS sandbox | Replace/augment with executor policies | Missing |
 | MCP | Keep, PC-first | Missing |
@@ -310,13 +317,14 @@ The next implementation sequence is fixed:
 5. [x] Auto-create pre-tool snapshots before destructive approved local tools.
 6. [x] Add PC diagnostics for Rust projects.
 7. [x] Wire `PcGatewayClient` into normal `MobileEngine` turns.
-8. [ ] Map `apply_patch` to PC gateway execution.
-9. [ ] Add full post-edit diagnostic hook across local, Termux and PC workspaces.
-10. [ ] Add snapshot/diagnostics UI panels.
-11. [ ] Add Termux executor bridge.
-12. [ ] Add Git UI.
-13. [ ] Add background tasks.
-14. [ ] Add MCP/skills.
+8. [x] Add multi-endpoint PC gateway route candidates and client failover.
+9. [ ] Map `apply_patch` to PC gateway execution.
+10. [ ] Add full post-edit diagnostic hook across local, Termux and PC workspaces.
+11. [ ] Add snapshot/diagnostics UI panels.
+12. [ ] Add Termux executor bridge.
+13. [ ] Add Git UI.
+14. [ ] Add background tasks.
+15. [ ] Add MCP/skills.
 
 ## 5. Implementation progress log
 
@@ -328,6 +336,7 @@ The next implementation sequence is fixed:
 - 2026-05-16: Implemented PC-host Rust diagnostics using `cargo check --workspace --message-format=json`, mapped cargo levels to `PcDiagnosticSeverity`, and added path filtering.
 - 2026-05-16: Added PC post-edit diagnostics summary/metadata after `write_file` and `edit_file` calls inside `ToolExecutionCoordinator` when a `PcGatewayClient` is attached.
 - 2026-05-16: Wired `PcGatewayClient` through tool_loop, `MobileEngine`, `MobileRuntimeConfig`, and mobile runner so normal turns can execute PC workspace tools when a `WorkspaceConnection` is supplied. UI pairing remains separate.
+- 2026-05-16: Added PC gateway endpoint candidates for direct Wi-Fi, same-LAN, tunnel and internet routes; `PcGatewayClient` now attempts endpoints by priority so local/offline routes are preferred before tunnel/internet fallback.
 
 ## 6. Definition of done for the project
 
