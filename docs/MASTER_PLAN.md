@@ -68,6 +68,15 @@ PC execution
   -> AgentEvent timeline
 ```
 
+```text
+Local/Termux diagnostics
+  -> LocalAndroid or Termux write/edit/apply_patch
+  -> ToolExecutionCoordinator local route
+  -> WorkspaceDiagnosticsService
+  -> cargo check --workspace --message-format=json when Cargo.toml exists
+  -> best-effort diagnostics metadata without failing the original edit
+```
+
 Snapshot/rollback map:
 
 ```text
@@ -197,8 +206,9 @@ Checklist:
 - [ ] Implement TypeScript diagnostics via `tsc --noEmit` when config exists.
 - [ ] Implement Python diagnostics via `pyright`/`ruff`/`pytest` where available.
 - [x] Add diagnostic severity mapping to `PcDiagnostic` for Rust cargo levels.
-- [ ] Add full post-edit diagnostic hook after `write_file`, `edit_file`, `apply_patch` across local, Termux and PC workspaces.
+- [x] Add full post-edit diagnostic hook after `write_file`, `edit_file`, `apply_patch` across local, Termux and PC workspaces.
 - [x] Add PC post-edit diagnostics summary for `write_file`, `edit_file` and `apply_patch` results when a `PcGatewayClient` is attached.
+- [x] Add LocalAndroid/Termux post-edit Rust diagnostics through `WorkspaceDiagnosticsService`.
 - [ ] Surface diagnostics in mobile UI.
 - [ ] Inject diagnostics into next model turn as context.
 
@@ -296,7 +306,7 @@ Acceptance criteria:
 | Web/search/fetch | Keep with approval | Missing |
 | Runtime HTTP/SSE API | Keep later | Missing |
 | Durable task queue | Keep | Missing |
-| LSP diagnostics | Keep, PC-first | Partial: Rust cargo diagnostics, PC write/edit/apply_patch summary and core PC-client wiring implemented |
+| LSP diagnostics | Keep, PC-first plus local/Termux fallback | Partial: Rust cargo diagnostics and post-edit hooks implemented; TS/Python/UI/model-context still pending |
 | PC connectivity | Keep multi-transport, offline-first | Partial: endpoint candidates and client failover implemented |
 | Snapshots/rollback | Keep, mobile-safe file-copy | Partial: core service, tools, local pre-tool hook |
 | OS sandbox | Replace/augment with executor policies | Missing |
@@ -322,7 +332,7 @@ The next implementation sequence is fixed:
 7. [x] Wire `PcGatewayClient` into normal `MobileEngine` turns.
 8. [x] Add multi-endpoint PC gateway route candidates and client failover.
 9. [x] Map `apply_patch` to PC gateway execution.
-10. [ ] Add full post-edit diagnostic hook across local, Termux and PC workspaces.
+10. [x] Add full post-edit diagnostic hook across local, Termux and PC workspaces.
 11. [ ] Add snapshot/diagnostics UI panels.
 12. [ ] Add Termux executor bridge.
 13. [ ] Add Git UI.
@@ -341,6 +351,7 @@ The next implementation sequence is fixed:
 - 2026-05-16: Wired `PcGatewayClient` through tool_loop, `MobileEngine`, `MobileRuntimeConfig`, and mobile runner so normal turns can execute PC workspace tools when a `WorkspaceConnection` is supplied. UI pairing remains separate.
 - 2026-05-16: Added PC gateway endpoint candidates for direct Wi-Fi, same-LAN, tunnel and internet routes; `PcGatewayClient` now attempts endpoints by priority so local/offline routes are preferred before tunnel/internet fallback.
 - 2026-05-16: Added `DeleteFile` support to PC gateway client/host and mapped operation-based `apply_patch` to PC gateway execution with remote backup/rollback and post-edit diagnostics.
+- 2026-05-16: Added `WorkspaceDiagnosticsService` and wired best-effort LocalAndroid/Termux post-edit Rust diagnostics after `write_file`, `edit_file`, `apply_patch`, and modifying `file_ops` calls.
 
 ## 6. Definition of done for the project
 
