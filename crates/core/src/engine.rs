@@ -97,15 +97,19 @@ impl MobileEngine {
         true
     }
 
-    pub async fn run_turn_with_streaming(&self, user_input: String) -> Result<EngineTurnResult> {
+    pub fn approval_session_grant_count(&self) -> usize {
+        self.approval_session.grant_count()
+    }
+
+    pub async fn run_turn_with_streaming(&mut self, user_input: String) -> Result<EngineTurnResult> {
         self.run_turn_internal(user_input, true).await
     }
 
-    pub async fn run_turn(&self, user_input: String) -> Result<EngineTurnResult> {
+    pub async fn run_turn(&mut self, user_input: String) -> Result<EngineTurnResult> {
         self.run_turn_internal(user_input, false).await
     }
 
-    async fn run_turn_internal(&self, user_input: String, streaming: bool) -> Result<EngineTurnResult> {
+    async fn run_turn_internal(&mut self, user_input: String, streaming: bool) -> Result<EngineTurnResult> {
         let mut turn = TurnContext::new(100);
         turn.start();
         self.persist_turn(&turn)?;
@@ -147,13 +151,12 @@ impl MobileEngine {
         };
 
         let context = ToolContext::new(self.workspace.clone());
-        let mut session = self.approval_session.clone();
         let outcome = process_model_text_with_tools_and_session(
             answer.clone(),
             &self.registry,
             &context,
             &mut turn,
-            &mut session,
+            &mut self.approval_session,
         )
         .await?;
 
@@ -227,7 +230,7 @@ impl MobileEngine {
     }
 
     pub async fn continue_stored_approval(
-        &self,
+        &mut self,
         approval_id: &str,
         decision: ReviewDecision,
         mut turn: TurnContext,
@@ -237,14 +240,13 @@ impl MobileEngine {
         };
         let pending_record = store.load_pending_approval(approval_id)?;
         let context = ToolContext::new(self.workspace.clone());
-        let mut session = self.approval_session.clone();
         let outcome = continue_pending_tool_approval_with_session(
             pending_record.pending,
             decision.clone(),
             &self.registry,
             &context,
             &mut turn,
-            &mut session,
+            &mut self.approval_session,
         )
         .await?;
 
