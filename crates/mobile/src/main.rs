@@ -18,6 +18,7 @@ mod pc_pairing_state;
 mod project_diff;
 mod project_files;
 mod project_files_panel;
+mod project_files_state;
 mod saved_timeline_loader;
 
 use agent_event_adapter::push_agent_event;
@@ -35,6 +36,7 @@ use mobile_engine_runner::{
 };
 use native_bridge::{NativeBridgeState, NativeMobileCommand};
 use pc_pairing_state::PcPairingUiState;
+use project_files_state::ProjectFilesUiState;
 use saved_timeline_loader::load_default_saved_timeline;
 
 fn main() {
@@ -54,6 +56,7 @@ fn app() -> Element {
     let mut drawer_open = use_signal(|| false);
     let mut active_section = use_signal(|| CockpitSection::Chat);
     let pc_pairing_state = use_signal(PcPairingUiState::default);
+    let project_files_state = use_signal(ProjectFilesUiState::default);
 
     if !did_load_saved_runtime() {
         did_load_saved_runtime.set(true);
@@ -210,7 +213,7 @@ fn app() -> Element {
                         }
                     }
                 } else {
-                    {cockpit_section_panel(active_section(), &pc_pairing_state())}
+                    {cockpit_section_panel(active_section(), &pc_pairing_state(), project_files_state)}
                 }
             }
 
