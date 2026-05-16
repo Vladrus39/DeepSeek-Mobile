@@ -69,7 +69,7 @@ pub use pc_gateway::{
     PcGatewaySecurityPolicy, PcGatewayTransportMode, PcGatewayTrustLevel, PcPreviewDescriptor,
     PcTaskDescriptor, PcTaskKind, PcTerminalSession, PcWorkspaceGrant, PcWorkspaceIndexSummary,
 };
-pub use pc_gateway_client::PcGatewayClient;
+pub use pc_gateway_client::{PcGatewayClient, PcGatewayEndpointHealth};
 pub use pc_pairing::{PcGatewayPairingBundle, PcPairingLaunchScript, PcPairingPlatform};
 pub use runtime_store::{
     ApprovalDecisionRecord, PendingApprovalRecord, RuntimeEventRecord, RuntimeThreadStore,
