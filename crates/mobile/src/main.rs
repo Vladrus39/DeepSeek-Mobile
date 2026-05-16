@@ -1,6 +1,7 @@
 mod agent_event_adapter;
 mod agent_timeline;
 mod agent_timeline_panel;
+mod approval_diff_preview;
 mod attachment_ingestion;
 mod chat_attachment;
 mod cockpit_section_panel;
