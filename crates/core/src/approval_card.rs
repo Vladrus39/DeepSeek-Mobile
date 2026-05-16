@@ -173,7 +173,7 @@ fn truncate_preview_string(text: &str) -> String {
         return text.to_string();
     }
     let mut preview = text.chars().take(MAX_PREVIEW_STRING_CHARS).collect::<String>();
-    preview.push_str("… <truncated>");
+    preview.push_str("... <truncated>");
     preview
 }
 
@@ -252,11 +252,9 @@ fn default_actions_for(approval: &MobileApprovalRequest) -> Vec<ApprovalCardActi
 #[cfg(test)]
 mod tests {
     use super::{sanitize_value_for_preview, ApprovalCardView};
-    use crate::approval::{MobileApprovalRequest, ReviewDecision};
+    use crate::approval::{ApprovalRisk, MobileApprovalRequest, ReviewDecision, ToolCategory};
     use crate::tool_call::{ToolCallRequest, ToolCallSource};
     use crate::tool_loop::PendingToolCallApproval;
-    use crate::tools::file_ops::WriteFileTool;
-    use crate::tools::shell::ShellTool;
     use serde_json::json;
 
     #[test]
@@ -275,20 +273,24 @@ mod tests {
         let long = "x".repeat(400);
         let preview = sanitize_value_for_preview(&json!({"content": long}));
         let content = preview["content"].as_str().unwrap();
-        assert!(content.ends_with("… <truncated>"));
+        assert!(content.ends_with("... <truncated>"));
         assert!(content.len() < 280);
     }
 
     #[test]
     fn builds_file_write_card_from_pending_tool_approval() {
-        let tool = WriteFileTool;
         let call = ToolCallRequest::new(
             "write_file",
             json!({"path":"README.md","content":"x"}),
             ToolCallSource::Manual,
+        );
+        let approval = MobileApprovalRequest::new(
+            "write_file",
+            ToolCategory::FileWrite,
+            ApprovalRisk::Benign,
+            call.arguments.clone(),
         )
         .with_id("approval-1");
-        let approval = MobileApprovalRequest::new("approval-1", &tool, call.arguments.clone());
         let pending = PendingToolCallApproval { approval, call };
         let card = ApprovalCardView::from_pending_tool_approval(&pending);
         assert_eq!(card.id, "approval-1");
@@ -302,14 +304,18 @@ mod tests {
 
     #[test]
     fn shell_card_does_not_offer_session_approval() {
-        let tool = ShellTool;
         let call = ToolCallRequest::new(
             "exec_shell",
-            json!({"command":"rm -rf /tmp/x"}),
+            json!({"command":"cargo check"}),
             ToolCallSource::Manual,
+        );
+        let approval = MobileApprovalRequest::new(
+            "exec_shell",
+            ToolCategory::Shell,
+            ApprovalRisk::Destructive,
+            call.arguments.clone(),
         )
         .with_id("approval-1");
-        let approval = MobileApprovalRequest::new("approval-1", &tool, call.arguments.clone());
         let pending = PendingToolCallApproval { approval, call };
         let card = ApprovalCardView::from_pending_tool_approval(&pending);
         assert!(!card
