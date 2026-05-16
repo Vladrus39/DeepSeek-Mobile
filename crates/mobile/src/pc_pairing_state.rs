@@ -1,4 +1,5 @@
 use crate::pc_pairing_manager::{MobilePcPairingExport, MobilePcPairingRequest, PcPairingManager};
+use deepseek_mobile_core::PcGatewayEndpointHealth;
 use std::path::{Path, PathBuf};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -17,6 +18,8 @@ pub struct PcPairingUiState {
     pub status: PcPairingUiStatus,
     pub request: Option<MobilePcPairingRequest>,
     pub export: Option<MobilePcPairingExport>,
+    pub active_endpoint: Option<PcGatewayEndpointHealth>,
+    pub endpoint_health: Vec<PcGatewayEndpointHealth>,
     pub last_error: Option<String>,
 }
 
@@ -26,6 +29,8 @@ impl Default for PcPairingUiState {
             status: PcPairingUiStatus::NotConfigured,
             request: None,
             export: None,
+            active_endpoint: None,
+            endpoint_health: Vec::new(),
             last_error: None,
         }
     }
@@ -35,6 +40,8 @@ impl PcPairingUiState {
     pub fn configure(&mut self, request: MobilePcPairingRequest) {
         self.request = Some(request);
         self.export = None;
+        self.active_endpoint = None;
+        self.endpoint_health.clear();
         self.last_error = None;
         self.status = PcPairingUiStatus::ReadyToExport;
     }
@@ -74,6 +81,16 @@ impl PcPairingUiState {
         self.status = PcPairingUiStatus::Offline;
     }
 
+    pub fn apply_endpoint_health(&mut self, active: Option<PcGatewayEndpointHealth>, all: Vec<PcGatewayEndpointHealth>) {
+        self.active_endpoint = active;
+        self.endpoint_health = all;
+        if self.active_endpoint.is_some() {
+            self.mark_online();
+        } else if self.endpoint_health.iter().any(|endpoint| endpoint.failure_count > 0) {
+            self.mark_offline();
+        }
+    }
+
     pub fn set_error(&mut self, message: impl Into<String>) {
         let message = message.into();
         self.last_error = Some(message.clone());
@@ -101,17 +118,68 @@ impl PcPairingUiState {
                 None => "Pairing ZIP created".to_string(),
             },
             PcPairingUiStatus::WaitingForPc => "Waiting for PC host to come online".to_string(),
-            PcPairingUiStatus::Online => "PC host is online".to_string(),
+            PcPairingUiStatus::Online => match self.active_endpoint.as_ref() {
+                Some(endpoint) => format!("PC host is online via {}", endpoint.label),
+                None => "PC host is online".to_string(),
+            },
             PcPairingUiStatus::Offline => "PC host is offline".to_string(),
             PcPairingUiStatus::Error(message) => format!("PC pairing error: {}", message),
         }
     }
+
+    pub fn active_route_text(&self) -> String {
+        match self.active_endpoint.as_ref() {
+            Some(endpoint) => format!(
+                "{}\n{}\nlatency: {}\nsuccess: {} | failure: {}",
+                endpoint.label,
+                endpoint.base_url,
+                format_latency(endpoint.last_latency_ms),
+                endpoint.success_count,
+                endpoint.failure_count
+            ),
+            None => "No active PC route yet. Run a connection check or execute a PC workspace request.".to_string(),
+        }
+    }
+
+    pub fn endpoint_health_rows(&self) -> Vec<String> {
+        if self.endpoint_health.is_empty() {
+            return vec!["No endpoint health samples yet.".to_string()];
+        }
+
+        self.endpoint_health
+            .iter()
+            .map(|endpoint| {
+                let error = endpoint
+                    .last_error
+                    .as_ref()
+                    .map(|error| format!(" | last error: {}", error))
+                    .unwrap_or_default();
+                format!(
+                    "{} — {} — score {} — {} — ok {} / fail {}{}",
+                    endpoint.label,
+                    endpoint.base_url,
+                    endpoint.score(),
+                    format_latency(endpoint.last_latency_ms),
+                    endpoint.success_count,
+                    endpoint.failure_count,
+                    error
+                )
+            })
+            .collect()
+    }
+}
+
+fn format_latency(latency_ms: Option<u128>) -> String {
+    latency_ms
+        .map(|latency| format!("{} ms", latency))
+        .unwrap_or_else(|| "not measured".to_string())
 }
 
 #[cfg(test)]
 mod tests {
     use super::{PcPairingUiState, PcPairingUiStatus};
     use crate::pc_pairing_manager::MobilePcPairingRequest;
+    use deepseek_mobile_core::PcGatewayEndpointHealth;
     use std::fs;
     use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -161,6 +229,24 @@ mod tests {
         assert_eq!(state.status, PcPairingUiStatus::Offline);
     }
 
+    #[test]
+    fn endpoint_health_marks_online_and_describes_route() {
+        let mut state = PcPairingUiState::default();
+        let endpoint = PcGatewayEndpointHealth {
+            label: "same-lan".to_string(),
+            base_url: "http://192.168.1.10:8787".to_string(),
+            success_count: 2,
+            failure_count: 0,
+            last_latency_ms: Some(42),
+            last_error: None,
+        };
+        state.apply_endpoint_health(Some(endpoint.clone()), vec![endpoint]);
+        assert_eq!(state.status, PcPairingUiStatus::Online);
+        assert!(state.status_text().contains("same-lan"));
+        assert!(state.active_route_text().contains("42 ms"));
+        assert_eq!(state.endpoint_health_rows().len(), 1);
+    }
+
     fn sample_request() -> MobilePcPairingRequest {
         MobilePcPairingRequest::new(
             "pc-local",
@@ -169,7 +255,7 @@ mod tests {
             "Android Phone",
             "local",
             "/work/project",
-            "secret-token",
+            "pairing-token",
         )
     }
 
