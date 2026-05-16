@@ -74,7 +74,7 @@ where
     F: Fn(AgentEvent) + 'static,
 {
     let store = RuntimeThreadStore::open(runtime.runtime_store_root.clone())?;
-    let engine = MobileEngine::new(config)
+    let mut engine = MobileEngine::new(config)
         .with_runtime_store(store)
         .with_thread_id(runtime.thread_id.clone())
         .with_workspace(runtime.workspace_root.clone())
@@ -136,7 +136,7 @@ pub async fn continue_mobile_approval_with_runtime(
     };
     turn.error = turn_record.error.clone();
 
-    let engine = MobileEngine::new(config)
+    let mut engine = MobileEngine::new(config)
         .with_runtime_store(store)
         .with_thread_id(runtime.thread_id)
         .with_workspace(runtime.workspace_root);
