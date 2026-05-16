@@ -241,7 +241,7 @@ fn status_badge_color(status: &PcPairingUiStatus) -> &'static str {
 
 #[cfg(test)]
 mod tests {
-    use super::{status_badge_text, PcPairingUiStatus};
+    use super::{status_badge_text, PcPairingUiStatus, PcReconnectAction};
 
     #[test]
     fn status_badges_match_pairing_state() {
