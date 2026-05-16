@@ -316,10 +316,7 @@ fn current_unix_time() -> u64 {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        pending_approval_is_serializable as _, should_create_pre_tool_snapshot,
-        supports_local_snapshots, PendingToolCallApproval,
-    };
+    use super::{should_create_pre_tool_snapshot, supports_local_snapshots, PendingToolCallApproval};
     use crate::approval::{ApprovalRisk, MobileApprovalRequest, ToolCategory};
     use crate::tool_call::{ToolCallRequest, ToolCallSource};
     use crate::tools::ToolContext;
