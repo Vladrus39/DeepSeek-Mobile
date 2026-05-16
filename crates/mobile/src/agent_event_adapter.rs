@@ -1,7 +1,7 @@
 use crate::agent_timeline::{
     MobileTimelineItemKind, MobileTimelineItemStatus, MobileTimelineState,
 };
-use deepseek_mobile_core::{AgentEvent, RiskLevel};
+use deepseek_mobile_core::{AgentEvent, RiskLevel, WorkspaceSnapshotRecord};
 
 pub fn push_agent_event(timeline: &mut MobileTimelineState, event: &AgentEvent) -> Option<String> {
     match event {
@@ -100,16 +100,51 @@ pub fn push_agent_event(timeline: &mut MobileTimelineState, event: &AgentEvent) 
             format!("Tool: {}", tool.name),
             tool.args.clone(),
         )),
-        AgentEvent::ToolCallFinished(result) => Some(timeline.push(
-            MobileTimelineItemKind::ToolCall,
-            if result.success {
-                MobileTimelineItemStatus::Done
-            } else {
-                MobileTimelineItemStatus::Failed
-            },
-            format!("Tool result: {}", result.name),
-            result.output.clone(),
-        )),
+        AgentEvent::ToolCallFinished(result) => {
+            if let Some(snapshot) = result
+                .metadata
+                .as_ref()
+                .and_then(|metadata| metadata.get("pre_snapshot"))
+                .and_then(|value| {
+                    serde_json::from_value::<WorkspaceSnapshotRecord>(value.clone()).ok()
+                })
+            {
+                timeline.push(
+                    MobileTimelineItemKind::Status,
+                    MobileTimelineItemStatus::Done,
+                    "Safety snapshot",
+                    format!(
+                        "{} · {} file(s) · {} bytes",
+                        snapshot.id, snapshot.file_count, snapshot.total_bytes
+                    ),
+                );
+            }
+
+            if let Some(summary) = result
+                .metadata
+                .as_ref()
+                .and_then(|metadata| metadata.get("post_edit_diagnostics_summary"))
+                .and_then(|value| value.as_str())
+            {
+                timeline.push(
+                    MobileTimelineItemKind::Status,
+                    MobileTimelineItemStatus::Done,
+                    "Post-edit diagnostics",
+                    summary.to_string(),
+                );
+            }
+
+            Some(timeline.push(
+                MobileTimelineItemKind::ToolCall,
+                if result.success {
+                    MobileTimelineItemStatus::Done
+                } else {
+                    MobileTimelineItemStatus::Failed
+                },
+                format!("Tool result: {}", result.name),
+                result.output.clone(),
+            ))
+        }
         AgentEvent::ApprovalRequired(request) => Some(timeline.push(
             MobileTimelineItemKind::Approval,
             MobileTimelineItemStatus::WaitingForApproval,
@@ -136,7 +171,9 @@ pub fn push_agent_event(timeline: &mut MobileTimelineState, event: &AgentEvent) 
             "Session updated",
             format!(
                 "messages={} model={} workspace={}",
-                messages.len(), model, workspace
+                messages.len(),
+                model,
+                workspace
             ),
         )),
         AgentEvent::Error(message) => {
@@ -172,7 +209,9 @@ pub fn risk_label(risk: &RiskLevel) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::push_agent_event;
-    use crate::agent_timeline::{MobileTimelineItemKind, MobileTimelineItemStatus, MobileTimelineState};
+    use crate::agent_timeline::{
+        MobileTimelineItemKind, MobileTimelineItemStatus, MobileTimelineState,
+    };
     use deepseek_mobile_core::{
         AgentEvent, ApprovalRequest, RiskLevel, ToolCallEvent, ToolResultEvent,
     };
@@ -189,7 +228,13 @@ mod tests {
     #[test]
     fn streaming_text_deltas_merge_into_one_assistant_message() {
         let mut timeline = MobileTimelineState::default();
-        push_agent_event(&mut timeline, &AgentEvent::MessageStarted { index: 0, role: "assistant".to_string() });
+        push_agent_event(
+            &mut timeline,
+            &AgentEvent::MessageStarted {
+                index: 0,
+                role: "assistant".to_string(),
+            },
+        );
         push_agent_event(&mut timeline, &AgentEvent::TextDelta("hel".to_string()));
         push_agent_event(&mut timeline, &AgentEvent::TextDelta("lo".to_string()));
         push_agent_event(&mut timeline, &AgentEvent::MessageFinished { index: 0 });
@@ -221,11 +266,46 @@ mod tests {
                 name: "read_file".to_string(),
                 success: true,
                 output: "ok".to_string(),
+                metadata: None,
             }),
         );
         assert_eq!(timeline.len(), 2);
         assert_eq!(timeline.items[0].kind, MobileTimelineItemKind::ToolCall);
         assert_eq!(timeline.items[1].status, MobileTimelineItemStatus::Done);
+    }
+
+    #[test]
+    fn tool_metadata_surfaces_snapshot_and_diagnostics_status_cards() {
+        let mut timeline = MobileTimelineState::default();
+        push_agent_event(
+            &mut timeline,
+            &AgentEvent::ToolCallFinished(ToolResultEvent {
+                id: "tool-2".to_string(),
+                name: "write_file".to_string(),
+                success: true,
+                output: "ok".to_string(),
+                metadata: Some(serde_json::json!({
+                    "pre_snapshot": {
+                        "schema_version": 1,
+                        "id": "snapshot-1",
+                        "workspace_id": "w1",
+                        "workspace_name": "Workspace",
+                        "workspace_root": ".",
+                        "reason": "pre-tool",
+                        "created_unix": 1,
+                        "file_count": 2,
+                        "total_bytes": 42,
+                        "files": []
+                    },
+                    "post_edit_diagnostics_summary": "1 diagnostic(s): 1 error(s), 0 warning(s)"
+                })),
+            }),
+        );
+
+        assert_eq!(timeline.items.len(), 3);
+        assert_eq!(timeline.items[0].title, "Safety snapshot");
+        assert_eq!(timeline.items[1].title, "Post-edit diagnostics");
+        assert_eq!(timeline.items[2].title, "Tool result: write_file");
     }
 
     #[test]
@@ -241,7 +321,10 @@ mod tests {
             }),
         );
         assert_eq!(timeline.items[0].kind, MobileTimelineItemKind::Approval);
-        assert_eq!(timeline.items[0].status, MobileTimelineItemStatus::WaitingForApproval);
+        assert_eq!(
+            timeline.items[0].status,
+            MobileTimelineItemStatus::WaitingForApproval
+        );
         assert!(timeline.items[0].body.contains("risk=medium"));
     }
 }

@@ -11,7 +11,7 @@ use crate::approval_session::{ApprovalSessionGrant, ApprovalSessionPolicy};
 use crate::events::{AgentEvent, ToolCallEvent, ToolResultEvent};
 use crate::pc_gateway_client::PcGatewayClient;
 use crate::runtime_store::ApprovalDecisionRecord;
-use crate::snapshots::WorkspaceSnapshotService;
+use crate::snapshots::{WorkspaceSnapshotRecord, WorkspaceSnapshotService};
 use crate::tool_call::{parse_tool_calls_from_text, ToolCallRequest};
 use crate::tool_execution::ToolExecutionCoordinator;
 use crate::tools::{ToolContext, ToolRegistry, ToolResult};
@@ -76,12 +76,7 @@ pub async fn process_model_text_with_tools_and_session(
     session: &mut ApprovalSessionPolicy,
 ) -> Result<ToolLoopOutcome> {
     process_model_text_with_tools_and_session_and_pc_gateway(
-        text,
-        registry,
-        context,
-        turn,
-        session,
-        None,
+        text, registry, context, turn, session, None,
     )
     .await
 }
@@ -96,30 +91,47 @@ pub async fn process_model_text_with_tools_and_session_and_pc_gateway(
 ) -> Result<ToolLoopOutcome> {
     let parsed = parse_tool_calls_from_text(&text);
     let mut outcome = ToolLoopOutcome {
-        final_text: if parsed.final_text.trim().is_empty() { None } else { Some(parsed.final_text) },
+        final_text: if parsed.final_text.trim().is_empty() {
+            None
+        } else {
+            Some(parsed.final_text)
+        },
         ..ToolLoopOutcome::default()
     };
 
     for call in parsed.tool_calls {
         let approval = approval_request_for_call(&call);
         if session.is_call_allowed_by_session(&approval, &call) || context.auto_approve {
-            let result = execute_approved_call_with_pc_gateway(registry, context, turn, &call, pc_gateway).await;
+            let result =
+                execute_approved_call_with_pc_gateway(registry, context, turn, &call, pc_gateway)
+                    .await;
             push_execution_result(&mut outcome, &call, result);
-        } else if crate::approval::should_request_approval(&crate::approval::ApprovalMode::ReviewWritesAndCommands, &approval) {
+        } else if crate::approval::should_request_approval(
+            &crate::approval::ApprovalMode::ReviewWritesAndCommands,
+            &approval,
+        ) {
             let pending = PendingToolCallApproval { approval, call };
-            outcome.events.push(AgentEvent::ApprovalRequired(crate::events::ApprovalRequest {
-                id: pending.approval.id.clone(),
-                title: pending.approval.tool_name.clone(),
-                description: pending.approval.description.clone(),
-                risk_level: match pending.approval.risk {
-                    crate::approval::ApprovalRisk::Benign => crate::events::RiskLevel::Medium,
-                    crate::approval::ApprovalRisk::Destructive => crate::events::RiskLevel::Dangerous,
+            outcome.events.push(AgentEvent::ApprovalRequired(
+                crate::events::ApprovalRequest {
+                    id: pending.approval.id.clone(),
+                    title: pending.approval.tool_name.clone(),
+                    description: pending.approval.description.clone(),
+                    risk_level: match pending.approval.risk {
+                        crate::approval::ApprovalRisk::Benign => crate::events::RiskLevel::Medium,
+                        crate::approval::ApprovalRisk::Destructive => {
+                            crate::events::RiskLevel::Dangerous
+                        }
+                    },
                 },
-            }));
-            outcome.approval_cards.push(ApprovalCardView::from_approval_request(&pending.approval));
+            ));
+            outcome
+                .approval_cards
+                .push(ApprovalCardView::from_approval_request(&pending.approval));
             outcome.pending_approvals.push(pending);
         } else {
-            let result = execute_approved_call_with_pc_gateway(registry, context, turn, &call, pc_gateway).await;
+            let result =
+                execute_approved_call_with_pc_gateway(registry, context, turn, &call, pc_gateway)
+                    .await;
             push_execution_result(&mut outcome, &call, result);
         }
     }
@@ -154,13 +166,7 @@ pub async fn continue_pending_tool_approval_with_session(
     session: &mut ApprovalSessionPolicy,
 ) -> Result<ToolLoopOutcome> {
     continue_pending_tool_approval_with_session_and_pc_gateway(
-        pending,
-        decision,
-        registry,
-        context,
-        turn,
-        session,
-        None,
+        pending, decision, registry, context, turn, session, None,
     )
     .await
 }
@@ -178,14 +184,28 @@ pub async fn continue_pending_tool_approval_with_session_and_pc_gateway(
 
     match decision {
         ReviewDecision::Approved => {
-            let result = execute_approved_call_with_pc_gateway(registry, context, turn, &pending.call, pc_gateway).await;
+            let result = execute_approved_call_with_pc_gateway(
+                registry,
+                context,
+                turn,
+                &pending.call,
+                pc_gateway,
+            )
+            .await;
             push_execution_result(&mut outcome, &pending.call, result);
         }
         ReviewDecision::ApprovedForSession => {
             if let Some(grant) = session.grant_for_approved_call(&pending.approval, &pending.call) {
                 outcome.session_grants_created.push(grant);
             }
-            let result = execute_approved_call_with_pc_gateway(registry, context, turn, &pending.call, pc_gateway).await;
+            let result = execute_approved_call_with_pc_gateway(
+                registry,
+                context,
+                turn,
+                &pending.call,
+                pc_gateway,
+            )
+            .await;
             push_execution_result(&mut outcome, &pending.call, result);
         }
         ReviewDecision::Denied => {
@@ -222,15 +242,19 @@ pub async fn execute_approved_call_with_pc_gateway(
     call: &ToolCallRequest,
     pc_gateway: Option<&PcGatewayClient>,
 ) -> Result<ToolResult> {
-    turn.record_tool_call(TurnToolCall::new(&call.id, &call.name, call.arguments.clone()));
-    let pre_snapshot_id = create_pre_tool_snapshot_if_needed(context, call)?;
+    turn.record_tool_call(TurnToolCall::new(
+        &call.id,
+        &call.name,
+        call.arguments.clone(),
+    ));
+    let pre_snapshot = create_pre_tool_snapshot_if_needed(context, call)?;
     let mut coordinator = ToolExecutionCoordinator::new(registry);
     if let Some(client) = pc_gateway {
         coordinator = coordinator.with_pc_gateway(client);
     }
     let mut result = coordinator.execute(call, context).await?;
-    if let Some(snapshot_id) = pre_snapshot_id {
-        attach_pre_snapshot_metadata(&mut result, snapshot_id);
+    if let Some(snapshot) = pre_snapshot {
+        attach_pre_snapshot_metadata(&mut result, snapshot);
     }
     Ok(result)
 }
@@ -253,7 +277,7 @@ pub fn decision_record(
 fn create_pre_tool_snapshot_if_needed(
     context: &ToolContext,
     call: &ToolCallRequest,
-) -> Result<Option<String>> {
+) -> Result<Option<WorkspaceSnapshotRecord>> {
     if !should_create_pre_tool_snapshot(call) || !supports_local_snapshots(context) {
         return Ok(None);
     }
@@ -268,7 +292,7 @@ fn create_pre_tool_snapshot_if_needed(
         "pre-tool snapshot before {} ({})",
         call.name, call.id
     ))?;
-    Ok(Some(snapshot.id))
+    Ok(Some(snapshot))
 }
 
 fn supports_local_snapshots(context: &ToolContext) -> bool {
@@ -310,10 +334,13 @@ fn git_operation_may_modify(arguments: &Value) -> bool {
     !matches!(operation, "status" | "diff" | "log" | "show")
 }
 
-fn attach_pre_snapshot_metadata(result: &mut ToolResult, snapshot_id: String) {
+fn attach_pre_snapshot_metadata(result: &mut ToolResult, snapshot: WorkspaceSnapshotRecord) {
     let mut metadata = result.metadata.take().unwrap_or_else(|| json!({}));
     if let Value::Object(object) = &mut metadata {
-        object.insert("pre_snapshot_id".to_string(), Value::String(snapshot_id));
+        object.insert(
+            "pre_snapshot".to_string(),
+            serde_json::to_value(snapshot).unwrap_or_else(|_| json!({})),
+        );
     }
     result.metadata = Some(metadata);
 }
@@ -323,20 +350,25 @@ fn push_execution_result(
     call: &ToolCallRequest,
     result: Result<ToolResult>,
 ) {
-    outcome.events.push(AgentEvent::ToolCallStarted(ToolCallEvent {
-        id: call.id.clone(),
-        name: call.name.clone(),
-        args: call.arguments.to_string(),
-    }));
+    outcome
+        .events
+        .push(AgentEvent::ToolCallStarted(ToolCallEvent {
+            id: call.id.clone(),
+            name: call.name.clone(),
+            args: call.arguments.to_string(),
+        }));
 
     match result {
         Ok(result) => {
-            outcome.events.push(AgentEvent::ToolCallFinished(ToolResultEvent {
-                id: call.id.clone(),
-                name: call.name.clone(),
-                success: result.success,
-                output: result.content.clone(),
-            }));
+            outcome
+                .events
+                .push(AgentEvent::ToolCallFinished(ToolResultEvent {
+                    id: call.id.clone(),
+                    name: call.name.clone(),
+                    success: result.success,
+                    output: result.content.clone(),
+                    metadata: result.metadata.clone(),
+                }));
             outcome.executed.push(ToolLoopExecutionRecord {
                 call_id: call.id.clone(),
                 tool_name: call.name.clone(),
@@ -345,12 +377,15 @@ fn push_execution_result(
             });
         }
         Err(error) => {
-            outcome.events.push(AgentEvent::ToolCallFinished(ToolResultEvent {
-                id: call.id.clone(),
-                name: call.name.clone(),
-                success: false,
-                output: error.to_string(),
-            }));
+            outcome
+                .events
+                .push(AgentEvent::ToolCallFinished(ToolResultEvent {
+                    id: call.id.clone(),
+                    name: call.name.clone(),
+                    success: false,
+                    output: error.to_string(),
+                    metadata: None,
+                }));
             outcome.executed.push(ToolLoopExecutionRecord {
                 call_id: call.id.clone(),
                 tool_name: call.name.clone(),
@@ -370,7 +405,9 @@ fn current_unix_time() -> u64 {
 
 #[cfg(test)]
 mod tests {
-    use super::{should_create_pre_tool_snapshot, supports_local_snapshots, PendingToolCallApproval};
+    use super::{
+        should_create_pre_tool_snapshot, supports_local_snapshots, PendingToolCallApproval,
+    };
     use crate::approval::{ApprovalRisk, MobileApprovalRequest, ToolCategory};
     use crate::tool_call::{ToolCallRequest, ToolCallSource};
     use crate::tools::ToolContext;
@@ -386,7 +423,11 @@ mod tests {
                 ApprovalRisk::Benign,
                 json!({"path":"README.md"}),
             ),
-            call: ToolCallRequest::new("write_file", json!({"path":"README.md"}), ToolCallSource::Manual),
+            call: ToolCallRequest::new(
+                "write_file",
+                json!({"path":"README.md"}),
+                ToolCallSource::Manual,
+            ),
         };
         let encoded = serde_json::to_string(&pending).expect("serialize pending approval");
         assert!(encoded.contains("write_file"));
@@ -432,9 +473,24 @@ mod tests {
 
     #[test]
     fn snapshots_are_only_local_for_now() {
-        let local = ToolContext::new(Workspace::new("w1", "Local", "/tmp/local", ExecutorKind::LocalAndroid));
-        let termux = ToolContext::new(Workspace::new("w2", "Termux", "/tmp/termux", ExecutorKind::Termux));
-        let pc = ToolContext::new(Workspace::new("w3", "PC", "/tmp/pc", ExecutorKind::PcGateway));
+        let local = ToolContext::new(Workspace::new(
+            "w1",
+            "Local",
+            "/tmp/local",
+            ExecutorKind::LocalAndroid,
+        ));
+        let termux = ToolContext::new(Workspace::new(
+            "w2",
+            "Termux",
+            "/tmp/termux",
+            ExecutorKind::Termux,
+        ));
+        let pc = ToolContext::new(Workspace::new(
+            "w3",
+            "PC",
+            "/tmp/pc",
+            ExecutorKind::PcGateway,
+        ));
         assert!(supports_local_snapshots(&local));
         assert!(supports_local_snapshots(&termux));
         assert!(!supports_local_snapshots(&pc));

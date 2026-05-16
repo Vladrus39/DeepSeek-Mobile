@@ -5,6 +5,8 @@ pub enum CockpitSection {
     Chat,
     PcHost,
     Files,
+    Snapshots,
+    Diagnostics,
     Terminal,
     Approvals,
     Git,
@@ -17,6 +19,8 @@ impl CockpitSection {
             CockpitSection::Chat => "Chat",
             CockpitSection::PcHost => "PC Host",
             CockpitSection::Files => "Files",
+            CockpitSection::Snapshots => "Snapshots",
+            CockpitSection::Diagnostics => "Diagnostics",
             CockpitSection::Terminal => "Terminal",
             CockpitSection::Approvals => "Approvals",
             CockpitSection::Git => "Git & GitHub",
@@ -29,6 +33,8 @@ impl CockpitSection {
             CockpitSection::Chat => "Main AI conversation and tool timeline",
             CockpitSection::PcHost => "Pairing, online status, workspaces",
             CockpitSection::Files => "Project tree, open files, diffs",
+            CockpitSection::Snapshots => "Safety points and rollback readiness",
+            CockpitSection::Diagnostics => "Post-edit errors and warnings",
             CockpitSection::Terminal => "PC / Termux command output",
             CockpitSection::Approvals => "Tool calls waiting for confirmation",
             CockpitSection::Git => "Status, commits, push, pull, PRs",
@@ -58,6 +64,8 @@ pub fn default_drawer_items() -> Vec<DrawerItem> {
         item(CockpitSection::Chat),
         item(CockpitSection::PcHost),
         item(CockpitSection::Files),
+        item(CockpitSection::Snapshots),
+        item(CockpitSection::Diagnostics),
         item(CockpitSection::Terminal),
         item(CockpitSection::Approvals),
         item(CockpitSection::Git),
@@ -208,6 +216,8 @@ mod tests {
         assert!(sections.contains(&CockpitSection::Chat));
         assert!(sections.contains(&CockpitSection::PcHost));
         assert!(sections.contains(&CockpitSection::Files));
+        assert!(sections.contains(&CockpitSection::Snapshots));
+        assert!(sections.contains(&CockpitSection::Diagnostics));
         assert!(sections.contains(&CockpitSection::Terminal));
         assert!(sections.contains(&CockpitSection::Approvals));
         assert!(sections.contains(&CockpitSection::Git));
@@ -218,6 +228,8 @@ mod tests {
     fn section_titles_are_stable() {
         assert_eq!(CockpitSection::Chat.title(), "Chat");
         assert_eq!(CockpitSection::PcHost.title(), "PC Host");
+        assert_eq!(CockpitSection::Snapshots.title(), "Snapshots");
+        assert_eq!(CockpitSection::Diagnostics.title(), "Diagnostics");
         assert_eq!(CockpitSection::Git.title(), "Git & GitHub");
     }
 }

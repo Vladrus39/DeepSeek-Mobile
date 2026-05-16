@@ -1,9 +1,13 @@
+use crate::diagnostics_panel::diagnostics_panel;
+use crate::diagnostics_state::DiagnosticsUiState;
 use crate::mobile_drawer::CockpitSection;
 use crate::native_bridge::NativeBridgeState;
 use crate::pc_pairing_panel::pc_pairing_panel;
 use crate::pc_pairing_state::PcPairingUiState;
 use crate::project_files_panel::project_files_panel;
 use crate::project_files_state::ProjectFilesUiState;
+use crate::snapshots_panel::snapshots_panel;
+use crate::snapshots_state::SnapshotsUiState;
 use dioxus::prelude::*;
 
 pub fn cockpit_section_panel(
@@ -11,11 +15,15 @@ pub fn cockpit_section_panel(
     pc_pairing_state: Signal<PcPairingUiState>,
     native_bridge: Signal<NativeBridgeState>,
     project_files_state: Signal<ProjectFilesUiState>,
+    snapshots_state: Signal<SnapshotsUiState>,
+    diagnostics_state: Signal<DiagnosticsUiState>,
 ) -> Element {
     match section {
         CockpitSection::Chat => chat_empty_state(),
         CockpitSection::PcHost => pc_pairing_panel(pc_pairing_state, native_bridge),
         CockpitSection::Files => project_files_panel(project_files_state),
+        CockpitSection::Snapshots => snapshots_panel(&snapshots_state()),
+        CockpitSection::Diagnostics => diagnostics_panel(&diagnostics_state()),
         CockpitSection::Terminal => placeholder_panel(
             "Terminal",
             "Command output from PC-host, Termux or remote executors.",
@@ -51,7 +59,11 @@ fn chat_empty_state() -> Element {
     }
 }
 
-fn placeholder_panel(title: &'static str, description: &'static str, actions: &'static [&'static str]) -> Element {
+fn placeholder_panel(
+    title: &'static str,
+    description: &'static str,
+    actions: &'static [&'static str],
+) -> Element {
     rsx! {
         div {
             background_color: "#111827",
@@ -102,6 +114,8 @@ mod tests {
     fn all_non_chat_sections_have_titles() {
         assert_eq!(CockpitSection::PcHost.title(), "PC Host");
         assert_eq!(CockpitSection::Files.title(), "Files");
+        assert_eq!(CockpitSection::Snapshots.title(), "Snapshots");
+        assert_eq!(CockpitSection::Diagnostics.title(), "Diagnostics");
         assert_eq!(CockpitSection::Terminal.title(), "Terminal");
         assert_eq!(CockpitSection::Approvals.title(), "Approvals");
         assert_eq!(CockpitSection::Git.title(), "Git & GitHub");

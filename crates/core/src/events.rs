@@ -7,22 +7,30 @@
 use crate::api_client::Message;
 use crate::turn::{TokenUsage, TurnStatus};
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub enum AgentEvent {
     Started,
     Status(String),
-    TurnStarted { turn_id: String },
+    TurnStarted {
+        turn_id: String,
+    },
     TurnFinished {
         turn_id: String,
         status: TurnStatus,
         usage: TokenUsage,
         error: Option<String>,
     },
-    MessageStarted { index: usize, role: String },
+    MessageStarted {
+        index: usize,
+        role: String,
+    },
     TextDelta(String),
     ReasoningDelta(String),
-    MessageFinished { index: usize },
+    MessageFinished {
+        index: usize,
+    },
     ToolCallStarted(ToolCallEvent),
     ToolCallFinished(ToolResultEvent),
     ApprovalRequired(ApprovalRequest),
@@ -43,12 +51,14 @@ pub struct ToolCallEvent {
     pub args: String,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct ToolResultEvent {
     pub id: String,
     pub name: String,
     pub success: bool,
     pub output: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<Value>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]

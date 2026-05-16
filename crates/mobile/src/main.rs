@@ -5,6 +5,8 @@ mod approval_diff_preview;
 mod attachment_ingestion;
 mod chat_attachment;
 mod cockpit_section_panel;
+mod diagnostics_panel;
+mod diagnostics_state;
 mod document_picker;
 mod mobile_approval_panel;
 mod mobile_drawer;
@@ -22,6 +24,8 @@ mod project_files;
 mod project_files_panel;
 mod project_files_state;
 mod saved_timeline_loader;
+mod snapshots_panel;
+mod snapshots_state;
 
 use agent_event_adapter::push_agent_event;
 use agent_timeline::MobileTimelineState;
@@ -29,6 +33,7 @@ use agent_timeline_panel::agent_timeline_panel;
 use chat_attachment::ChatComposerState;
 use cockpit_section_panel::cockpit_section_panel;
 use deepseek_mobile_core::{AgentEvent, ApprovalCardView, Config, ReviewDecision};
+use diagnostics_state::DiagnosticsUiState;
 use dioxus::prelude::*;
 use document_picker::{DocumentPickerRequest, DocumentPickerState};
 use mobile_approval_panel::mobile_approval_panel;
@@ -39,7 +44,8 @@ use mobile_engine_runner::{
 use native_bridge::{NativeBridgeState, NativeMobileCommand};
 use pc_pairing_state::PcPairingUiState;
 use project_files_state::ProjectFilesUiState;
-use saved_timeline_loader::load_default_saved_timeline;
+use saved_timeline_loader::load_default_saved_events;
+use snapshots_state::SnapshotsUiState;
 
 fn main() {
     dioxus::launch(app);
@@ -59,13 +65,25 @@ fn app() -> Element {
     let mut active_section = use_signal(|| CockpitSection::Chat);
     let pc_pairing_state = use_signal(PcPairingUiState::default);
     let project_files_state = use_signal(ProjectFilesUiState::default);
+    let mut snapshots_state = use_signal(SnapshotsUiState::default);
+    let mut diagnostics_state = use_signal(DiagnosticsUiState::default);
 
     if !did_load_saved_runtime() {
         did_load_saved_runtime.set(true);
-        match load_default_saved_timeline() {
-            Ok(saved) => {
-                if !saved.is_empty() {
-                    timeline.set(saved);
+        match load_default_saved_events() {
+            Ok(saved_events) => {
+                if !saved_events.is_empty() {
+                    let mut restored_timeline = MobileTimelineState::default();
+                    let mut restored_snapshots = SnapshotsUiState::default();
+                    let mut restored_diagnostics = DiagnosticsUiState::default();
+                    for event in &saved_events {
+                        push_agent_event(&mut restored_timeline, event);
+                        restored_snapshots.apply_agent_event(event);
+                        restored_diagnostics.apply_agent_event(event);
+                    }
+                    timeline.set(restored_timeline);
+                    snapshots_state.set(restored_snapshots);
+                    diagnostics_state.set(restored_diagnostics);
                 }
             }
             Err(error) => {
@@ -167,9 +185,17 @@ fn app() -> Element {
                                     Ok(result) => {
                                         let mut next_timeline = timeline();
                                         push_agent_event(&mut next_timeline, &AgentEvent::Status(format!("Approval decision applied: {:?}", decision)));
-                                        for event in &result.events { push_agent_event(&mut next_timeline, event); }
+                                        let mut next_snapshots = snapshots_state();
+                                        let mut next_diagnostics = diagnostics_state();
+                                        for event in &result.events {
+                                            push_agent_event(&mut next_timeline, event);
+                                            next_snapshots.apply_agent_event(event);
+                                            next_diagnostics.apply_agent_event(event);
+                                        }
                                         push_agent_event(&mut next_timeline, &AgentEvent::Status(format!("Executed tools: {} | session grants: {}", result.executed_count, result.session_grant_count)));
                                         timeline.set(next_timeline);
+                                        snapshots_state.set(next_snapshots);
+                                        diagnostics_state.set(next_diagnostics);
                                         approval_cards.set(result.remaining_approval_cards);
                                     }
                                     Err(error) => {
@@ -189,7 +215,14 @@ fn app() -> Element {
                         div { color: "#9ca3af", "Thinking with DeepSeek..." }
                     }
                 } else {
-                    {cockpit_section_panel(active_section(), pc_pairing_state, native_bridge, project_files_state)}
+                    {cockpit_section_panel(
+                        active_section(),
+                        pc_pairing_state,
+                        native_bridge,
+                        project_files_state,
+                        snapshots_state,
+                        diagnostics_state,
+                    )}
                 }
             }
 
@@ -325,11 +358,23 @@ fn app() -> Element {
                         spawn(async move {
                             let config = Config::default();
                             let event_timeline = timeline;
+                            let event_snapshots = snapshots_state;
+                            let event_diagnostics = diagnostics_state;
                             match run_mobile_turn_streaming(config, user_input, move |event| {
                                 let mut timeline_signal = event_timeline;
                                 let mut next_timeline = timeline_signal();
                                 push_agent_event(&mut next_timeline, &event);
                                 timeline_signal.set(next_timeline);
+
+                                let mut snapshots_signal = event_snapshots;
+                                let mut next_snapshots = snapshots_signal();
+                                next_snapshots.apply_agent_event(&event);
+                                snapshots_signal.set(next_snapshots);
+
+                                let mut diagnostics_signal = event_diagnostics;
+                                let mut next_diagnostics = diagnostics_signal();
+                                next_diagnostics.apply_agent_event(&event);
+                                diagnostics_signal.set(next_diagnostics);
                             }).await {
                                 Ok(result) => {
                                     if let Some(final_text) = result.final_text.clone() {

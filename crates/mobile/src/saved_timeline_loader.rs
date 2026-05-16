@@ -1,15 +1,19 @@
 use crate::agent_event_adapter::push_agent_event;
 use crate::agent_timeline::MobileTimelineState;
 use crate::mobile_runtime_config::MobileRuntimeConfig;
-use deepseek_mobile_core::RuntimeThreadStore;
+use deepseek_mobile_core::{AgentEvent, RuntimeThreadStore};
 
-pub fn load_saved_timeline(runtime: &MobileRuntimeConfig) -> anyhow::Result<MobileTimelineState> {
+pub fn load_saved_events(runtime: &MobileRuntimeConfig) -> anyhow::Result<Vec<AgentEvent>> {
     let store = RuntimeThreadStore::open(runtime.runtime_store_root.clone())?;
     let records = store.load_events(&runtime.thread_id)?;
+    Ok(records.into_iter().map(|record| record.event).collect())
+}
+
+pub fn load_saved_timeline(runtime: &MobileRuntimeConfig) -> anyhow::Result<MobileTimelineState> {
     let mut timeline = MobileTimelineState::default();
 
-    for record in records {
-        push_agent_event(&mut timeline, &record.event);
+    for event in load_saved_events(runtime)? {
+        push_agent_event(&mut timeline, &event);
     }
 
     Ok(timeline)
@@ -17,6 +21,10 @@ pub fn load_saved_timeline(runtime: &MobileRuntimeConfig) -> anyhow::Result<Mobi
 
 pub fn load_default_saved_timeline() -> anyhow::Result<MobileTimelineState> {
     load_saved_timeline(&MobileRuntimeConfig::default())
+}
+
+pub fn load_default_saved_events() -> anyhow::Result<Vec<AgentEvent>> {
+    load_saved_events(&MobileRuntimeConfig::default())
 }
 
 #[cfg(test)]
@@ -38,9 +46,14 @@ mod tests {
     fn loader_replays_saved_agent_events() {
         let base_dir = unique_test_dir("timeline-loader");
         let runtime = MobileRuntimeConfig::from_base_dir(&base_dir).with_thread_id("thread-a");
-        let store = RuntimeThreadStore::open(runtime.runtime_store_root.clone()).expect("open runtime store");
+        let store = RuntimeThreadStore::open(runtime.runtime_store_root.clone())
+            .expect("open runtime store");
         store
-            .save_event("thread-a", "turn-a", &AgentEvent::Status("restored".to_string()))
+            .save_event(
+                "thread-a",
+                "turn-a",
+                &AgentEvent::Status("restored".to_string()),
+            )
             .expect("save event");
 
         let timeline = load_saved_timeline(&runtime).expect("load saved timeline");

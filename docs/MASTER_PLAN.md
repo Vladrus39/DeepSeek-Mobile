@@ -201,7 +201,7 @@ Remaining checklist:
 - [x] Auto-create pre-tool snapshot before approved local write/shell/git operations.
 - [ ] Add PC-gateway snapshot path for remote workspaces.
 - [ ] Auto-create post-turn snapshot after successful turns with file changes.
-- [ ] Emit snapshot events to the mobile timeline.
+- [x] Emit snapshot events to the mobile timeline.
 - [ ] Add mobile restore panel.
 - [ ] Add restore confirmation screen with file counts and deletion warning.
 - [ ] Add snapshot pruning policy.
@@ -262,7 +262,7 @@ Checklist:
 - [x] Add full post-edit diagnostic hook after `write_file`, `edit_file`, `apply_patch` across local, Termux and PC workspaces.
 - [x] Add PC post-edit diagnostics summary for `write_file`, `edit_file` and `apply_patch` results when a `PcGatewayClient` is attached.
 - [x] Add LocalAndroid/Termux post-edit Rust diagnostics through `WorkspaceDiagnosticsService`.
-- [ ] Surface diagnostics in mobile UI.
+- [x] Surface diagnostics in mobile UI.
 - [ ] Inject diagnostics into next model turn as context.
 
 Acceptance criteria:
@@ -392,7 +392,7 @@ The next implementation sequence is fixed:
 13. [x] Add PC gateway discovery core contract and mobile discovery display.
 14. [x] Add Android NSD/mDNS adapter for PC-host discovery.
 15. [x] Add reconnect controls for PC gateway.
-16. [ ] Add snapshot/diagnostics UI panels.
+16. [x] Add snapshot/diagnostics UI panels.
 17. [ ] Add pairing flow end-to-end from mobile UI.
 18. [ ] Add Termux executor bridge.
 19. [ ] Add Git UI.
@@ -419,6 +419,7 @@ The next implementation sequence is fixed:
 - 2026-05-16: Added PC gateway reconnect controls in PcPairingUiState and PcHost panel: scan again, retry active route, use best discovered route, and forget bad routes.
 - 2026-05-17: Established the synchronized PC + GitHub operating model, created the desktop working copy at `C:\Users\vladi\Desktop\DeepSeek-Mobile`, and added the one-command `deploy.ps1` publish script.
 - 2026-05-17: Stabilized P0 build integrity: removed obsolete direct `dioxus-mobile` usage in favor of stable `dioxus::launch`, consolidated duplicate Rust workflows into one CI path, added `Cargo.lock`, fixed snapshot/runtime/mobile API drift, made workspace path tests cross-platform, and verified `cargo check --workspace --all-targets` plus `cargo test --workspace` locally through the installed MSVC toolchain.
+- 2026-05-17: Added first mobile snapshot and diagnostics surfaces: tool-result events now retain structured metadata, automatic pre-tool snapshots and post-edit diagnostics are echoed into the timeline, restored runtime events rebuild snapshot/diagnostics state on launch, and the drawer now exposes dedicated `Snapshots` and `Diagnostics` panels.
 
 ## 6. Definition of done for the project
 
