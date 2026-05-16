@@ -17,6 +17,7 @@ pub mod pc_gateway_client;
 pub mod pc_pairing;
 pub mod runtime_store;
 pub mod session;
+pub mod snapshots;
 pub mod tool_call;
 pub mod tool_execution;
 pub mod tool_loop;
@@ -73,6 +74,9 @@ pub use runtime_store::{
     TurnRecord,
 };
 pub use session::Session;
+pub use snapshots::{
+    WorkspaceRestoreReport, WorkspaceSnapshotFile, WorkspaceSnapshotRecord, WorkspaceSnapshotService,
+};
 pub use tool_call::{parse_tool_calls_from_text, ToolCallParseResult, ToolCallRequest, ToolCallSource};
 pub use tool_execution::{ToolExecutionCoordinator, ToolExecutionRoute, ToolExecutionTarget};
 pub use tool_loop::{
