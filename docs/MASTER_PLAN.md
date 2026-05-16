@@ -56,6 +56,7 @@ PC execution
   -> workspace path policy
   -> read/write/list/exec/git/task detection
   -> diagnostics via cargo check JSON for Rust workspaces
+  -> post-edit diagnostics summary for PC write/edit file calls when a PcGatewayClient is attached
   -> PcGatewayResponse
   -> ToolResult
   -> AgentEvent timeline
@@ -155,9 +156,12 @@ Already done:
 - [x] Read/write/list/exec/git status/git diff.
 - [x] Task detection for Cargo/npm/pytest.
 - [x] Rust diagnostics via `cargo check --message-format=json`.
+- [x] Post-edit diagnostics summary for PC `write_file` and `edit_file` calls when routed through an attached `PcGatewayClient`.
 
 Remaining checklist:
 
+- [ ] Wire `PcGatewayClient` into `MobileEngine` / runtime configuration so PC workspace execution is reachable from normal tool_loop turns.
+- [ ] Map `apply_patch` to PC gateway execution or implement a remote patch endpoint.
 - [ ] Add UI connection status and reconnect controls.
 - [ ] Add pairing flow end-to-end from mobile UI.
 - [ ] Add PC-host logs and health detail.
@@ -180,7 +184,8 @@ Checklist:
 - [ ] Implement TypeScript diagnostics via `tsc --noEmit` when config exists.
 - [ ] Implement Python diagnostics via `pyright`/`ruff`/`pytest` where available.
 - [x] Add diagnostic severity mapping to `PcDiagnostic` for Rust cargo levels.
-- [ ] Add post-edit diagnostic hook after `write_file`, `edit_file`, `apply_patch`.
+- [ ] Add full post-edit diagnostic hook after `write_file`, `edit_file`, `apply_patch` across local, Termux and PC workspaces.
+- [x] Add PC post-edit diagnostics summary for `write_file` and `edit_file` results when a `PcGatewayClient` is attached.
 - [ ] Surface diagnostics in mobile UI.
 - [ ] Inject diagnostics into next model turn as context.
 
@@ -278,7 +283,7 @@ Acceptance criteria:
 | Web/search/fetch | Keep with approval | Missing |
 | Runtime HTTP/SSE API | Keep later | Missing |
 | Durable task queue | Keep | Missing |
-| LSP diagnostics | Keep, PC-first | Partial: Rust cargo diagnostics implemented |
+| LSP diagnostics | Keep, PC-first | Partial: Rust cargo diagnostics and PC write/edit summary implemented |
 | Snapshots/rollback | Keep, mobile-safe file-copy | Partial: core service, tools, local pre-tool hook |
 | OS sandbox | Replace/augment with executor policies | Missing |
 | MCP | Keep, PC-first | Missing |
@@ -300,12 +305,14 @@ The next implementation sequence is fixed:
 4. [x] Add `apply_patch` tool.
 5. [x] Auto-create pre-tool snapshots before destructive approved local tools.
 6. [x] Add PC diagnostics for Rust projects.
-7. [ ] Add post-edit diagnostic hook after file changes.
-8. [ ] Add snapshot/diagnostics UI panels.
-9. [ ] Add Termux executor bridge.
-10. [ ] Add Git UI.
-11. [ ] Add background tasks.
-12. [ ] Add MCP/skills.
+7. [ ] Wire `PcGatewayClient` into normal `MobileEngine` turns.
+8. [ ] Map `apply_patch` to PC gateway execution.
+9. [ ] Add full post-edit diagnostic hook across local, Termux and PC workspaces.
+10. [ ] Add snapshot/diagnostics UI panels.
+11. [ ] Add Termux executor bridge.
+12. [ ] Add Git UI.
+13. [ ] Add background tasks.
+14. [ ] Add MCP/skills.
 
 ## 5. Implementation progress log
 
@@ -315,6 +322,7 @@ The next implementation sequence is fixed:
 - 2026-05-16: Added operation-based atomic `apply_patch` tool and registered it in the default mobile tool registry.
 - 2026-05-16: Added local pre-tool snapshots inside `tool_loop::execute_approved_call()` for destructive local/Termux tools; PC-gateway snapshot path remains separate.
 - 2026-05-16: Implemented PC-host Rust diagnostics using `cargo check --workspace --message-format=json`, mapped cargo levels to `PcDiagnosticSeverity`, and added path filtering.
+- 2026-05-16: Added PC post-edit diagnostics summary/metadata after `write_file` and `edit_file` calls inside `ToolExecutionCoordinator` when a `PcGatewayClient` is attached. Full engine wiring remains next.
 
 ## 6. Definition of done for the project
 
