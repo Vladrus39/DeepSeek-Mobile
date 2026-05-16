@@ -1,7 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <!--
-        No storage permission is required for ACTION_OPEN_DOCUMENT.
+        ACTION_OPEN_DOCUMENT does not require storage permission.
         The bridge copies selected content:// streams into app-private filesDir.
     -->
+
+    <!-- Required for local PC-host discovery and /health probing on private networks. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
 </manifest>
