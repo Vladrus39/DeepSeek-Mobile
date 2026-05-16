@@ -5,8 +5,8 @@
 //! later continue a stored approval after the mobile UI sends a decision.
 
 use crate::agent::DeepSeekAgent;
-use crate::approval_card::{approval_cards_from_records, ApprovalCardView};
 use crate::approval::ReviewDecision;
+use crate::approval_card::{approval_cards_from_records, ApprovalCardView};
 use crate::approval_session::ApprovalSessionPolicy;
 use crate::config::Config;
 use crate::events::AgentEvent;
@@ -98,10 +98,14 @@ impl MobileEngine {
     }
 
     pub async fn run_turn_with_streaming(&self, user_input: String) -> Result<EngineTurnResult> {
-        self.run_turn(user_input).await
+        self.run_turn_internal(user_input, true).await
     }
 
     pub async fn run_turn(&self, user_input: String) -> Result<EngineTurnResult> {
+        self.run_turn_internal(user_input, false).await
+    }
+
+    async fn run_turn_internal(&self, user_input: String, streaming: bool) -> Result<EngineTurnResult> {
         let mut turn = TurnContext::new(100);
         turn.start();
         self.persist_turn(&turn)?;
@@ -109,9 +113,16 @@ impl MobileEngine {
         let mut events = Vec::new();
         self.push_event(&mut events, AgentEvent::Started)?;
         self.push_event(&mut events, AgentEvent::TurnStarted { turn_id: turn.id.clone() })?;
-        self.push_event(&mut events, AgentEvent::Status("MobileEngine turn started".to_string()))?;
+        self.push_event(
+            &mut events,
+            AgentEvent::Status(if streaming {
+                "MobileEngine streaming turn started".to_string()
+            } else {
+                "MobileEngine turn started".to_string()
+            }),
+        )?;
 
-        let answer = match self.agent.run(user_input).await {
+        let answer = match self.collect_model_answer(user_input, &mut events, streaming).await {
             Ok(answer) => answer,
             Err(error) => {
                 turn.fail(error.to_string());
@@ -135,7 +146,6 @@ impl MobileEngine {
             }
         };
 
-        self.push_event(&mut events, AgentEvent::TextDelta(answer.clone()))?;
         let context = ToolContext::new(self.workspace.clone());
         let mut session = self.approval_session.clone();
         let outcome = process_model_text_with_tools_and_session(
@@ -175,6 +185,45 @@ impl MobileEngine {
             approval_cards: outcome.approval_cards,
             executed: outcome.executed,
         })
+    }
+
+    async fn collect_model_answer(
+        &self,
+        user_input: String,
+        events: &mut Vec<AgentEvent>,
+        streaming: bool,
+    ) -> Result<String> {
+        if !streaming {
+            let answer = self.agent.run(user_input).await?;
+            self.push_event(events, AgentEvent::TextDelta(answer.clone()))?;
+            return Ok(answer);
+        }
+
+        self.push_event(
+            events,
+            AgentEvent::MessageStarted {
+                index: 0,
+                role: "assistant".to_string(),
+            },
+        )?;
+        self.push_event(events, AgentEvent::Status("DeepSeek streaming response opened".to_string()))?;
+
+        let mut receiver = self.agent.run_stream(user_input).await?;
+        let mut answer = String::new();
+        while let Some(delta) = receiver.recv().await {
+            if delta == "[DONE]" {
+                break;
+            }
+            if delta.is_empty() {
+                continue;
+            }
+            answer.push_str(&delta);
+            self.push_event(events, AgentEvent::TextDelta(delta))?;
+        }
+
+        self.push_event(events, AgentEvent::MessageFinished { index: 0 })?;
+        self.push_event(events, AgentEvent::Status("DeepSeek streaming response completed".to_string()))?;
+        Ok(answer)
     }
 
     pub async fn continue_stored_approval(
