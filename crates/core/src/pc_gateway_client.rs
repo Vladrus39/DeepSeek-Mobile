@@ -6,8 +6,9 @@
 
 use crate::executor::CommandRequest;
 use crate::pc_gateway::{
-    PcGatewayConfig, PcGatewayError, PcGatewayHealth, PcGatewayRequest, PcGatewayRequestEnvelope,
-    PcGatewayResponse, PcGatewayResponseEnvelope, PcGatewaySecurityPolicy,
+    PcGatewayConfig, PcGatewayEndpointCandidate, PcGatewayError, PcGatewayHealth,
+    PcGatewayRequest, PcGatewayRequestEnvelope, PcGatewayResponse, PcGatewayResponseEnvelope,
+    PcGatewaySecurityPolicy,
 };
 use anyhow::{anyhow, Result};
 use reqwest::Client;
@@ -39,6 +40,10 @@ impl PcGatewayClient {
 
     pub fn policy(&self) -> &PcGatewaySecurityPolicy {
         &self.policy
+    }
+
+    pub fn endpoint_plan(&self) -> Vec<PcGatewayEndpointCandidate> {
+        self.config.endpoint_plan()
     }
 
     pub async fn health(&self) -> Result<PcGatewayHealth> {
@@ -181,12 +186,35 @@ impl PcGatewayClient {
     }
 
     pub async fn send(&self, request: PcGatewayRequest) -> Result<PcGatewayResponse> {
-        self.config
-            .validate_base_url()
-            .map_err(|message| anyhow!(message))?;
+        let mut errors = Vec::new();
+        for endpoint in self.endpoint_plan() {
+            if let Err(error) = endpoint.validate(self.config.allow_http_on_local_network) {
+                errors.push(format!("{} {} rejected: {}", endpoint.label, endpoint.base_url, error));
+                continue;
+            }
+            match self.send_to_endpoint(request.clone(), &endpoint).await {
+                Ok(response) => return Ok(response),
+                Err(error) => errors.push(format!(
+                    "{} {} failed: {}",
+                    endpoint.label, endpoint.base_url, error
+                )),
+            }
+        }
 
+        Err(anyhow!(
+            "all PC gateway endpoints failed for '{}': {}",
+            self.config.label,
+            errors.join("; ")
+        ))
+    }
+
+    async fn send_to_endpoint(
+        &self,
+        request: PcGatewayRequest,
+        endpoint: &PcGatewayEndpointCandidate,
+    ) -> Result<PcGatewayResponse> {
         let envelope = PcGatewayRequestEnvelope::new(self.config.device_id.clone(), request);
-        let url = format!("{}/v1/gateway/request", self.config.base_url.trim_end_matches('/'));
+        let url = format!("{}/v1/gateway/request", endpoint.base_url.trim_end_matches('/'));
         let mut builder = self.http.post(url).json(&envelope);
 
         if let Some(token) = self.config.auth_token.as_deref() {
@@ -214,7 +242,7 @@ impl PcGatewayClient {
 mod tests {
     use super::PcGatewayClient;
     use crate::executor::CommandRequest;
-    use crate::pc_gateway::PcGatewayConfig;
+    use crate::pc_gateway::{PcGatewayConfig, PcGatewayEndpointCandidate, PcGatewayTransportMode};
     use std::path::PathBuf;
 
     #[test]
@@ -225,10 +253,36 @@ mod tests {
             "http://192.168.1.10:8787",
             "phone-1",
         );
+        config.transport_mode = PcGatewayTransportMode::LocalNetworkHttp;
         config.allow_http_on_local_network = true;
         let client = PcGatewayClient::new(config.clone());
         assert_eq!(client.config().id, config.id);
         assert!(client.config().validate_base_url().is_ok());
+    }
+
+    #[test]
+    fn client_endpoint_plan_prefers_offline_local_routes() {
+        let config = PcGatewayConfig::tunnel_https(
+            "pc-1",
+            "Laptop",
+            "https://pc.example.test",
+            "phone-1",
+        )
+        .with_endpoint_candidate(PcGatewayEndpointCandidate::new(
+            "same-lan",
+            "http://192.168.1.10:8787",
+            PcGatewayTransportMode::LocalNetworkHttp,
+        ))
+        .with_endpoint_candidate(PcGatewayEndpointCandidate::new(
+            "direct-link",
+            "http://169.254.12.10:8787",
+            PcGatewayTransportMode::DirectWifiHttp,
+        ));
+        let client = PcGatewayClient::new(config);
+        let plan = client.endpoint_plan();
+        assert_eq!(plan[0].label, "direct-link");
+        assert_eq!(plan[1].label, "same-lan");
+        assert_eq!(plan[2].label, "primary");
     }
 
     #[test]
@@ -239,6 +293,7 @@ mod tests {
             "http://192.168.1.10:8787",
             "phone-1",
         );
+        config.transport_mode = PcGatewayTransportMode::LocalNetworkHttp;
         config.allow_http_on_local_network = true;
         let client = PcGatewayClient::new(config);
         let command = CommandRequest {
