@@ -10,6 +10,8 @@ pub fn pc_pairing_panel(state: &PcPairingUiState) -> Element {
         .map(|export| export.zip_path.display().to_string())
         .unwrap_or_else(|| "Pairing ZIP has not been created yet".to_string());
     let status_badge = status_badge_text(&state.status);
+    let active_route = state.active_route_text();
+    let endpoint_rows = state.endpoint_health_rows();
 
     rsx! {
         div {
@@ -68,6 +70,52 @@ pub fn pc_pairing_panel(state: &PcPairingUiState) -> Element {
                 div {
                     white_space: "pre-wrap",
                     "{status_text}"
+                }
+            }
+
+            div {
+                background_color: "#1f2937",
+                border_radius: "12px",
+                padding: "12px",
+                display: "flex",
+                flex_direction: "column",
+                gap: "6px",
+
+                div {
+                    color: "#d1d5db",
+                    font_size: "13px",
+                    "Active route"
+                }
+                div {
+                    color: "#e5e7eb",
+                    font_size: "13px",
+                    white_space: "pre-wrap",
+                    "{active_route}"
+                }
+            }
+
+            div {
+                background_color: "#1f2937",
+                border_radius: "12px",
+                padding: "12px",
+                display: "flex",
+                flex_direction: "column",
+                gap: "8px",
+
+                div {
+                    color: "#d1d5db",
+                    font_size: "13px",
+                    "Endpoint health"
+                }
+                for row in endpoint_rows {
+                    div {
+                        color: "#e5e7eb",
+                        font_size: "12px",
+                        white_space: "pre-wrap",
+                        border_top: "1px solid #374151",
+                        padding_top: "8px",
+                        "{row}"
+                    }
                 }
             }
 
