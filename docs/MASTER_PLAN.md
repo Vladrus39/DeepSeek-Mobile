@@ -1,0 +1,317 @@
+# DeepSeek Mobile master implementation plan
+
+Created: 2026-05-16
+
+This is the working plan for completing DeepSeek Mobile without losing any original DeepSeek TUI capability that matters for a phone-first coding agent.
+
+Reference repository: `Hmbown/DeepSeek-TUI`.
+
+Current project audit: `docs/PROJECT_AUDIT.md`.
+
+## 0. Non-negotiable rules
+
+1. Do not replace the mobile architecture with a blind copy of DeepSeek TUI.
+2. Preserve mobile-first execution boundaries: Android local workspace, Termux, PC gateway, remote Y-lit.
+3. Every destructive operation must pass approval unless explicitly in a safe auto-approved mode.
+4. Every newly added subsystem must be connected end-to-end: core contract, tool/engine wiring, runtime persistence, UI surface or documented host integration.
+5. No silent placeholders. A partial implementation must expose its missing runtime dependency clearly.
+6. Every feature must have at least one test or a documented manual verification path.
+
+## 1. Current system map
+
+```text
+Android/Dioxus UI
+  -> mobile_engine_runner
+  -> MobileEngine
+  -> DeepSeekAgent
+  -> DeepSeekClient SSE stream
+  -> tool_call parser
+  -> tool_loop
+  -> approval policy/session
+  -> ToolExecutionCoordinator
+  -> ToolRegistry OR PcGatewayClient
+  -> RuntimeThreadStore events/pending approvals
+  -> Mobile timeline / approval cards
+```
+
+Native and external execution map:
+
+```text
+Android document picker
+  -> android/bridge Kotlin ACTION_OPEN_DOCUMENT
+  -> app-private sandbox copy
+  -> NativeBridgeState callback
+  -> route_native_mobile_event
+  -> ChatComposerState attachments
+  -> attachment_ingestion
+  -> UserChatInput prompt text
+```
+
+```text
+PC execution
+  -> PcGatewayClient
+  -> pc-host HTTP /v1/gateway/request
+  -> workspace path policy
+  -> read/write/list/exec/git/task detection
+  -> PcGatewayResponse
+  -> ToolResult
+  -> AgentEvent timeline
+```
+
+Snapshot/rollback map:
+
+```text
+snapshot_create/snapshot_list/snapshot_restore tools
+  -> WorkspaceSnapshotService
+  -> .deepseek-mobile/snapshots by default
+  -> manifest.json + copied files
+  -> restore with extra-file removal
+  -> approval required for restore
+```
+
+## 2. Master backlog by priority
+
+### P0 — Build correctness and wiring integrity
+
+Goal: repository must build, tests must run, and all already-added pieces must be connected through the real execution path.
+
+Checklist:
+
+- [ ] Run `cargo check --workspace` in CI and fix every compile error.
+- [ ] Run `cargo test --workspace` in CI and fix failing tests.
+- [ ] Verify `ToolExecutionCoordinator` is used by `tool_loop` for all tool calls.
+- [ ] Fix approval-session grant persistence across turns.
+- [ ] Add a lightweight system-map test for default tool registry names.
+- [ ] Add manual Android bridge verification notes until a final Android host exists.
+- [ ] Make CI failure visible on every push and pull request.
+
+Acceptance criteria:
+
+- `cargo check --workspace` passes.
+- `cargo test --workspace` passes.
+- Session approval grants are not lost between turns in one engine instance.
+- The default registry includes file, shell, git and snapshot tools.
+
+### P1 — Core tool parity
+
+Goal: close the most important original DeepSeek TUI tool gaps while keeping mobile/PC-safe execution.
+
+Checklist:
+
+- [ ] Add `apply_patch` as a first-class tool.
+- [ ] Add `delete_file` with approval.
+- [ ] Add `move_file` / `copy_file` with approval when writing.
+- [ ] Add `read_many_files` or bounded project search.
+- [ ] Upgrade `git` tool from contract placeholder to real routed operations.
+- [ ] Add Git UI panel: status, diff, branch, commit draft, pull/push approval.
+- [ ] Add web/fetch/search tools only behind explicit network capability and approval policy.
+- [ ] Add GitHub tool surface later, preferably PC-side or remote-safe.
+
+Acceptance criteria:
+
+- The model can patch a file, show diff, request approval, apply patch, run diagnostics and rollback.
+- Git operations are not just text placeholders.
+- Network tools are never silently enabled.
+
+### P2 — Snapshots and rollback integration
+
+Goal: make rollback part of the normal agent lifecycle, not only standalone tools.
+
+Already done:
+
+- [x] `WorkspaceSnapshotService` core service.
+- [x] `snapshot_create`, `snapshot_list`, `snapshot_restore` tools.
+
+Remaining checklist:
+
+- [ ] Auto-create pre-turn snapshot before approved write/shell/git operations.
+- [ ] Auto-create post-turn snapshot after successful turns with file changes.
+- [ ] Emit snapshot events to the mobile timeline.
+- [ ] Add mobile restore panel.
+- [ ] Add restore confirmation screen with file counts and deletion warning.
+- [ ] Add snapshot pruning policy.
+
+Acceptance criteria:
+
+- User can restore a workspace state from the app UI.
+- Destructive restore always requires approval.
+- Snapshots are not stored inside user `.git`.
+
+### P3 — PC gateway production path
+
+Goal: make PC execution reliable enough to act as the phone's real development machine.
+
+Already done:
+
+- [x] PC-host HTTP server.
+- [x] Auth token support.
+- [x] Path traversal protection.
+- [x] Read/write/list/exec/git status/git diff.
+- [x] Task detection for Cargo/npm/pytest.
+
+Remaining checklist:
+
+- [ ] Add UI connection status and reconnect controls.
+- [ ] Add pairing flow end-to-end from mobile UI.
+- [ ] Add PC-host logs and health detail.
+- [ ] Add command allow/deny policy presets.
+- [ ] Add long-running command streaming instead of only completed output.
+- [ ] Add terminal session persistence.
+- [ ] Add diagnostics implementation.
+
+Acceptance criteria:
+
+- A phone can connect to PC, inspect project, edit files, run tests, view output, and recover from disconnect.
+
+### P4 — LSP and diagnostics
+
+Goal: match the original TUI's post-edit diagnostics loop in a mobile/PC-safe way.
+
+Checklist:
+
+- [ ] Implement PC-host diagnostics for Rust via `cargo check --message-format=json`.
+- [ ] Implement TypeScript diagnostics via `tsc --noEmit` when config exists.
+- [ ] Implement Python diagnostics via `pyright`/`ruff`/`pytest` where available.
+- [ ] Add diagnostic severity mapping to `PcDiagnostic`.
+- [ ] Add post-edit diagnostic hook after `write_file`, `edit_file`, `apply_patch`.
+- [ ] Surface diagnostics in mobile UI.
+- [ ] Inject diagnostics into next model turn as context.
+
+Acceptance criteria:
+
+- After an edit, errors/warnings become visible and model-readable before the next fix.
+
+### P5 — Android and Termux execution
+
+Goal: make Android more than a viewer and make Termux a real local executor.
+
+Already done:
+
+- [x] Android document picker Kotlin bridge module.
+- [x] Attachment text/source ingestion through local sandbox path.
+
+Remaining checklist:
+
+- [ ] Create final Android host integration instructions or module wiring.
+- [ ] Add Dioxus/native callback adapter.
+- [ ] Add Termux command executor bridge.
+- [ ] Add Termux workspace selector.
+- [ ] Add Android file import/export flow.
+- [ ] Add PDF/DOCX/OCR ingestion later behind safe limits.
+
+Acceptance criteria:
+
+- Android picker returns files into chat without simulation.
+- Termux commands can run with approval and bounded output.
+
+### P6 — Runtime API and durable tasks
+
+Goal: port the useful headless/task features from original DeepSeek TUI.
+
+Checklist:
+
+- [ ] Add durable task records.
+- [ ] Add queue and task lifecycle: queued/running/completed/failed/canceled.
+- [ ] Add mobile task manager UI.
+- [ ] Reuse PC task detection.
+- [ ] Add artifacts and logs per task.
+- [ ] Add HTTP/SSE runtime API only after core task model is stable.
+
+Acceptance criteria:
+
+- Long jobs survive UI navigation and can be inspected later.
+
+### P7 — MCP, plugins, skills
+
+Goal: add extensibility only after the core mobile agent is stable.
+
+Checklist:
+
+- [ ] Add local skills manifest format.
+- [ ] Add bundled mobile-safe starter skills.
+- [ ] Add plugin host model.
+- [ ] Add MCP client through PC gateway first.
+- [ ] Add MCP UI for server status and tool list.
+
+Acceptance criteria:
+
+- Skills/plugins cannot bypass approval policy or workspace boundaries.
+
+### P8 — UX completion and release packaging
+
+Goal: turn the prototype into a usable product.
+
+Checklist:
+
+- [ ] Cockpit dashboard: status, active workspace, executor, pending approvals, diagnostics, tasks.
+- [ ] Git panel.
+- [ ] Snapshot/rollback panel.
+- [ ] Settings/profile screen.
+- [ ] API key setup and secret storage plan.
+- [ ] Android build/release notes.
+- [ ] PC-host binary/release notes.
+- [ ] Troubleshooting docs.
+
+Acceptance criteria:
+
+- New user can install, pair PC or choose local workspace, chat, edit, approve, run tests, rollback.
+
+## 3. Original DeepSeek TUI feature transfer tracker
+
+| Original feature | Mobile decision | Status |
+|---|---|---|
+| Ratatui terminal UI | Replace with Dioxus mobile cockpit | In progress |
+| CLI dispatcher | Not priority for phone app | Not ported |
+| OpenAI-compatible DeepSeek streaming | Keep | Mostly done |
+| Reasoning block streaming | Keep later | Partial |
+| File tools | Keep and adapt | Partial |
+| Apply patch | Keep | Missing |
+| Shell execution | Route to PC/Termux | Partial |
+| Git tools | Keep with mobile UI | Partial |
+| Web/search/fetch | Keep with approval | Missing |
+| Runtime HTTP/SSE API | Keep later | Missing |
+| Durable task queue | Keep | Missing |
+| LSP diagnostics | Keep, PC-first | Missing |
+| Snapshots/rollback | Keep, mobile-safe file-copy | Partial |
+| OS sandbox | Replace/augment with executor policies | Missing |
+| MCP | Keep, PC-first | Missing |
+| Skills | Keep after core | Missing |
+| Hooks | Keep after tool parity | Missing |
+| Sub-agents | Later | Missing |
+| RLM | Later | Missing |
+| Cost/prefix-cache telemetry | Later | Missing |
+| Notifications | Later | Missing |
+| Themes/localization | Later | Partial/unknown |
+
+## 4. Immediate execution order
+
+The next implementation sequence is fixed:
+
+1. Strengthen CI from `cargo check` to `cargo check + cargo test`.
+2. Fix compile/test failures surfaced by CI.
+3. Fix approval-session grant persistence.
+4. Add `apply_patch` tool.
+5. Auto-create pre-turn snapshots before destructive approved tools.
+6. Add PC diagnostics for Rust projects.
+7. Add snapshot/diagnostics UI panels.
+8. Add Termux executor bridge.
+9. Add Git UI.
+10. Add background tasks.
+11. Add MCP/skills.
+
+## 5. Definition of done for the project
+
+DeepSeek Mobile reaches v1 when all of the following are true:
+
+- Mobile app can stream responses live.
+- User can attach files from Android picker and text/source content reaches the model.
+- User can browse project tree and inspect files.
+- Agent can propose changes and show diffs.
+- User can approve/reject tools from touch UI.
+- Agent can edit files and run tests through PC or Termux.
+- Diagnostics appear after edits.
+- User can rollback workspace changes.
+- Git status/diff/commit workflow exists.
+- Long-running tasks are durable.
+- Network/MCP/skills are controlled by explicit policy.
+- CI passes for core/mobile/pc-host.
