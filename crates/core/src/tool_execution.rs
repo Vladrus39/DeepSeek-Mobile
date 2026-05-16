@@ -14,6 +14,7 @@ use crate::tools::{ToolContext, ToolRegistry, ToolResult};
 use crate::workspace::ExecutorKind;
 use anyhow::{anyhow, Result};
 use serde_json::{json, Map, Value};
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -39,6 +40,39 @@ impl From<&ExecutorKind> for ToolExecutionTarget {
 pub struct ToolExecutionRoute {
     pub target: ToolExecutionTarget,
     pub reason: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum RemotePatchOperation {
+    Replace {
+        path: String,
+        search: String,
+        replace: String,
+        expected_occurrences: Option<usize>,
+    },
+    Create {
+        path: String,
+        content: String,
+        overwrite: bool,
+    },
+    Append {
+        path: String,
+        content: String,
+    },
+    Delete {
+        path: String,
+    },
+}
+
+impl RemotePatchOperation {
+    fn path(&self) -> &str {
+        match self {
+            Self::Replace { path, .. }
+            | Self::Create { path, .. }
+            | Self::Append { path, .. }
+            | Self::Delete { path } => path,
+        }
+    }
 }
 
 pub struct ToolExecutionCoordinator<'a> {
@@ -112,11 +146,16 @@ impl<'a> ToolExecutionCoordinator<'a> {
                 attach_post_edit_diagnostics(client, &workspace_id, Some(path.to_string()), &mut result).await?;
                 Ok(result)
             }
+            "delete_file" => {
+                let path = required_str(&call.arguments, "path")?;
+                gateway_response_to_tool_result(client.delete_file(workspace_id, path).await?)
+            }
             "list_dir" => {
                 let path = optional_str(&call.arguments, "path").unwrap_or(".");
                 gateway_response_to_tool_result(client.list_dir(workspace_id, path).await?)
             }
             "edit_file" => self.execute_remote_edit_file(client, workspace_id, &call.arguments).await,
+            "apply_patch" => self.execute_remote_apply_patch(client, workspace_id, &call.arguments).await,
             "exec_shell" => {
                 let command = required_str(&call.arguments, "command")?;
                 let request = command_request_from_shell(command, context.workspace.root.clone())?;
@@ -175,6 +214,219 @@ impl<'a> ToolExecutionCoordinator<'a> {
         result.content = format!("Replaced {} occurrence(s) in {}", count, path);
         attach_post_edit_diagnostics(client, &workspace_id, Some(path.to_string()), &mut result).await?;
         Ok(result)
+    }
+
+    async fn execute_remote_apply_patch(
+        &self,
+        client: &PcGatewayClient,
+        workspace_id: String,
+        arguments: &Value,
+    ) -> Result<ToolResult> {
+        let operations = parse_remote_patch_operations(arguments)?;
+        let mut originals: BTreeMap<String, Option<String>> = BTreeMap::new();
+        let mut changed_files = BTreeSet::new();
+
+        let result = async {
+            for operation in operations.iter() {
+                let path = operation.path();
+                if !originals.contains_key(path) {
+                    originals.insert(path.to_string(), remote_read_optional(client, &workspace_id, path).await?);
+                }
+                apply_remote_patch_operation(client, &workspace_id, operation).await?;
+                changed_files.insert(path.to_string());
+            }
+            Ok::<(), anyhow::Error>(())
+        }
+        .await;
+
+        if let Err(error) = result {
+            rollback_remote_patch(client, &workspace_id, originals).await?;
+            return Err(error);
+        }
+
+        let mut result = ToolResult::success(format!(
+            "Applied {} PC patch operation(s) across {} file(s): {}",
+            operations.len(),
+            changed_files.len(),
+            changed_files.iter().cloned().collect::<Vec<_>>().join(", ")
+        ))
+        .with_metadata(json!({
+            "operations_applied": operations.len(),
+            "changed_files": changed_files.iter().cloned().collect::<Vec<_>>(),
+            "source": "pc_gateway"
+        }));
+
+        attach_post_edit_diagnostics(client, &workspace_id, None, &mut result).await?;
+        Ok(result)
+    }
+}
+
+async fn remote_read_optional(
+    client: &PcGatewayClient,
+    workspace_id: &str,
+    path: &str,
+) -> Result<Option<String>> {
+    match client.read_file(workspace_id.to_string(), path.to_string()).await {
+        Ok(PcGatewayResponse::FileContent { content, .. }) => Ok(Some(content)),
+        Ok(PcGatewayResponse::Error(_)) => Ok(None),
+        Ok(other) => Err(anyhow!("unexpected read_file response during patch backup: {:?}", other)),
+        Err(_) => Ok(None),
+    }
+}
+
+async fn apply_remote_patch_operation(
+    client: &PcGatewayClient,
+    workspace_id: &str,
+    operation: &RemotePatchOperation,
+) -> Result<()> {
+    match operation {
+        RemotePatchOperation::Replace {
+            path,
+            search,
+            replace,
+            expected_occurrences,
+        } => {
+            if search.is_empty() {
+                return Err(anyhow!("replace operation has empty search text in {}", path));
+            }
+            let content = match client.read_file(workspace_id.to_string(), path.clone()).await? {
+                PcGatewayResponse::FileContent { content, .. } => content,
+                other => return Err(anyhow!("unexpected read_file response during replace: {:?}", other)),
+            };
+            let count = content.matches(search).count();
+            if count == 0 {
+                return Err(anyhow!("search text not found in {}", path));
+            }
+            if let Some(expected) = expected_occurrences {
+                if count != *expected {
+                    return Err(anyhow!(
+                        "replace occurrence mismatch in {}: expected {}, found {}",
+                        path,
+                        expected,
+                        count
+                    ));
+                }
+            }
+            let updated = content.replace(search, replace);
+            ensure_file_written(client.write_file(workspace_id.to_string(), path.clone(), updated).await?)
+        }
+        RemotePatchOperation::Create {
+            path,
+            content,
+            overwrite,
+        } => {
+            if !overwrite && remote_read_optional(client, workspace_id, path).await?.is_some() {
+                return Err(anyhow!("create operation refuses to overwrite existing file: {}", path));
+            }
+            ensure_file_written(client.write_file(workspace_id.to_string(), path.clone(), content.clone()).await?)
+        }
+        RemotePatchOperation::Append { path, content } => {
+            let existing = match client.read_file(workspace_id.to_string(), path.clone()).await? {
+                PcGatewayResponse::FileContent { content, .. } => content,
+                other => return Err(anyhow!("unexpected read_file response during append: {:?}", other)),
+            };
+            ensure_file_written(
+                client
+                    .write_file(workspace_id.to_string(), path.clone(), format!("{}{}", existing, content))
+                    .await?,
+            )
+        }
+        RemotePatchOperation::Delete { path } => ensure_file_deleted(
+            client
+                .delete_file(workspace_id.to_string(), path.clone())
+                .await?,
+        ),
+    }
+}
+
+async fn rollback_remote_patch(
+    client: &PcGatewayClient,
+    workspace_id: &str,
+    originals: BTreeMap<String, Option<String>>,
+) -> Result<()> {
+    for (path, original) in originals.into_iter().rev() {
+        match original {
+            Some(content) => {
+                let response = client.write_file(workspace_id.to_string(), path, content).await?;
+                ensure_file_written(response)?;
+            }
+            None => {
+                let _ = client.delete_file(workspace_id.to_string(), path).await;
+            }
+        }
+    }
+    Ok(())
+}
+
+fn parse_remote_patch_operations(input: &Value) -> Result<Vec<RemotePatchOperation>> {
+    let operations = input
+        .get("operations")
+        .and_then(Value::as_array)
+        .ok_or_else(|| anyhow!("apply_patch requires an operations array"))?;
+    if operations.is_empty() {
+        return Err(anyhow!("apply_patch operations array must not be empty"));
+    }
+
+    operations
+        .iter()
+        .enumerate()
+        .map(parse_remote_patch_operation)
+        .collect()
+}
+
+fn parse_remote_patch_operation((index, operation): (usize, &Value)) -> Result<RemotePatchOperation> {
+    let op_type = operation
+        .get("type")
+        .or_else(|| operation.get("operation"))
+        .and_then(Value::as_str)
+        .ok_or_else(|| anyhow!("patch operation {} is missing type", index))?;
+    let path = required_str(operation, "path")?.to_string();
+
+    match op_type {
+        "replace" => {
+            let search = required_str(operation, "search")?.to_string();
+            let replace = required_str(operation, "replace")?.to_string();
+            let expected_occurrences = operation
+                .get("expected_occurrences")
+                .and_then(Value::as_u64)
+                .map(|value| value as usize);
+            Ok(RemotePatchOperation::Replace {
+                path,
+                search,
+                replace,
+                expected_occurrences,
+            })
+        }
+        "create" => {
+            let content = required_str(operation, "content")?.to_string();
+            let overwrite = operation
+                .get("overwrite")
+                .and_then(Value::as_bool)
+                .unwrap_or(false);
+            Ok(RemotePatchOperation::Create { path, content, overwrite })
+        }
+        "append" => {
+            let content = required_str(operation, "content")?.to_string();
+            Ok(RemotePatchOperation::Append { path, content })
+        }
+        "delete" | "remove" => Ok(RemotePatchOperation::Delete { path }),
+        other => Err(anyhow!("unsupported patch operation {}: {}", index, other)),
+    }
+}
+
+fn ensure_file_written(response: PcGatewayResponse) -> Result<()> {
+    match response {
+        PcGatewayResponse::FileWritten { .. } => Ok(()),
+        PcGatewayResponse::Error(error) => Err(anyhow!("PC gateway error {}: {}", error.code, error.message)),
+        other => Err(anyhow!("unexpected write_file response: {:?}", other)),
+    }
+}
+
+fn ensure_file_deleted(response: PcGatewayResponse) -> Result<()> {
+    match response {
+        PcGatewayResponse::FileDeleted { .. } => Ok(()),
+        PcGatewayResponse::Error(error) => Err(anyhow!("PC gateway error {}: {}", error.code, error.message)),
+        other => Err(anyhow!("unexpected delete_file response: {:?}", other)),
     }
 }
 
@@ -345,7 +597,10 @@ fn shell_words(command: &str) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{command_request_from_shell, diagnostic_summary, merge_metadata, ToolExecutionCoordinator, ToolExecutionTarget};
+    use super::{
+        command_request_from_shell, diagnostic_summary, merge_metadata, parse_remote_patch_operations,
+        ToolExecutionCoordinator, ToolExecutionTarget,
+    };
     use crate::pc_gateway::{PcDiagnostic, PcDiagnosticSeverity};
     use crate::tool_call::{ToolCallRequest, ToolCallSource};
     use crate::tools::{ToolContext, ToolRegistry, ToolResult};
@@ -377,6 +632,21 @@ mod tests {
         let request = command_request_from_shell("cargo check --workspace", "/project".into()).unwrap();
         assert_eq!(request.program, "cargo");
         assert_eq!(request.args, vec!["check", "--workspace"]);
+    }
+
+    #[test]
+    fn parses_remote_apply_patch_operations() {
+        let operations = parse_remote_patch_operations(&json!({
+            "operations": [
+                {"type":"replace","path":"README.md","search":"old","replace":"new","expected_occurrences":1},
+                {"type":"create","path":"src/lib.rs","content":"pub fn ok() {}","overwrite":false},
+                {"type":"delete","path":"old.txt"}
+            ]
+        }))
+        .unwrap();
+        assert_eq!(operations.len(), 3);
+        assert_eq!(operations[0].path(), "README.md");
+        assert_eq!(operations[2].path(), "old.txt");
     }
 
     #[test]
