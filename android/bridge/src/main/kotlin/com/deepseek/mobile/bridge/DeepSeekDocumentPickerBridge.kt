@@ -26,7 +26,7 @@ import java.util.UUID
  */
 class DeepSeekDocumentPickerBridge(
     private val activity: ComponentActivity,
-    private val callback: Callback,
+    private val callback: Callback
 ) {
     interface Callback {
         fun onDocumentPickerPicked(result: AndroidDocumentPickerPickedResult)
@@ -42,7 +42,7 @@ class DeepSeekDocumentPickerBridge(
             if (command == null) {
                 callback.onDocumentPickerFailed(
                     requestId = "unknown",
-                    message = "Document picker returned without an active command",
+                    message = "Document picker returned without an active command"
                 )
                 return@registerForActivityResult
             }
@@ -59,8 +59,8 @@ class DeepSeekDocumentPickerBridge(
                 callback.onDocumentPickerPicked(
                     AndroidDocumentPickerPickedResult(
                         requestId = command.requestId,
-                        documents = emptyList(),
-                    ),
+                        documents = emptyList()
+                    )
                 )
                 return@registerForActivityResult
             }
@@ -71,13 +71,13 @@ class DeepSeekDocumentPickerBridge(
                 callback.onDocumentPickerPicked(
                     AndroidDocumentPickerPickedResult(
                         requestId = command.requestId,
-                        documents = documents,
-                    ),
+                        documents = documents
+                    )
                 )
             } catch (error: Throwable) {
                 callback.onDocumentPickerFailed(
                     requestId = command.requestId,
-                    message = error.message ?: error.javaClass.simpleName,
+                    message = error.message ?: error.javaClass.simpleName
                 )
             }
         }
@@ -133,7 +133,7 @@ class DeepSeekDocumentPickerBridge(
             uri = uri.toString(),
             localPath = outputFile.absolutePath,
             mimeType = mimeType,
-            sizeBytes = outputFile.length(),
+            sizeBytes = outputFile.length()
         )
     }
 
@@ -141,7 +141,7 @@ class DeepSeekDocumentPickerBridge(
         try {
             activity.contentResolver.takePersistableUriPermission(
                 uri,
-                Intent.FLAG_GRANT_READ_URI_PERMISSION,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION
             )
         } catch (_: Throwable) {
             // Some providers do not support persistable permissions. The sandbox copy is still enough
@@ -155,7 +155,7 @@ data class AndroidDocumentPickerCommandPayload(
     val action: String = Intent.ACTION_OPEN_DOCUMENT,
     val category: String = Intent.CATEGORY_OPENABLE,
     val allowMultiple: Boolean = true,
-    val mimeTypes: List<String> = listOf("*/*"),
+    val mimeTypes: List<String> = listOf("*/*")
 )
 
 data class AndroidPickedDocumentPayload(
@@ -164,12 +164,12 @@ data class AndroidPickedDocumentPayload(
     val uri: String?,
     val localPath: String?,
     val mimeType: String?,
-    val sizeBytes: Long?,
+    val sizeBytes: Long?
 )
 
 data class AndroidDocumentPickerPickedResult(
     val requestId: String,
-    val documents: List<AndroidPickedDocumentPayload>,
+    val documents: List<AndroidPickedDocumentPayload>
 )
 
 fun queryDisplayName(context: Context, uri: Uri): String? {
@@ -178,7 +178,7 @@ fun queryDisplayName(context: Context, uri: Uri): String? {
         arrayOf(OpenableColumns.DISPLAY_NAME),
         null,
         null,
-        null,
+        null
     )
     cursor.use {
         if (it != null && it.moveToFirst()) {
