@@ -1,3 +1,5 @@
+use crate::approval_diff_preview::{approval_diff_summary, build_approval_diff_preview};
+use crate::project_diff::diff_line_color;
 use deepseek_mobile_core::{ApprovalCardSeverity, ApprovalCardView, ReviewDecision};
 use dioxus::prelude::*;
 
@@ -76,6 +78,8 @@ pub fn mobile_approval_panel(
                         }
                     }
 
+                    {approval_diff_card(card)}
+
                     div {
                         background_color: "rgba(17, 24, 39, 0.7)",
                         border: "1px solid rgba(75, 85, 99, 0.7)",
@@ -110,6 +114,58 @@ pub fn mobile_approval_panel(
                                     }
                                 }
                             }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn approval_diff_card(card: &ApprovalCardView) -> Element {
+    let Some(preview) = build_approval_diff_preview(card) else {
+        return rsx! {};
+    };
+    let summary = approval_diff_summary(&preview);
+
+    rsx! {
+        div {
+            background_color: "rgba(2, 6, 23, 0.85)",
+            border: "1px solid rgba(59, 130, 246, 0.55)",
+            border_radius: "12px",
+            padding: "8px",
+            display: "flex",
+            flex_direction: "column",
+            gap: "6px",
+
+            div {
+                color: "#bfdbfe",
+                font_size: "11px",
+                font_weight: "700",
+                "Patch preview: {summary}"
+            }
+
+            if preview.diff.is_empty() {
+                div {
+                    color: "#9ca3af",
+                    font_size: "11px",
+                    "No textual changes detected in preview."
+                }
+            } else {
+                div {
+                    display: "flex",
+                    flex_direction: "column",
+                    gap: "2px",
+                    max_height: "180px",
+                    overflow_y: "auto",
+
+                    for line in preview.diff.lines.iter().take(80) {
+                        div {
+                            color: "{diff_line_color(&line.kind)}",
+                            font_family: "monospace",
+                            font_size: "11px",
+                            white_space: "pre-wrap",
+                            "{line.text}"
                         }
                     }
                 }
