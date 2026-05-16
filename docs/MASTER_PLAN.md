@@ -56,7 +56,8 @@ PC execution
   -> PcGatewayClient
   -> endpoint_plan: direct/local routes first, tunnel/internet fallback later
   -> runtime endpoint health scoring: success/failure/latency/last error
-  -> mobile PC pairing panel shows active route and endpoint health rows
+  -> PcGatewayDiscoveryService converts mDNS/manual/subnet records to endpoint candidates and probes /health
+  -> mobile PC pairing panel shows discovery candidates, active route and endpoint health rows
   -> tool_loop *_and_pc_gateway functions
   -> ToolExecutionCoordinator.with_pc_gateway
   -> pc-host HTTP /v1/gateway/request
@@ -182,10 +183,11 @@ Already done:
 - [x] Map `apply_patch` to PC gateway execution using remote read/write/delete operations with rollback.
 - [x] Add active endpoint cache and route health scoring.
 - [x] Add mobile PC connection status display with active route and endpoint health.
+- [x] Add PC gateway discovery core contract for mDNS/manual/subnet candidates and mobile discovery display.
 
 Remaining checklist:
 
-- [ ] Add mDNS / local discovery for PC-host endpoints.
+- [ ] Add Android NSD/mDNS adapter for PC-host discovery.
 - [ ] Add reconnect controls for PC gateway.
 - [ ] Add pairing flow end-to-end from mobile UI.
 - [ ] Add PC-host logs and health detail.
@@ -310,7 +312,7 @@ Acceptance criteria:
 | Runtime HTTP/SSE API | Keep later | Missing |
 | Durable task queue | Keep | Missing |
 | LSP diagnostics | Keep, PC-first plus local/Termux fallback | Partial: Rust cargo diagnostics and post-edit hooks implemented; TS/Python/UI/model-context still pending |
-| PC connectivity | Keep multi-transport, offline-first | Partial: endpoint candidates, client failover, route health scoring and UI status display implemented |
+| PC connectivity | Keep multi-transport, offline-first | Partial: endpoint candidates, client failover, route health scoring, discovery core contract and UI status display implemented |
 | Snapshots/rollback | Keep, mobile-safe file-copy | Partial: core service, tools, local pre-tool hook |
 | OS sandbox | Replace/augment with executor policies | Missing |
 | MCP | Keep, PC-first | Missing |
@@ -338,14 +340,15 @@ The next implementation sequence is fixed:
 10. [x] Add full post-edit diagnostic hook across local, Termux and PC workspaces.
 11. [x] Add active endpoint cache and route health scoring.
 12. [x] Add mobile PC connection status display with active route and endpoint health.
-13. [ ] Add snapshot/diagnostics UI panels.
-14. [ ] Add mDNS / local discovery for PC-host endpoints.
-15. [ ] Add reconnect controls for PC gateway.
-16. [ ] Add pairing flow end-to-end from mobile UI.
-17. [ ] Add Termux executor bridge.
-18. [ ] Add Git UI.
-19. [ ] Add background tasks.
-20. [ ] Add MCP/skills.
+13. [x] Add PC gateway discovery core contract and mobile discovery display.
+14. [ ] Add snapshot/diagnostics UI panels.
+15. [ ] Add Android NSD/mDNS adapter for PC-host discovery.
+16. [ ] Add reconnect controls for PC gateway.
+17. [ ] Add pairing flow end-to-end from mobile UI.
+18. [ ] Add Termux executor bridge.
+19. [ ] Add Git UI.
+20. [ ] Add background tasks.
+21. [ ] Add MCP/skills.
 
 ## 5. Implementation progress log
 
@@ -362,6 +365,7 @@ The next implementation sequence is fixed:
 - 2026-05-16: Added `WorkspaceDiagnosticsService` and wired best-effort LocalAndroid/Termux post-edit Rust diagnostics after `write_file`, `edit_file`, `apply_patch`, and modifying `file_ops` calls.
 - 2026-05-16: Added runtime PC gateway endpoint health scoring in `PcGatewayClient`, including success/failure counters, last latency, last error, active endpoint selection, and health-aware endpoint ordering.
 - 2026-05-16: Extended PC pairing UI state and panel to show active PC route, endpoint health rows, latency, route score and last endpoint error.
+- 2026-05-16: Added `PcGatewayDiscoveryService` for mDNS/manual/subnet discovery records, `/health` probing, discovery reports, and mobile panel display of discovery candidates.
 
 ## 6. Definition of done for the project
 
