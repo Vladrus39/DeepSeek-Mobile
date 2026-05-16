@@ -55,6 +55,7 @@ PC execution
   -> pc-host HTTP /v1/gateway/request
   -> workspace path policy
   -> read/write/list/exec/git/task detection
+  -> diagnostics via cargo check JSON for Rust workspaces
   -> PcGatewayResponse
   -> ToolResult
   -> AgentEvent timeline
@@ -153,6 +154,7 @@ Already done:
 - [x] Path traversal protection.
 - [x] Read/write/list/exec/git status/git diff.
 - [x] Task detection for Cargo/npm/pytest.
+- [x] Rust diagnostics via `cargo check --message-format=json`.
 
 Remaining checklist:
 
@@ -162,7 +164,7 @@ Remaining checklist:
 - [ ] Add command allow/deny policy presets.
 - [ ] Add long-running command streaming instead of only completed output.
 - [ ] Add terminal session persistence.
-- [ ] Add diagnostics implementation.
+- [ ] Add diagnostics implementation for TypeScript and Python.
 
 Acceptance criteria:
 
@@ -174,10 +176,10 @@ Goal: match the original TUI's post-edit diagnostics loop in a mobile/PC-safe wa
 
 Checklist:
 
-- [ ] Implement PC-host diagnostics for Rust via `cargo check --message-format=json`.
+- [x] Implement PC-host diagnostics for Rust via `cargo check --message-format=json`.
 - [ ] Implement TypeScript diagnostics via `tsc --noEmit` when config exists.
 - [ ] Implement Python diagnostics via `pyright`/`ruff`/`pytest` where available.
-- [ ] Add diagnostic severity mapping to `PcDiagnostic`.
+- [x] Add diagnostic severity mapping to `PcDiagnostic` for Rust cargo levels.
 - [ ] Add post-edit diagnostic hook after `write_file`, `edit_file`, `apply_patch`.
 - [ ] Surface diagnostics in mobile UI.
 - [ ] Inject diagnostics into next model turn as context.
@@ -276,7 +278,7 @@ Acceptance criteria:
 | Web/search/fetch | Keep with approval | Missing |
 | Runtime HTTP/SSE API | Keep later | Missing |
 | Durable task queue | Keep | Missing |
-| LSP diagnostics | Keep, PC-first | Missing |
+| LSP diagnostics | Keep, PC-first | Partial: Rust cargo diagnostics implemented |
 | Snapshots/rollback | Keep, mobile-safe file-copy | Partial: core service, tools, local pre-tool hook |
 | OS sandbox | Replace/augment with executor policies | Missing |
 | MCP | Keep, PC-first | Missing |
@@ -297,12 +299,13 @@ The next implementation sequence is fixed:
 3. [x] Fix approval-session grant persistence.
 4. [x] Add `apply_patch` tool.
 5. [x] Auto-create pre-tool snapshots before destructive approved local tools.
-6. [ ] Add PC diagnostics for Rust projects.
-7. [ ] Add snapshot/diagnostics UI panels.
-8. [ ] Add Termux executor bridge.
-9. [ ] Add Git UI.
-10. [ ] Add background tasks.
-11. [ ] Add MCP/skills.
+6. [x] Add PC diagnostics for Rust projects.
+7. [ ] Add post-edit diagnostic hook after file changes.
+8. [ ] Add snapshot/diagnostics UI panels.
+9. [ ] Add Termux executor bridge.
+10. [ ] Add Git UI.
+11. [ ] Add background tasks.
+12. [ ] Add MCP/skills.
 
 ## 5. Implementation progress log
 
@@ -311,6 +314,7 @@ The next implementation sequence is fixed:
 - 2026-05-16: Fixed approval-session persistence for mutable `MobileEngine` and stateless mobile runner callbacks via `ApprovalSessionRuntimeStore`.
 - 2026-05-16: Added operation-based atomic `apply_patch` tool and registered it in the default mobile tool registry.
 - 2026-05-16: Added local pre-tool snapshots inside `tool_loop::execute_approved_call()` for destructive local/Termux tools; PC-gateway snapshot path remains separate.
+- 2026-05-16: Implemented PC-host Rust diagnostics using `cargo check --workspace --message-format=json`, mapped cargo levels to `PcDiagnosticSeverity`, and added path filtering.
 
 ## 6. Definition of done for the project
 
