@@ -1,7 +1,7 @@
 use crate::mobile_runtime_config::MobileRuntimeConfig;
 use deepseek_mobile_core::{
-    AgentEvent, ApprovalCardView, Config, MobileEngine, ReviewDecision, RuntimeThreadStore,
-    TokenUsage, TurnContext, TurnStatus, UserChatInput,
+    AgentEvent, ApprovalCardView, ApprovalSessionRuntimeStore, Config, MobileEngine, ReviewDecision,
+    RuntimeThreadStore, TokenUsage, TurnContext, TurnStatus, UserChatInput,
 };
 
 #[derive(Clone, Debug, PartialEq)]
@@ -74,13 +74,17 @@ where
     F: Fn(AgentEvent) + 'static,
 {
     let store = RuntimeThreadStore::open(runtime.runtime_store_root.clone())?;
+    let approval_session_store = ApprovalSessionRuntimeStore::new(runtime.runtime_store_root.clone());
+    let approval_session = approval_session_store.load(&runtime.thread_id)?;
     let mut engine = MobileEngine::new(config)
         .with_runtime_store(store)
         .with_thread_id(runtime.thread_id.clone())
         .with_workspace(runtime.workspace_root.clone())
+        .with_approval_session(approval_session)
         .with_event_observer(on_event);
 
     let result = engine.run_turn(input.to_prompt_text()).await?;
+    approval_session_store.save(runtime.thread_id.clone(), engine.approval_session())?;
     let approval_card_count = result.approval_cards.len();
     Ok(MobileTurnUiResult {
         events: result.events,
@@ -121,6 +125,8 @@ pub async fn continue_mobile_approval_with_runtime(
     runtime: MobileRuntimeConfig,
 ) -> anyhow::Result<MobileApprovalContinuationUiResult> {
     let store = RuntimeThreadStore::open(runtime.runtime_store_root.clone())?;
+    let approval_session_store = ApprovalSessionRuntimeStore::new(runtime.runtime_store_root.clone());
+    let approval_session = approval_session_store.load(&runtime.thread_id)?;
     let pending = store.load_pending_approval(&approval_id)?;
     let turn_record = store.load_turn(&pending.turn_id)?;
 
@@ -138,12 +144,14 @@ pub async fn continue_mobile_approval_with_runtime(
 
     let mut engine = MobileEngine::new(config)
         .with_runtime_store(store)
-        .with_thread_id(runtime.thread_id)
-        .with_workspace(runtime.workspace_root);
+        .with_thread_id(runtime.thread_id.clone())
+        .with_workspace(runtime.workspace_root)
+        .with_approval_session(approval_session);
 
     let result = engine
         .continue_stored_approval(&approval_id, decision, turn)
         .await?;
+    approval_session_store.save(runtime.thread_id, engine.approval_session())?;
     let remaining_approval_cards = engine.pending_approval_cards_for_current_thread()?;
 
     Ok(MobileApprovalContinuationUiResult {
