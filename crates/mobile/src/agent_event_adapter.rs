@@ -28,55 +28,71 @@ pub fn push_agent_event(timeline: &mut MobileTimelineState, event: &AgentEvent) 
             status,
             usage,
             error,
-        } => Some(timeline.push(
+        } => {
             if error.is_some() {
-                MobileTimelineItemKind::Error
+                timeline.fail_live_assistant_message();
             } else {
-                MobileTimelineItemKind::Status
-            },
-            if error.is_some() {
-                MobileTimelineItemStatus::Failed
+                timeline.finish_live_assistant_message();
+            }
+            Some(timeline.push(
+                if error.is_some() {
+                    MobileTimelineItemKind::Error
+                } else {
+                    MobileTimelineItemKind::Status
+                },
+                if error.is_some() {
+                    MobileTimelineItemStatus::Failed
+                } else {
+                    MobileTimelineItemStatus::Done
+                },
+                "Turn finished",
+                format!(
+                    "turn_id={} status={:?} prompt_tokens={} completion_tokens={} total_tokens={}{}",
+                    turn_id,
+                    status,
+                    usage.prompt_tokens,
+                    usage.completion_tokens,
+                    usage.total_tokens,
+                    error
+                        .as_ref()
+                        .map(|message| format!(" error={}", message))
+                        .unwrap_or_default()
+                ),
+            ))
+        }
+        AgentEvent::MessageStarted { index, role } => {
+            if role == "assistant" {
+                timeline.start_live_assistant_message();
+            }
+            Some(timeline.push(
+                MobileTimelineItemKind::Status,
+                MobileTimelineItemStatus::Running,
+                "Message started",
+                format!("#{} role={}", index, role),
+            ))
+        }
+        AgentEvent::TextDelta(text) => {
+            if text.is_empty() {
+                None
             } else {
-                MobileTimelineItemStatus::Done
-            },
-            "Turn finished",
-            format!(
-                "turn_id={} status={:?} prompt_tokens={} completion_tokens={} total_tokens={}{}",
-                turn_id,
-                status,
-                usage.prompt_tokens,
-                usage.completion_tokens,
-                usage.total_tokens,
-                error
-                    .as_ref()
-                    .map(|message| format!(" error={}", message))
-                    .unwrap_or_default()
-            ),
-        )),
-        AgentEvent::MessageStarted { index, role } => Some(timeline.push(
-            MobileTimelineItemKind::Status,
-            MobileTimelineItemStatus::Running,
-            "Message started",
-            format!("#{} role={}", index, role),
-        )),
-        AgentEvent::TextDelta(text) => Some(timeline.push(
-            MobileTimelineItemKind::AssistantMessage,
-            MobileTimelineItemStatus::Done,
-            "DeepSeek response",
-            text.clone(),
-        )),
+                Some(timeline.append_live_assistant_delta(text))
+            }
+        }
         AgentEvent::ReasoningDelta(text) => Some(timeline.push(
             MobileTimelineItemKind::Status,
             MobileTimelineItemStatus::Running,
             "Reasoning",
             text.clone(),
         )),
-        AgentEvent::MessageFinished { index } => Some(timeline.push(
-            MobileTimelineItemKind::Status,
-            MobileTimelineItemStatus::Done,
-            "Message finished",
-            format!("message #{} completed", index),
-        )),
+        AgentEvent::MessageFinished { index } => {
+            timeline.finish_live_assistant_message();
+            Some(timeline.push(
+                MobileTimelineItemKind::Status,
+                MobileTimelineItemStatus::Done,
+                "Message finished",
+                format!("message #{} completed", index),
+            ))
+        }
         AgentEvent::ToolCallStarted(tool) => Some(timeline.push(
             MobileTimelineItemKind::ToolCall,
             MobileTimelineItemStatus::Running,
@@ -122,18 +138,24 @@ pub fn push_agent_event(timeline: &mut MobileTimelineState, event: &AgentEvent) 
                 messages.len(), model, workspace
             ),
         )),
-        AgentEvent::Error(message) => Some(timeline.push(
-            MobileTimelineItemKind::Error,
-            MobileTimelineItemStatus::Failed,
-            "Agent error",
-            message.clone(),
-        )),
-        AgentEvent::Finished => Some(timeline.push(
-            MobileTimelineItemKind::Status,
-            MobileTimelineItemStatus::Done,
-            "Agent finished",
-            "DeepSeek agent request completed",
-        )),
+        AgentEvent::Error(message) => {
+            timeline.fail_live_assistant_message();
+            Some(timeline.push(
+                MobileTimelineItemKind::Error,
+                MobileTimelineItemStatus::Failed,
+                "Agent error",
+                message.clone(),
+            ))
+        }
+        AgentEvent::Finished => {
+            timeline.finish_live_assistant_message();
+            Some(timeline.push(
+                MobileTimelineItemKind::Status,
+                MobileTimelineItemStatus::Done,
+                "Agent finished",
+                "DeepSeek agent request completed",
+            ))
+        }
     }
 }
 
@@ -161,6 +183,23 @@ mod tests {
         assert_eq!(timeline.len(), 1);
         assert_eq!(timeline.items[0].kind, MobileTimelineItemKind::Status);
         assert_eq!(timeline.items[0].body, "Thinking");
+    }
+
+    #[test]
+    fn streaming_text_deltas_merge_into_one_assistant_message() {
+        let mut timeline = MobileTimelineState::default();
+        push_agent_event(&mut timeline, &AgentEvent::MessageStarted { index: 0, role: "assistant".to_string() });
+        push_agent_event(&mut timeline, &AgentEvent::TextDelta("hel".to_string()));
+        push_agent_event(&mut timeline, &AgentEvent::TextDelta("lo".to_string()));
+        push_agent_event(&mut timeline, &AgentEvent::MessageFinished { index: 0 });
+
+        let assistant = timeline
+            .items
+            .iter()
+            .find(|item| item.kind == MobileTimelineItemKind::AssistantMessage)
+            .expect("assistant message");
+        assert_eq!(assistant.body, "hello");
+        assert_eq!(assistant.status, MobileTimelineItemStatus::Done);
     }
 
     #[test]
