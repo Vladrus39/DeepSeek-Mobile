@@ -197,6 +197,7 @@ fn subtitle_for(category: &ToolCategory, risk: &ApprovalRisk) -> String {
         (ToolCategory::Network, _) => "This may access network resources".to_string(),
         (ToolCategory::Unknown, _) => "Tool impact is unknown".to_string(),
         (_, ApprovalRisk::Benign) => "Low-risk operation".to_string(),
+        (_, ApprovalRisk::Destructive) => "High-risk operation".to_string(),
     }
 }
 
