@@ -1,9 +1,12 @@
 use crate::document_picker::{DocumentPickerRequest, PickedDocument};
 use crate::native_document_picker::{AndroidDocumentPickerCallback, AndroidDocumentPickerCommand};
+use crate::native_pc_discovery::{AndroidPcGatewayDiscoveryCallback, AndroidPcGatewayDiscoveryCommand};
+use deepseek_mobile_core::PcGatewayDiscoveryReport;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum NativeMobileCommand {
     OpenDocumentPicker(DocumentPickerRequest),
+    StartPcGatewayDiscovery(AndroidPcGatewayDiscoveryCommand),
     ShareFile { path: String, mime_type: Option<String> },
     OpenUrl { url: String },
 }
@@ -13,6 +16,10 @@ pub enum NativeMobileEvent {
     DocumentsPicked(Vec<PickedDocument>),
     DocumentPickerCancelled,
     DocumentPickerFailed(String),
+    PcGatewayDiscoveryStarted { request_id: String, service_type: String },
+    PcGatewayDiscoveryUpdated(PcGatewayDiscoveryReport),
+    PcGatewayDiscoveryCompleted(PcGatewayDiscoveryReport),
+    PcGatewayDiscoveryFailed(String),
     FileShared,
     ShareFailed(String),
 }
@@ -23,6 +30,7 @@ pub struct NativeBridgeState {
     pub last_event: Option<NativeMobileEvent>,
     pub last_error: Option<String>,
     pub active_document_picker_request_id: Option<String>,
+    pub active_pc_discovery_request_id: Option<String>,
 }
 
 impl NativeBridgeState {
@@ -32,6 +40,12 @@ impl NativeBridgeState {
 
     pub fn enqueue_document_picker(&mut self, request: DocumentPickerRequest) {
         self.enqueue(NativeMobileCommand::OpenDocumentPicker(request));
+    }
+
+    pub fn enqueue_pc_gateway_discovery(&mut self, request_id: impl Into<String>) {
+        self.enqueue(NativeMobileCommand::StartPcGatewayDiscovery(
+            AndroidPcGatewayDiscoveryCommand::new(request_id),
+        ));
     }
 
     pub fn pop_next_command(&mut self) -> Option<NativeMobileCommand> {
@@ -51,6 +65,20 @@ impl NativeBridgeState {
             NativeMobileCommand::OpenDocumentPicker(request) => {
                 let command = AndroidDocumentPickerCommand::from_request(&request);
                 self.active_document_picker_request_id = Some(command.request_id.clone());
+                Some(command)
+            }
+            _ => None,
+        }
+    }
+
+    pub fn pop_next_android_pc_discovery_command(&mut self) -> Option<AndroidPcGatewayDiscoveryCommand> {
+        let command_index = self
+            .pending_commands
+            .iter()
+            .position(|command| matches!(command, NativeMobileCommand::StartPcGatewayDiscovery(_)))?;
+        match self.pending_commands.remove(command_index) {
+            NativeMobileCommand::StartPcGatewayDiscovery(command) => {
+                self.active_pc_discovery_request_id = Some(command.request_id.clone());
                 Some(command)
             }
             _ => None,
@@ -80,11 +108,51 @@ impl NativeBridgeState {
         event
     }
 
+    pub fn accept_android_pc_discovery_callback(
+        &mut self,
+        callback: AndroidPcGatewayDiscoveryCallback,
+    ) -> NativeMobileEvent {
+        let callback_request_id = callback.request_id().to_string();
+        let is_active = self
+            .active_pc_discovery_request_id
+            .as_deref()
+            .map(|active| active == callback_request_id)
+            .unwrap_or(false);
+
+        let event = if is_active {
+            match callback {
+                AndroidPcGatewayDiscoveryCallback::Started { request_id, service_type } => {
+                    NativeMobileEvent::PcGatewayDiscoveryStarted { request_id, service_type }
+                }
+                AndroidPcGatewayDiscoveryCallback::Candidate { .. } => {
+                    let report = callback.into_discovery_report().unwrap_or_default();
+                    NativeMobileEvent::PcGatewayDiscoveryUpdated(report)
+                }
+                AndroidPcGatewayDiscoveryCallback::Completed { .. } => {
+                    self.active_pc_discovery_request_id = None;
+                    let report = callback.into_discovery_report().unwrap_or_default();
+                    NativeMobileEvent::PcGatewayDiscoveryCompleted(report)
+                }
+                AndroidPcGatewayDiscoveryCallback::Failed { message, .. } => {
+                    self.active_pc_discovery_request_id = None;
+                    NativeMobileEvent::PcGatewayDiscoveryFailed(message)
+                }
+            }
+        } else {
+            NativeMobileEvent::PcGatewayDiscoveryFailed(format!(
+                "stale Android PC discovery callback: expected {:?}, got {}",
+                self.active_pc_discovery_request_id, callback_request_id
+            ))
+        };
+        self.accept_event(event.clone());
+        event
+    }
+
     pub fn accept_event(&mut self, event: NativeMobileEvent) {
         self.last_error = match &event {
-            NativeMobileEvent::DocumentPickerFailed(message) | NativeMobileEvent::ShareFailed(message) => {
-                Some(message.clone())
-            }
+            NativeMobileEvent::DocumentPickerFailed(message)
+            | NativeMobileEvent::PcGatewayDiscoveryFailed(message)
+            | NativeMobileEvent::ShareFailed(message) => Some(message.clone()),
             _ => None,
         };
         self.last_event = Some(event);
@@ -97,6 +165,10 @@ impl NativeBridgeState {
     pub fn is_waiting_for_document_picker_callback(&self) -> bool {
         self.active_document_picker_request_id.is_some()
     }
+
+    pub fn is_waiting_for_pc_discovery_callback(&self) -> bool {
+        self.active_pc_discovery_request_id.is_some()
+    }
 }
 
 #[cfg(test)]
@@ -104,6 +176,7 @@ mod tests {
     use super::{NativeBridgeState, NativeMobileCommand, NativeMobileEvent};
     use crate::document_picker::{DocumentPickerRequest, PickedDocument};
     use crate::native_document_picker::{AndroidDocumentPickerCallback, AndroidPickedDocumentPayload};
+    use crate::native_pc_discovery::{AndroidPcGatewayDiscoveryCallback, AndroidPcGatewayMdnsRecordPayload};
 
     #[test]
     fn bridge_queues_document_picker_command() {
@@ -154,6 +227,43 @@ mod tests {
         });
         assert!(matches!(event, NativeMobileEvent::DocumentPickerFailed(_)));
         assert!(state.last_error.as_deref().unwrap().contains("stale Android document picker callback"));
+    }
+
+    #[test]
+    fn bridge_exposes_android_pc_discovery_command() {
+        let mut state = NativeBridgeState::default();
+        state.enqueue_pc_gateway_discovery("scan-1");
+        let command = state.pop_next_android_pc_discovery_command().unwrap();
+        assert_eq!(command.request_id, "scan-1");
+        assert_eq!(command.service_type, "_deepseek-pc-gateway._tcp.");
+        assert!(state.is_waiting_for_pc_discovery_callback());
+    }
+
+    #[test]
+    fn bridge_accepts_android_pc_discovery_callback_only_for_active_request() {
+        let mut state = NativeBridgeState::default();
+        state.enqueue_pc_gateway_discovery("scan-1");
+        let command = state.pop_next_android_pc_discovery_command().unwrap();
+        let event = state.accept_android_pc_discovery_callback(AndroidPcGatewayDiscoveryCallback::Candidate {
+            request_id: command.request_id,
+            record: AndroidPcGatewayMdnsRecordPayload::new("Laptop", "192.168.1.10", 8787),
+        });
+        assert!(matches!(event, NativeMobileEvent::PcGatewayDiscoveryUpdated(_)));
+        assert!(state.is_waiting_for_pc_discovery_callback());
+        assert!(state.last_error.is_none());
+    }
+
+    #[test]
+    fn bridge_completes_android_pc_discovery_callback() {
+        let mut state = NativeBridgeState::default();
+        state.enqueue_pc_gateway_discovery("scan-1");
+        let command = state.pop_next_android_pc_discovery_command().unwrap();
+        let event = state.accept_android_pc_discovery_callback(AndroidPcGatewayDiscoveryCallback::Completed {
+            request_id: command.request_id,
+            records: vec![AndroidPcGatewayMdnsRecordPayload::new("Laptop", "192.168.1.10", 8787)],
+        });
+        assert!(matches!(event, NativeMobileEvent::PcGatewayDiscoveryCompleted(_)));
+        assert!(!state.is_waiting_for_pc_discovery_callback());
     }
 
     #[test]
