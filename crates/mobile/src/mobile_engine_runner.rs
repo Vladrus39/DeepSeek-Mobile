@@ -76,10 +76,7 @@ where
     let store = RuntimeThreadStore::open(runtime.runtime_store_root.clone())?;
     let approval_session_store = ApprovalSessionRuntimeStore::new(runtime.runtime_store_root.clone());
     let approval_session = approval_session_store.load(&runtime.thread_id)?;
-    let mut engine = MobileEngine::new(config)
-        .with_runtime_store(store)
-        .with_thread_id(runtime.thread_id.clone())
-        .with_workspace(runtime.workspace_root.clone())
+    let mut engine = build_engine(config, &runtime, store)?
         .with_approval_session(approval_session)
         .with_event_observer(on_event);
 
@@ -99,10 +96,7 @@ where
 
 pub fn load_mobile_approval_cards(runtime: MobileRuntimeConfig) -> anyhow::Result<Vec<ApprovalCardView>> {
     let store = RuntimeThreadStore::open(runtime.runtime_store_root.clone())?;
-    let engine = MobileEngine::new(Config::default())
-        .with_runtime_store(store)
-        .with_thread_id(runtime.thread_id)
-        .with_workspace(runtime.workspace_root);
+    let engine = build_engine(Config::default(), &runtime, store)?;
     engine.pending_approval_cards_for_current_thread()
 }
 
@@ -142,11 +136,7 @@ pub async fn continue_mobile_approval_with_runtime(
     };
     turn.error = turn_record.error.clone();
 
-    let mut engine = MobileEngine::new(config)
-        .with_runtime_store(store)
-        .with_thread_id(runtime.thread_id.clone())
-        .with_workspace(runtime.workspace_root)
-        .with_approval_session(approval_session);
+    let mut engine = build_engine(config, &runtime, store)?.with_approval_session(approval_session);
 
     let result = engine
         .continue_stored_approval(&approval_id, decision, turn)
@@ -160,6 +150,22 @@ pub async fn continue_mobile_approval_with_runtime(
         session_grant_count: result.session_grants_created.len(),
         remaining_approval_cards,
     })
+}
+
+fn build_engine(
+    config: Config,
+    runtime: &MobileRuntimeConfig,
+    store: RuntimeThreadStore,
+) -> anyhow::Result<MobileEngine> {
+    let engine = MobileEngine::new(config)
+        .with_runtime_store(store)
+        .with_thread_id(runtime.thread_id.clone());
+
+    if let Some(connection) = runtime.workspace_connection.as_ref() {
+        engine.with_workspace_connection(connection)
+    } else {
+        Ok(engine.with_workspace(runtime.workspace_root.clone()))
+    }
 }
 
 #[cfg(test)]
