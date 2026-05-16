@@ -1,7 +1,7 @@
 # DeepSeek Mobile master implementation plan
 
 Created: 2026-05-16
-Last updated: 2026-05-16
+Last updated: 2026-05-17
 
 This is the working plan for completing DeepSeek Mobile without losing any original DeepSeek TUI capability that matters for a phone-first coding agent.
 
@@ -18,6 +18,7 @@ Current project audit: `docs/PROJECT_AUDIT.md`.
 5. No silent placeholders. A partial implementation must expose its missing runtime dependency clearly.
 6. Every feature must have at least one test or a documented manual verification path.
 7. Update this master plan after every closed implementation item.
+8. Keep the project active in two synchronized places: the PC working copy and the GitHub repository.
 
 ## 1. Current system map
 
@@ -90,6 +91,34 @@ Local/Termux diagnostics
   -> cargo check --workspace --message-format=json when Cargo.toml exists
   -> best-effort diagnostics metadata without failing the original edit
 ```
+
+### 1.1 Local + GitHub operating model
+
+Canonical PC working copy:
+
+```text
+C:\Users\vladi\Desktop\DeepSeek-Mobile
+```
+
+Remote repository:
+
+```text
+https://github.com/Vladrus39/DeepSeek-Mobile
+```
+
+One-command publish flow from the PC working copy:
+
+```powershell
+.\deploy.ps1 -Message "short change summary"
+```
+
+Operating rules:
+
+1. Develop from the desktop working copy on the PC.
+2. Keep GitHub synchronized after every closed implementation item or stable checkpoint.
+3. The deploy script stages all changes, creates a commit when needed, rebases from `origin/<current-branch>`, and pushes the current branch back to GitHub.
+4. If local and remote history diverge, resolve conflicts in the desktop working copy before continuing implementation.
+5. The master plan, progress log, and code must be updated together so local work and repository state never silently drift apart.
 
 Snapshot/rollback map:
 
@@ -380,6 +409,7 @@ The next implementation sequence is fixed:
 - 2026-05-16: Added `PcGatewayDiscoveryService` for mDNS/manual/subnet discovery records, `/health` probing, discovery reports, and mobile panel display of discovery candidates.
 - 2026-05-16: Added Android NSD/mDNS discovery bridge for DeepSeek PC Host, required Android network/multicast permissions, Rust native discovery payloads, and route_native_mobile_event integration into PcPairingUiState.
 - 2026-05-16: Added PC gateway reconnect controls in PcPairingUiState and PcHost panel: scan again, retry active route, use best discovered route, and forget bad routes.
+- 2026-05-17: Established the synchronized PC + GitHub operating model, created the desktop working copy at `C:\Users\vladi\Desktop\DeepSeek-Mobile`, and added the one-command `deploy.ps1` publish script.
 
 ## 6. Definition of done for the project
 
