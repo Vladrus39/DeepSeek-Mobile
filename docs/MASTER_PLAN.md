@@ -55,6 +55,7 @@ PC execution
   -> MobileEngine.with_workspace_connection
   -> PcGatewayClient
   -> endpoint_plan: direct/local routes first, tunnel/internet fallback later
+  -> runtime endpoint health scoring: success/failure/latency/last error
   -> tool_loop *_and_pc_gateway functions
   -> ToolExecutionCoordinator.with_pc_gateway
   -> pc-host HTTP /v1/gateway/request
@@ -178,10 +179,10 @@ Already done:
 - [x] Add multi-endpoint PC gateway routing model for direct Wi-Fi, same-LAN, tunnel and internet candidates.
 - [x] Add client-side endpoint failover: local/direct candidates are tried before tunnel/internet candidates.
 - [x] Map `apply_patch` to PC gateway execution using remote read/write/delete operations with rollback.
+- [x] Add active endpoint cache and route health scoring.
 
 Remaining checklist:
 
-- [ ] Add active endpoint cache and route health scoring.
 - [ ] Add mDNS / local discovery for PC-host endpoints.
 - [ ] Add UI connection status and reconnect controls.
 - [ ] Add pairing flow end-to-end from mobile UI.
@@ -307,7 +308,7 @@ Acceptance criteria:
 | Runtime HTTP/SSE API | Keep later | Missing |
 | Durable task queue | Keep | Missing |
 | LSP diagnostics | Keep, PC-first plus local/Termux fallback | Partial: Rust cargo diagnostics and post-edit hooks implemented; TS/Python/UI/model-context still pending |
-| PC connectivity | Keep multi-transport, offline-first | Partial: endpoint candidates and client failover implemented |
+| PC connectivity | Keep multi-transport, offline-first | Partial: endpoint candidates, client failover and route health scoring implemented |
 | Snapshots/rollback | Keep, mobile-safe file-copy | Partial: core service, tools, local pre-tool hook |
 | OS sandbox | Replace/augment with executor policies | Missing |
 | MCP | Keep, PC-first | Missing |
@@ -333,11 +334,15 @@ The next implementation sequence is fixed:
 8. [x] Add multi-endpoint PC gateway route candidates and client failover.
 9. [x] Map `apply_patch` to PC gateway execution.
 10. [x] Add full post-edit diagnostic hook across local, Termux and PC workspaces.
-11. [ ] Add snapshot/diagnostics UI panels.
-12. [ ] Add Termux executor bridge.
-13. [ ] Add Git UI.
-14. [ ] Add background tasks.
-15. [ ] Add MCP/skills.
+11. [x] Add active endpoint cache and route health scoring.
+12. [ ] Add snapshot/diagnostics UI panels.
+13. [ ] Add mDNS / local discovery for PC-host endpoints.
+14. [ ] Add UI connection status and reconnect controls.
+15. [ ] Add pairing flow end-to-end from mobile UI.
+16. [ ] Add Termux executor bridge.
+17. [ ] Add Git UI.
+18. [ ] Add background tasks.
+19. [ ] Add MCP/skills.
 
 ## 5. Implementation progress log
 
@@ -352,6 +357,7 @@ The next implementation sequence is fixed:
 - 2026-05-16: Added PC gateway endpoint candidates for direct Wi-Fi, same-LAN, tunnel and internet routes; `PcGatewayClient` now attempts endpoints by priority so local/offline routes are preferred before tunnel/internet fallback.
 - 2026-05-16: Added `DeleteFile` support to PC gateway client/host and mapped operation-based `apply_patch` to PC gateway execution with remote backup/rollback and post-edit diagnostics.
 - 2026-05-16: Added `WorkspaceDiagnosticsService` and wired best-effort LocalAndroid/Termux post-edit Rust diagnostics after `write_file`, `edit_file`, `apply_patch`, and modifying `file_ops` calls.
+- 2026-05-16: Added runtime PC gateway endpoint health scoring in `PcGatewayClient`, including success/failure counters, last latency, last error, active endpoint selection, and health-aware endpoint ordering.
 
 ## 6. Definition of done for the project
 
