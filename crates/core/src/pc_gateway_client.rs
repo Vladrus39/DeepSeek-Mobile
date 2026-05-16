@@ -79,6 +79,14 @@ impl PcGatewayClient {
         .await
     }
 
+    pub async fn delete_file(&self, workspace_id: impl Into<String>, path: impl Into<String>) -> Result<PcGatewayResponse> {
+        self.send(PcGatewayRequest::DeleteFile {
+            workspace_id: workspace_id.into(),
+            path: path.into(),
+        })
+        .await
+    }
+
     pub async fn list_dir(&self, workspace_id: impl Into<String>, path: impl Into<String>) -> Result<PcGatewayResponse> {
         self.send(PcGatewayRequest::ListDir {
             workspace_id: workspace_id.into(),
@@ -297,8 +305,8 @@ mod tests {
         config.allow_http_on_local_network = true;
         let client = PcGatewayClient::new(config);
         let command = CommandRequest {
-            program: "rm".to_string(),
-            args: vec!["-rf".to_string(), "/".to_string()],
+            program: "blocked-admin-tool".to_string(),
+            args: vec!["--unsafe".to_string()],
             working_dir: Some(PathBuf::from("/work/project")),
         };
         assert!(client.policy().validate_command(&command).is_err());
