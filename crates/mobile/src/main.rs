@@ -132,16 +132,8 @@ fn app() -> Element {
                     display: "flex",
                     flex_direction: "column",
                     align_items: "center",
-                    div {
-                        font_size: "18px",
-                        font_weight: "bold",
-                        "DeepSeek Mobile"
-                    }
-                    div {
-                        color: "#9ca3af",
-                        font_size: "12px",
-                        "{active_section().subtitle()}"
-                    }
+                    div { font_size: "18px", font_weight: "bold", "DeepSeek Mobile" }
+                    div { color: "#9ca3af", font_size: "12px", "{active_section().subtitle()}" }
                 }
 
                 div {
@@ -174,30 +166,15 @@ fn app() -> Element {
                                 match continue_mobile_approval(Config::default(), approval_id.clone(), decision.clone()).await {
                                     Ok(result) => {
                                         let mut next_timeline = timeline();
-                                        push_agent_event(
-                                            &mut next_timeline,
-                                            &AgentEvent::Status(format!("Approval decision applied: {:?}", decision)),
-                                        );
-                                        for event in &result.events {
-                                            push_agent_event(&mut next_timeline, event);
-                                        }
-                                        push_agent_event(
-                                            &mut next_timeline,
-                                            &AgentEvent::Status(format!(
-                                                "Executed tools: {} | session grants: {}",
-                                                result.executed_count,
-                                                result.session_grant_count
-                                            )),
-                                        );
+                                        push_agent_event(&mut next_timeline, &AgentEvent::Status(format!("Approval decision applied: {:?}", decision)));
+                                        for event in &result.events { push_agent_event(&mut next_timeline, event); }
+                                        push_agent_event(&mut next_timeline, &AgentEvent::Status(format!("Executed tools: {} | session grants: {}", result.executed_count, result.session_grant_count)));
                                         timeline.set(next_timeline);
                                         approval_cards.set(result.remaining_approval_cards);
                                     }
                                     Err(error) => {
                                         let mut next_timeline = timeline();
-                                        push_agent_event(
-                                            &mut next_timeline,
-                                            &AgentEvent::Error(format!("Approval continuation failed: {}", error)),
-                                        );
+                                        push_agent_event(&mut next_timeline, &AgentEvent::Error(format!("Approval continuation failed: {}", error)));
                                         timeline.set(next_timeline);
                                     }
                                 }
@@ -209,13 +186,10 @@ fn app() -> Element {
                     {agent_timeline_panel(&timeline())}
 
                     if is_loading() {
-                        div {
-                            color: "#9ca3af",
-                            "Thinking with DeepSeek..."
-                        }
+                        div { color: "#9ca3af", "Thinking with DeepSeek..." }
                     }
                 } else {
-                    {cockpit_section_panel(active_section(), &pc_pairing_state(), project_files_state)}
+                    {cockpit_section_panel(active_section(), pc_pairing_state, native_bridge, project_files_state)}
                 }
             }
 
@@ -297,10 +271,7 @@ fn app() -> Element {
 
                         let mut next_timeline = timeline();
                         next_timeline.push_native_command("Request Android OPEN_DOCUMENT picker for chat attachment");
-                        push_agent_event(
-                            &mut next_timeline,
-                            &AgentEvent::Status("Document picker request queued for native Android layer".to_string()),
-                        );
+                        push_agent_event(&mut next_timeline, &AgentEvent::Status("Document picker request queued for native Android layer".to_string()));
                         timeline.set(next_timeline);
                     },
                     "+"
@@ -342,9 +313,7 @@ fn app() -> Element {
                         messages.push((user_message.role.clone(), prompt.clone()));
                         let mut next_timeline = timeline();
                         next_timeline.push_user_message(prompt);
-                        for status in ingestion_statuses {
-                            push_agent_event(&mut next_timeline, &AgentEvent::Status(status));
-                        }
+                        for status in ingestion_statuses { push_agent_event(&mut next_timeline, &AgentEvent::Status(status)); }
                         push_agent_event(&mut next_timeline, &AgentEvent::Started);
                         push_agent_event(&mut next_timeline, &AgentEvent::Status("MobileEngine turn started".to_string()));
                         timeline.set(next_timeline);
@@ -367,30 +336,16 @@ fn app() -> Element {
                                     }
 
                                     let mut next_timeline = timeline();
-                                    push_agent_event(
-                                        &mut next_timeline,
-                                        &AgentEvent::Status(format!(
-                                            "Runtime store: {} | workspace: {} | thread: {}",
-                                            result.runtime_store_root,
-                                            result.workspace_root,
-                                            result.thread_id
-                                        )),
-                                    );
+                                    push_agent_event(&mut next_timeline, &AgentEvent::Status(format!("Runtime store: {} | workspace: {} | thread: {}", result.runtime_store_root, result.workspace_root, result.thread_id)));
                                     if result.awaiting_approval {
-                                        push_agent_event(
-                                            &mut next_timeline,
-                                            &AgentEvent::Status("Waiting for user approval".to_string()),
-                                        );
+                                        push_agent_event(&mut next_timeline, &AgentEvent::Status("Waiting for user approval".to_string()));
                                     }
                                     timeline.set(next_timeline);
                                     approval_cards.set(result.approval_cards);
                                 }
                                 Err(err) => {
                                     let mut next_timeline = timeline();
-                                    push_agent_event(
-                                        &mut next_timeline,
-                                        &AgentEvent::Error(format!("MobileEngine error: {}", err)),
-                                    );
+                                    push_agent_event(&mut next_timeline, &AgentEvent::Error(format!("MobileEngine error: {}", err)));
                                     timeline.set(next_timeline);
                                 }
                             }
