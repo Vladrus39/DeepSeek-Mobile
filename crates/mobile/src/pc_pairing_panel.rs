@@ -1,18 +1,23 @@
-use crate::pc_pairing_state::{PcPairingUiState, PcPairingUiStatus};
+use crate::native_bridge::NativeBridgeState;
+use crate::pc_pairing_state::{
+    PcPairingUiState, PcPairingUiStatus, PcReconnectAction, PcReconnectEffect,
+};
 use dioxus::prelude::*;
 
-pub fn pc_pairing_panel(state: &PcPairingUiState) -> Element {
-    let status_text = state.status_text();
-    let action_label = state.primary_action_label();
-    let zip_path = state
+pub fn pc_pairing_panel(mut state: Signal<PcPairingUiState>, mut native_bridge: Signal<NativeBridgeState>) -> Element {
+    let snapshot = state();
+    let status_text = snapshot.status_text();
+    let action_label = snapshot.primary_action_label();
+    let zip_path = snapshot
         .export
         .as_ref()
         .map(|export| export.zip_path.display().to_string())
         .unwrap_or_else(|| "Pairing ZIP has not been created yet".to_string());
-    let status_badge = status_badge_text(&state.status);
-    let active_route = state.active_route_text();
-    let endpoint_rows = state.endpoint_health_rows();
-    let discovery_rows = state.discovery_rows();
+    let status_badge = status_badge_text(&snapshot.status);
+    let active_route = snapshot.active_route_text();
+    let endpoint_rows = snapshot.endpoint_health_rows();
+    let discovery_rows = snapshot.discovery_rows();
+    let reconnect_controls = snapshot.reconnect_controls();
 
     rsx! {
         div {
@@ -45,7 +50,7 @@ pub fn pc_pairing_panel(state: &PcPairingUiState) -> Element {
                 }
 
                 div {
-                    background_color: status_badge_color(&state.status),
+                    background_color: status_badge_color(&snapshot.status),
                     color: "white",
                     padding: "6px 10px",
                     border_radius: "999px",
@@ -81,6 +86,47 @@ pub fn pc_pairing_panel(state: &PcPairingUiState) -> Element {
                     font_size: "13px",
                     white_space: "pre-wrap",
                     "{active_route}"
+                }
+            }
+
+            div {
+                background_color: "#1f2937",
+                border_radius: "12px",
+                padding: "12px",
+                display: "flex",
+                flex_direction: "column",
+                gap: "8px",
+
+                div { color: "#d1d5db", font_size: "13px", "Reconnect controls" }
+                for control in reconnect_controls {
+                    button {
+                        background_color: if control.enabled { "#2563eb" } else { "#374151" },
+                        color: "white",
+                        padding: "10px 12px",
+                        border_radius: "10px",
+                        border: "1px solid #4b5563",
+                        text_align: "left",
+                        disabled: !control.enabled,
+                        onclick: move |_| {
+                            let action = control.action.clone();
+                            let mut next_state = state();
+                            let effect = next_state.apply_reconnect_action(action.clone());
+                            state.set(next_state);
+
+                            match effect {
+                                PcReconnectEffect::StartDiscovery { request_id } => {
+                                    let mut bridge = native_bridge();
+                                    bridge.enqueue_pc_gateway_discovery(request_id);
+                                    native_bridge.set(bridge);
+                                }
+                                PcReconnectEffect::RetryRoute { .. }
+                                | PcReconnectEffect::SelectedRoute { .. }
+                                | PcReconnectEffect::None => {}
+                            }
+                        },
+                        div { font_weight: "bold", "{control.label}" }
+                        div { color: "#d1d5db", font_size: "12px", "{control.description}" }
+                    }
                 }
             }
 
@@ -206,5 +252,10 @@ mod tests {
         assert_eq!(status_badge_text(&PcPairingUiStatus::Online), "ONLINE");
         assert_eq!(status_badge_text(&PcPairingUiStatus::Offline), "OFFLINE");
         assert_eq!(status_badge_text(&PcPairingUiStatus::Error("x".to_string())), "ERROR");
+    }
+
+    #[test]
+    fn reconnect_action_type_is_imported() {
+        assert_eq!(format!("{:?}", PcReconnectAction::ScanAgain), "ScanAgain");
     }
 }
