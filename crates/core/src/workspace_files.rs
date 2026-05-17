@@ -75,6 +75,32 @@ impl WorkspaceFileService {
         Ok(())
     }
 
+    pub fn copy_file(&self, source: impl AsRef<Path>, dest: impl AsRef<Path>) -> Result<()> {
+        let src = self.resolve_existing_path(source)?;
+        if !src.is_file() {
+            return Err(anyhow!("source is not a file: {}", src.display()));
+        }
+        let dst = self.resolve_safe_path(dest)?;
+        if let Some(parent) = dst.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        fs::copy(&src, &dst)?;
+        Ok(())
+    }
+
+    pub fn rename_file(&self, source: impl AsRef<Path>, dest: impl AsRef<Path>) -> Result<()> {
+        let src = self.resolve_existing_path(source)?;
+        if !src.is_file() {
+            return Err(anyhow!("source is not a file: {}", src.display()));
+        }
+        let dst = self.resolve_safe_path(dest)?;
+        if let Some(parent) = dst.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        fs::rename(&src, &dst)?;
+        Ok(())
+    }
+
     pub fn delete_file(&self, relative_path: impl AsRef<Path>) -> Result<()> {
         let path = self.resolve_existing_path(relative_path)?;
         if !path.is_file() {

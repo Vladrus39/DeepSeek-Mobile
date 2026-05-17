@@ -8,7 +8,7 @@ use deepseek_mobile_core::{
     PcGatewayCapability, PcGatewayConnectionStatus, PcGatewayDirEntry, PcGatewayError,
     PcGatewayHealth, PcGatewayRequest, PcGatewayRequestEnvelope, PcGatewayResponse,
     PcGatewayResponseEnvelope, PcGatewaySecurityPolicy, PcTaskDescriptor, PcTaskKind,
-    PcWorkspaceGrant,
+    PcTerminalSession, PcWorkspaceGrant,
 };
 use serde::Deserialize;
 use std::env;
@@ -17,12 +17,16 @@ use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::fs;
-use tokio::process::Command;
+use tokio::io::{AsyncWriteExt, BufReader, AsyncBufReadExt};
+use tokio::process::{Child, Command};
+use tokio::sync::Mutex;
 use tokio::time::timeout;
+use std::collections::HashMap;
 
 #[derive(Clone)]
 struct PcHostState {
     config: Arc<PcHostConfig>,
+    terminals: Arc<Mutex<HashMap<String, TerminalHandle>>>,
 }
 
 #[derive(Clone, Debug)]
@@ -34,6 +38,14 @@ struct PcHostConfig {
     workspace: PcWorkspaceGrant,
     workspace_root: PathBuf,
     security_policy: PcGatewaySecurityPolicy,
+}
+
+/// Active terminal session handle with process and output buffer.
+struct TerminalHandle {
+    child: Option<Child>,
+    stdin_writer: Option<tokio::process::ChildStdin>,
+    output_buffer: Vec<String>,
+    exit_code: Option<i32>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -181,6 +193,7 @@ async fn main() -> Result<()> {
     let gateway_label = config.gateway_label.clone();
     let state = PcHostState {
         config: Arc::new(config),
+        terminals: Arc::new(Mutex::new(HashMap::new())),
     };
 
     let app = Router::new()
@@ -214,7 +227,7 @@ async fn gateway_request_handler(
     }
 
     let request_id = envelope.id.clone();
-    let response = match handle_gateway_request(&state.config, envelope.request).await {
+    let response = match handle_gateway_request(&state, envelope.request).await {
         Ok(response) => response,
         Err(error) => PcGatewayResponse::Error(PcGatewayError::new("host_error", error.to_string())),
     };
@@ -237,35 +250,44 @@ fn authorize(config: &PcHostConfig, headers: &HeaderMap) -> Result<()> {
     Ok(())
 }
 
-async fn handle_gateway_request(config: &PcHostConfig, request: PcGatewayRequest) -> Result<PcGatewayResponse> {
+async fn handle_gateway_request(state: &PcHostState, request: PcGatewayRequest) -> Result<PcGatewayResponse> {
     match request {
-        PcGatewayRequest::Health => Ok(PcGatewayResponse::Health(config.health())),
-        PcGatewayRequest::ListWorkspaces => Ok(PcGatewayResponse::Workspaces(vec![config.workspace.clone()])),
+        PcGatewayRequest::Health => Ok(PcGatewayResponse::Health(state.config.health())),
+        PcGatewayRequest::ListWorkspaces => Ok(PcGatewayResponse::Workspaces(vec![state.config.workspace.clone()])),
         PcGatewayRequest::ListEnvironments { .. } => Ok(PcGatewayResponse::Environments(Vec::<PcEnvironmentDescriptor>::new())),
-        PcGatewayRequest::DetectTasks { workspace_id } => detect_tasks(config, &workspace_id).await,
-        PcGatewayRequest::GetDiagnostics { workspace_id, path } => diagnostics(config, &workspace_id, path.as_deref()).await,
-        PcGatewayRequest::ListDir { workspace_id, path } => list_dir(config, &workspace_id, &path).await,
-        PcGatewayRequest::ReadFile { workspace_id, path } => read_file(config, &workspace_id, &path).await,
+        PcGatewayRequest::DetectTasks { workspace_id } => detect_tasks(&state.config, &workspace_id).await,
+        PcGatewayRequest::GetDiagnostics { workspace_id, path } => diagnostics(&state.config, &workspace_id, path.as_deref()).await,
+        PcGatewayRequest::ListDir { workspace_id, path } => list_dir(&state.config, &workspace_id, &path).await,
+        PcGatewayRequest::ReadFile { workspace_id, path } => read_file(&state.config, &workspace_id, &path).await,
         PcGatewayRequest::WriteFile { workspace_id, path, content } => {
-            write_file(config, &workspace_id, &path, &content).await
+            write_file(&state.config, &workspace_id, &path, &content).await
         }
-        PcGatewayRequest::DeleteFile { workspace_id, path } => delete_file(config, &workspace_id, &path).await,
+        PcGatewayRequest::DeleteFile { workspace_id, path } => delete_file(&state.config, &workspace_id, &path).await,
         PcGatewayRequest::ExecuteCommand { workspace_id, command, environment_id: _ } => {
-            execute_command(config, &workspace_id, command).await
+            execute_command(&state.config, &workspace_id, command).await
         }
-        PcGatewayRequest::GitStatus { workspace_id } => git_text(config, &workspace_id, "status", &["status", "--short"]).await,
-        PcGatewayRequest::GitDiff { workspace_id } => git_text(config, &workspace_id, "diff", &["diff", "--"]).await,
+        PcGatewayRequest::GitStatus { workspace_id } => git_text(&state.config, &workspace_id, "status", &["status", "--short"]).await,
+        PcGatewayRequest::GitDiff { workspace_id } => git_text(&state.config, &workspace_id, "diff", &["diff", "--"]).await,
         PcGatewayRequest::GitCommit { workspace_id, message } => {
-            git_commit(config, &workspace_id, &message).await
+            git_commit(&state.config, &workspace_id, &message).await
         }
         PcGatewayRequest::GitPush { workspace_id, remote, branch } => {
-            git_push(config, &workspace_id, remote.as_deref(), branch.as_deref()).await
+            git_push(&state.config, &workspace_id, remote.as_deref(), branch.as_deref()).await
         }
         PcGatewayRequest::GitPull { workspace_id, remote, branch } => {
-            git_pull(config, &workspace_id, remote.as_deref(), branch.as_deref()).await
+            git_pull(&state.config, &workspace_id, remote.as_deref(), branch.as_deref()).await
         }
         PcGatewayRequest::GitBranch { workspace_id } => {
-            git_text(config, &workspace_id, "branch", &["branch", "--list"]).await
+            git_text(&state.config, &workspace_id, "branch", &["branch", "--list"]).await
+        }
+        PcGatewayRequest::OpenTerminal { workspace_id, cwd, environment_id: _ } => {
+            open_terminal(state, &workspace_id, cwd.as_deref()).await
+        }
+        PcGatewayRequest::TerminalInput { session_id, input } => {
+            terminal_input(state, &session_id, &input).await
+        }
+        PcGatewayRequest::CloseTerminal { session_id } => {
+            close_terminal(state, &session_id).await
         }
         unsupported => Ok(PcGatewayResponse::Error(PcGatewayError::new(
             "unsupported_request",
@@ -513,6 +535,152 @@ async fn git_pull(
         operation: "pull".to_string(),
         output: truncate_output(text, config.security_policy.max_output_bytes),
     })
+}
+async fn open_terminal(state: &PcHostState, workspace_id: &str, cwd: Option<&str>) -> Result<PcGatewayResponse> {
+    let config = &state.config;
+    if workspace_id != config.workspace.id {
+        return Err(anyhow!("unknown workspace id: {}", workspace_id));
+    }
+
+    let working_dir = match cwd {
+        Some(dir) => {
+            let resolved = config.resolve_workspace_path(workspace_id, dir)?;
+            config.ensure_path_inside_workspace(&resolved).await?
+        }
+        None => config.workspace_root.clone(),
+    };
+
+    let session_id = uuid_v4();
+    let now = current_unix_time();
+
+    // Use platform-appropriate shell
+    #[cfg(target_os = "windows")]
+    let (program, args): (&str, Vec<&str>) = ("cmd.exe", vec![]);
+    #[cfg(not(target_os = "windows"))]
+    let (program, args): (&str, Vec<&str>) = ("/bin/sh", vec!["-i"]);
+
+    let mut child = Command::new(program)
+        .args(&args)
+        .current_dir(&working_dir)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .with_context(|| format!("spawn terminal shell {}", program))?;
+
+    let stdin = child.stdin.take();
+    let stdout = child.stdout.take();
+    let stderr = child.stderr.take();
+    let sid = session_id.clone();
+
+    let handle = TerminalHandle {
+        child: Some(child),
+        stdin_writer: stdin,
+        output_buffer: Vec::new(),
+        exit_code: None,
+    };
+
+    // Spawn background reader for stdout/stderr
+    if let (Some(stdout), Some(stderr)) = (stdout, stderr) {
+        let terminals = state.terminals.clone();
+        let sid_bg = sid.clone();
+        tokio::spawn(async move {
+            let stdout_reader = BufReader::new(stdout);
+            let stderr_reader = BufReader::new(stderr);
+            let mut stdout_lines = stdout_reader.lines();
+            let mut stderr_lines = stderr_reader.lines();
+
+            loop {
+                tokio::select! {
+                    line = stdout_lines.next_line() => {
+                        match line {
+                            Ok(Some(text)) => {
+                                let mut guard = terminals.lock().await;
+                                if let Some(h) = guard.get_mut(&sid_bg) {
+                                    h.output_buffer.push(text);
+                                }
+                            }
+                            Ok(None) | Err(_) => break,
+                        }
+                    }
+                    line = stderr_lines.next_line() => {
+                        match line {
+                            Ok(Some(text)) => {
+                                let mut guard = terminals.lock().await;
+                                if let Some(h) = guard.get_mut(&sid_bg) {
+                                    h.output_buffer.push(format!("[stderr] {}", text));
+                                }
+                            }
+                            Ok(None) | Err(_) => break,
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    // Store handle
+    state.terminals.lock().await.insert(sid.clone(), handle);
+
+    let cwd_display = working_dir.display().to_string();
+    Ok(PcGatewayResponse::TerminalOpened(PcTerminalSession {
+        id: sid,
+        workspace_id: workspace_id.to_string(),
+        title: format!("{} terminal", std::env::consts::OS),
+        cwd: cwd_display,
+        environment_id: None,
+        created_at_unix: now,
+    }))
+}
+
+async fn terminal_input(state: &PcHostState, session_id: &str, input: &str) -> Result<PcGatewayResponse> {
+    let mut guard = state.terminals.lock().await;
+    let Some(handle) = guard.get_mut(session_id) else {
+        return Err(anyhow!("terminal session not found: {}", session_id));
+    };
+
+    // Write to stdin if available
+    if let Some(stdin) = handle.stdin_writer.as_mut() {
+        stdin.write_all(input.as_bytes()).await
+            .with_context(|| format!("write stdin to terminal {}", session_id))?;
+        stdin.write_all(b"\n").await?;
+    }
+
+    // Drain and return accumulated output
+    let chunks: Vec<String> = handle.output_buffer.drain(..).collect();
+    let output = chunks.join("\n");
+
+    Ok(PcGatewayResponse::TerminalOutput {
+        session_id: session_id.to_string(),
+        chunk: output,
+    })
+}
+
+async fn close_terminal(state: &PcHostState, session_id: &str) -> Result<PcGatewayResponse> {
+    let mut guard = state.terminals.lock().await;
+    let Some(mut handle) = guard.remove(session_id) else {
+        return Err(anyhow!("terminal session not found: {}", session_id));
+    };
+
+    // Kill process if still running
+    if let Some(mut child) = handle.child.take() {
+        let _ = child.kill().await;
+    }
+
+    // Drain remaining output
+    let chunks: Vec<String> = handle.output_buffer.drain(..).collect();
+    let _output = chunks.join("\n");
+
+    Ok(PcGatewayResponse::TerminalClosed {
+        session_id: session_id.to_string(),
+        exit_code: handle.exit_code,
+    })
+}
+
+fn uuid_v4() -> String {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let ts = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default();
+    format!("term-{:x}", ts.as_nanos())
 }
 
 async fn detect_tasks(config: &PcHostConfig, workspace_id: &str) -> Result<PcGatewayResponse> {

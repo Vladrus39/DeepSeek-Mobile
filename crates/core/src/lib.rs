@@ -48,7 +48,7 @@ pub use approval_session::{
 };
 pub use approval_session_runtime::{ApprovalSessionRuntimeRecord, ApprovalSessionRuntimeStore};
 pub use chat_input::{UserAttachmentKind, UserAttachmentRef, UserChatInput};
-pub use config::{Config, ExternalAccessMode, ModelMode, ThinkingLevel};
+pub use config::{Config, ExecutionMode, ExternalAccessMode, ModelMode, ThinkingLevel};
 pub use context::{
     estimate_messages_tokens, estimate_text_tokens, CompressionStrategy, ContextBudget,
     ContextCompressionPlan, ContextManager,

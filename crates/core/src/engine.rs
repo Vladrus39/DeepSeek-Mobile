@@ -52,6 +52,7 @@ pub struct EnginePendingApprovalSnapshot {
 pub struct MobileEngine {
     agent: DeepSeekAgent,
     registry: ToolRegistry,
+    execution_mode: crate::config::ExecutionMode,
     runtime_store: Option<RuntimeThreadStore>,
     thread_id: String,
     workspace: Workspace,
@@ -64,9 +65,11 @@ pub struct MobileEngine {
 
 impl MobileEngine {
     pub fn new(config: Config) -> Self {
+        let execution_mode = config.execution_mode.clone();
         Self {
             agent: DeepSeekAgent::new(config),
             registry: default_mobile_tool_registry(),
+            execution_mode,
             runtime_store: None,
             thread_id: "mobile-default-thread".to_string(),
             workspace: Workspace::new(
@@ -237,6 +240,7 @@ impl MobileEngine {
             &mut turn,
             &mut self.approval_session,
             self.pc_gateway.as_ref(),
+            self.execution_mode.clone(),
         )
         .await?;
 

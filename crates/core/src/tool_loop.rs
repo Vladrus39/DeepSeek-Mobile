@@ -5,7 +5,15 @@
 //! for the mobile runner: it can collect pending approvals, execute approved
 //! calls, and continue a stored approval after the user decision.
 
-use crate::approval::{approval_request_for_call, ReviewDecision};
+use crate::approval::{approval_request_for_call, ApprovalMode, ReviewDecision};
+
+fn execution_mode_to_approval_mode(mode: &crate::config::ExecutionMode) -> ApprovalMode {
+    match mode {
+        crate::config::ExecutionMode::Yolo => ApprovalMode::Auto,
+        crate::config::ExecutionMode::Plan => ApprovalMode::AskEveryTime,
+        crate::config::ExecutionMode::Agent => ApprovalMode::ReviewWritesAndCommands,
+    }
+}
 use crate::approval_card::ApprovalCardView;
 use crate::approval_session::{ApprovalSessionGrant, ApprovalSessionPolicy};
 use crate::events::{AgentEvent, ToolCallEvent, ToolResultEvent};
@@ -76,7 +84,7 @@ pub async fn process_model_text_with_tools_and_session(
     session: &mut ApprovalSessionPolicy,
 ) -> Result<ToolLoopOutcome> {
     process_model_text_with_tools_and_session_and_pc_gateway(
-        text, registry, context, turn, session, None,
+        text, registry, context, turn, session, None, crate::config::ExecutionMode::Agent,
     )
     .await
 }
@@ -88,7 +96,9 @@ pub async fn process_model_text_with_tools_and_session_and_pc_gateway(
     turn: &mut TurnContext,
     session: &mut ApprovalSessionPolicy,
     pc_gateway: Option<&PcGatewayClient>,
+    execution_mode: crate::config::ExecutionMode,
 ) -> Result<ToolLoopOutcome> {
+    let approval_mode = execution_mode_to_approval_mode(&execution_mode);
     let parsed = parse_tool_calls_from_text(&text);
     let mut outcome = ToolLoopOutcome {
         final_text: if parsed.final_text.trim().is_empty() {
@@ -107,7 +117,7 @@ pub async fn process_model_text_with_tools_and_session_and_pc_gateway(
                     .await;
             push_execution_result(&mut outcome, &call, result);
         } else if crate::approval::should_request_approval(
-            &crate::approval::ApprovalMode::ReviewWritesAndCommands,
+            &approval_mode,
             &approval,
         ) {
             let pending = PendingToolCallApproval { approval, call };

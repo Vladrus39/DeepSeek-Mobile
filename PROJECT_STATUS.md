@@ -53,7 +53,7 @@ local/Termux/PC-host execution, and project-aware mobile screens.
 ### Tools and execution contracts
 
 - Tool registry and tool capability model.
-- File operation tools: read, write, list, edit/file operation surface.
+- File operation tools: read, read_many_files, write, list, edit, delete, copy, move.
 - Shell and git tool contracts.
 - **Git tools**: status, diff, commit, push, pull, branch, log, add, checkout, clone.
 - **GitHub tools**: github_repo, github_pr, github_issue, github_browse, github_push_file.
@@ -161,11 +161,11 @@ local/Termux/PC-host execution, and project-aware mobile screens.
 ## Current implementation estimate
 
 ```text
-Core / agent runtime         ~80-85%  (streaming reasoning, full history, session persistence)
-Approval / risk model        ~70-80%
+Core / agent runtime         ~85-90%  (streaming reasoning, full history, session persistence, ExecutionMode: Plan/Agent/YOLO)
+Approval / risk model        ~80-85%  (ExecutionMode wired through engine and tool_loop)
 Runtime store / history      ~70-80%  (session JSON persistence added)
-Tool loop                    ~65-75%
-File tools                   ~65-75%
+Tool loop                    ~80-85%  (per-mode approval routing)
+File tools                   ~85-90%  (delete, copy, move, read_many_files added)
 Git tools                    ~80-85%  (commit/push/pull/branch in PC-host)
 GitHub tools                 ~60-70%
 PC gateway protocol/client   ~65-70%
@@ -177,13 +177,13 @@ Production-ready app         ~30-40%
 ## Immediate priorities
 
 1. ✅ Build fixed: MSVC toolchain active, `cargo check --workspace` clean.
-2. Wire GitHub token into mobile settings UI.
+2. Wire GitHub token + API key into mobile settings UI.
 3. ✅ PC-host path hardening and extended git operations complete.
 4. Wire Android UI buttons to pairing ZIP export and PC health check.
 5. Add real DeepSeek API key onboarding and secure storage plan.
 6. ✅ Reasoning blocks and text deltas in mobile timeline (via `StreamDelta` + `ReasoningDelta`).
 7. Add file tree and diff viewer to mobile UI.
-8. Add terminal streaming from PC-host (`OpenTerminal`/`CloseTerminal` handlers).
+8. ✅ Terminal streaming from PC-host already implemented (open_terminal/terminal_input/close_terminal + PcTerminalSession).
 9. Add Git/GitHub workflow screens to mobile UI.
 10. Test auto-commit/push with real GitHub repo.
 

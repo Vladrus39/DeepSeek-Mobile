@@ -117,6 +117,133 @@ impl ToolSpec for ListDirTool {
     }
 }
 
+pub struct DeleteFileTool;
+
+impl ToolSpec for DeleteFileTool {
+    fn name(&self) -> &str {
+        "delete_file"
+    }
+
+    fn description(&self) -> &str {
+        "Permanently delete a file from the active workspace. Requires approval."
+    }
+
+    fn input_schema(&self) -> Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "path": { "type": "string", "description": "File path to delete" }
+            },
+            "required": ["path"]
+        })
+    }
+
+    fn capabilities(&self) -> Vec<ToolCapability> {
+        vec![
+            ToolCapability::WritesFiles,
+            ToolCapability::RequiresApproval,
+            ToolCapability::Sandboxable,
+        ]
+    }
+
+    fn approval_requirement(&self) -> ApprovalRequirement {
+        ApprovalRequirement::Suggest
+    }
+
+    fn execute(&self, input: Value, context: &ToolContext) -> Result<ToolResult> {
+        let path = required_str(&input, "path")?;
+        let service = WorkspaceFileService::new(context.workspace.clone());
+        service.delete_file(path)?;
+        Ok(ToolResult::success(format!("Deleted {}", path)))
+    }
+}
+
+pub struct CopyFileTool;
+
+impl ToolSpec for CopyFileTool {
+    fn name(&self) -> &str {
+        "copy_file"
+    }
+
+    fn description(&self) -> &str {
+        "Copy a file from source to destination inside the active workspace. Requires approval."
+    }
+
+    fn input_schema(&self) -> Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "source": { "type": "string", "description": "Source file path" },
+                "dest": { "type": "string", "description": "Destination file path" }
+            },
+            "required": ["source", "dest"]
+        })
+    }
+
+    fn capabilities(&self) -> Vec<ToolCapability> {
+        vec![
+            ToolCapability::WritesFiles,
+            ToolCapability::RequiresApproval,
+            ToolCapability::Sandboxable,
+        ]
+    }
+
+    fn approval_requirement(&self) -> ApprovalRequirement {
+        ApprovalRequirement::Suggest
+    }
+
+    fn execute(&self, input: Value, context: &ToolContext) -> Result<ToolResult> {
+        let source = required_str(&input, "source")?;
+        let dest = required_str(&input, "dest")?;
+        let service = WorkspaceFileService::new(context.workspace.clone());
+        service.copy_file(source, dest)?;
+        Ok(ToolResult::success(format!("Copied {} to {}", source, dest)))
+    }
+}
+
+pub struct MoveFileTool;
+
+impl ToolSpec for MoveFileTool {
+    fn name(&self) -> &str {
+        "move_file"
+    }
+
+    fn description(&self) -> &str {
+        "Move or rename a file from source to destination inside the active workspace. Requires approval."
+    }
+
+    fn input_schema(&self) -> Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "source": { "type": "string", "description": "Source file path" },
+                "dest": { "type": "string", "description": "Destination file path" }
+            },
+            "required": ["source", "dest"]
+        })
+    }
+
+    fn capabilities(&self) -> Vec<ToolCapability> {
+        vec![
+            ToolCapability::WritesFiles,
+            ToolCapability::RequiresApproval,
+            ToolCapability::Sandboxable,
+        ]
+    }
+
+    fn approval_requirement(&self) -> ApprovalRequirement {
+        ApprovalRequirement::Suggest
+    }
+
+    fn execute(&self, input: Value, context: &ToolContext) -> Result<ToolResult> {
+        let source = required_str(&input, "source")?;
+        let dest = required_str(&input, "dest")?;
+        let service = WorkspaceFileService::new(context.workspace.clone());
+        service.rename_file(source, dest)?;
+        Ok(ToolResult::success(format!("Moved {} to {}", source, dest)))
+    }
+}
+
 impl ToolSpec for EditFileTool {
     fn name(&self) -> &str {
         "edit_file"
@@ -173,6 +300,69 @@ impl ToolSpec for EditFileTool {
             "Replaced {} occurrence(s) in {}",
             count, path
         )))
+    }
+}
+
+pub struct ReadManyFilesTool;
+
+impl ToolSpec for ReadManyFilesTool {
+    fn name(&self) -> &str {
+        "read_many_files"
+    }
+
+    fn description(&self) -> &str {
+        "Read multiple files at once and return their contents concatenated with dividers. Files that don't exist or aren't readable are reported as errors per-path without failing the whole call."
+    }
+
+    fn input_schema(&self) -> Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "paths": {
+                    "type": "array",
+                    "items": { "type": "string" },
+                    "description": "List of file paths to read"
+                }
+            },
+            "required": ["paths"]
+        })
+    }
+
+    fn capabilities(&self) -> Vec<ToolCapability> {
+        vec![ToolCapability::ReadOnly, ToolCapability::Sandboxable]
+    }
+
+    fn execute(&self, input: Value, context: &ToolContext) -> Result<ToolResult> {
+        let paths: Vec<String> = input["paths"]
+            .as_array()
+            .ok_or_else(|| anyhow!("paths must be an array of strings"))?
+            .iter()
+            .filter_map(|v| v.as_str().map(String::from))
+            .collect();
+
+        if paths.is_empty() {
+            return Err(anyhow!("paths must contain at least one path"));
+        }
+
+        let service = WorkspaceFileService::new(context.workspace.clone());
+        let mut out = String::new();
+
+        for path in &paths {
+            out.push_str(&format!("\n===== {} =====\n", path));
+            match service.read_text_file(path) {
+                Ok(content) => {
+                    out.push_str(&content);
+                    if !content.ends_with('\n') {
+                        out.push('\n');
+                    }
+                }
+                Err(e) => {
+                    out.push_str(&format!("[ERROR: {}]\n", e));
+                }
+            }
+        }
+
+        Ok(ToolResult::success(out))
     }
 }
 

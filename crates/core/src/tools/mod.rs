@@ -210,9 +210,13 @@ impl Default for ToolRegistry {
 pub fn default_mobile_tool_registry() -> ToolRegistry {
     let mut registry = ToolRegistry::new();
     registry.register(Box::new(file_ops::ReadFileTool));
+    registry.register(Box::new(file_ops::ReadManyFilesTool));
     registry.register(Box::new(file_ops::WriteFileTool));
     registry.register(Box::new(file_ops::ListDirTool));
     registry.register(Box::new(file_ops::EditFileTool));
+    registry.register(Box::new(file_ops::DeleteFileTool));
+    registry.register(Box::new(file_ops::CopyFileTool));
+    registry.register(Box::new(file_ops::MoveFileTool));
     registry.register(Box::new(file_ops::FileOpsTool));
     registry.register(Box::new(patch::ApplyPatchTool));
     registry.register(Box::new(shell::ShellTool));
@@ -248,6 +252,7 @@ mod tests {
         let registry = default_mobile_tool_registry();
         let names = registry.names();
         assert!(names.contains(&"read_file".to_string()));
+        assert!(names.contains(&"read_many_files".to_string()));
         assert!(names.contains(&"write_file".to_string()));
         assert!(names.contains(&"list_dir".to_string()));
         assert!(names.contains(&"edit_file".to_string()));
@@ -258,6 +263,9 @@ mod tests {
         assert!(names.contains(&"snapshot_list".to_string()));
         assert!(names.contains(&"snapshot_restore".to_string()));
         assert!(names.contains(&"github_repo".to_string()));
+        assert!(names.contains(&"delete_file".to_string()));
+        assert!(names.contains(&"copy_file".to_string()));
+        assert!(names.contains(&"move_file".to_string()));
         assert!(names.contains(&"github_browse".to_string()));
     }
 }

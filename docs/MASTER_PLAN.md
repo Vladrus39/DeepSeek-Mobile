@@ -172,10 +172,10 @@ Checklist:
 - [x] Add `apply_patch` as a first-class tool.
 - [x] Map operation-based `apply_patch` to PC gateway execution.
 - [ ] Add optional unified-diff parser compatibility for `apply_patch`.
-- [ ] Add `delete_file` as a first-class local tool with approval.
+- [x] Add `delete_file` as a first-class local tool with approval.
 - [x] Add `DeleteFile` support to PC gateway client/host.
-- [ ] Add `move_file` / `copy_file` with approval when writing.
-- [ ] Add `read_many_files` or bounded project search.
+- [x] Add `move_file` / `copy_file` with approval when writing.
+- [x] Add `read_many_files` or bounded project search.
 - [ ] Upgrade `git` tool from contract placeholder to real routed operations.
 - [ ] Add Git UI panel: status, diff, branch, commit draft, pull/push approval.
 - [ ] Add web/fetch/search tools only behind explicit network capability and approval policy.

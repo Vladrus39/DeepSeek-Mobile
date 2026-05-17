@@ -3,11 +3,25 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub enum ExecutionMode {
+    Plan,
+    Agent,
+    Yolo,
+}
+
+impl Default for ExecutionMode {
+    fn default() -> Self {
+        Self::Agent
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Config {
     pub api_key: String,
     pub model: String,
     pub auto_mode: bool,
     pub model_mode: ModelMode,
+    pub execution_mode: ExecutionMode,
     pub thinking_level: ThinkingLevel,
     pub external_access: ExternalAccessMode,
     pub github_token: Option<String>,
@@ -46,6 +60,7 @@ impl Default for Config {
             model: "deepseek-v4-flash".to_string(),
             auto_mode: true,
             model_mode: ModelMode::Auto,
+            execution_mode: ExecutionMode::default(),
             thinking_level: ThinkingLevel::High,
             external_access: ExternalAccessMode::WorkspaceOnly,
             github_token: None,
@@ -85,6 +100,11 @@ impl Config {
 
     pub fn with_github_branch(mut self, branch: String) -> Self {
         self.github_branch = Some(branch);
+        self
+    }
+
+    pub fn with_execution_mode(mut self, mode: ExecutionMode) -> Self {
+        self.execution_mode = mode;
         self
     }
 
