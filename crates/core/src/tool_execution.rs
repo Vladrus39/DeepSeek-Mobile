@@ -208,6 +208,21 @@ impl<'a> ToolExecutionCoordinator<'a> {
                 match operation {
                     "status" => gateway_response_to_tool_result(client.git_status(workspace_id).await?),
                     "diff" => gateway_response_to_tool_result(client.git_diff(workspace_id).await?),
+                    "commit" => {
+                        let message = required_str(&call.arguments, "message")?;
+                        gateway_response_to_tool_result(client.git_commit(workspace_id, message).await?)
+                    }
+                    "push" => {
+                        let remote = optional_str(&call.arguments, "remote").map(String::from);
+                        let branch = optional_str(&call.arguments, "branch").map(String::from);
+                        gateway_response_to_tool_result(client.git_push(workspace_id, remote, branch).await?)
+                    }
+                    "pull" => {
+                        let remote = optional_str(&call.arguments, "remote").map(String::from);
+                        let branch = optional_str(&call.arguments, "branch").map(String::from);
+                        gateway_response_to_tool_result(client.git_pull(workspace_id, remote, branch).await?)
+                    }
+                    "branch" => gateway_response_to_tool_result(client.git_branch(workspace_id).await?),
                     other => {
                         let args = optional_str(&call.arguments, "args").unwrap_or("");
                         let mut command_args = vec![other.to_string()];

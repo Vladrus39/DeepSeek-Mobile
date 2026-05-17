@@ -324,6 +324,53 @@ impl PcGatewayClient {
         .await
     }
 
+    pub async fn git_commit(
+        &self,
+        workspace_id: impl Into<String>,
+        message: impl Into<String>,
+    ) -> Result<PcGatewayResponse> {
+        self.send(PcGatewayRequest::GitCommit {
+            workspace_id: workspace_id.into(),
+            message: message.into(),
+        })
+        .await
+    }
+
+    pub async fn git_push(
+        &self,
+        workspace_id: impl Into<String>,
+        remote: Option<String>,
+        branch: Option<String>,
+    ) -> Result<PcGatewayResponse> {
+        self.send(PcGatewayRequest::GitPush {
+            workspace_id: workspace_id.into(),
+            remote,
+            branch,
+        })
+        .await
+    }
+
+    pub async fn git_pull(
+        &self,
+        workspace_id: impl Into<String>,
+        remote: Option<String>,
+        branch: Option<String>,
+    ) -> Result<PcGatewayResponse> {
+        self.send(PcGatewayRequest::GitPull {
+            workspace_id: workspace_id.into(),
+            remote,
+            branch,
+        })
+        .await
+    }
+
+    pub async fn git_branch(&self, workspace_id: impl Into<String>) -> Result<PcGatewayResponse> {
+        self.send(PcGatewayRequest::GitBranch {
+            workspace_id: workspace_id.into(),
+        })
+        .await
+    }
+
     pub async fn send(&self, request: PcGatewayRequest) -> Result<PcGatewayResponse> {
         let mut errors = Vec::new();
         for endpoint in self.endpoint_plan() {

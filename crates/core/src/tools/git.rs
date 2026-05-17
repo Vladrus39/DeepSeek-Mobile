@@ -204,9 +204,13 @@ mod tests {
     use std::path::PathBuf;
 
     fn temp_workspace() -> (ToolContext, PathBuf) {
+        // Use thread id for parallel test safety
+        use std::hash::{Hash, Hasher};
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        std::thread::current().id().hash(&mut hasher);
         let root = std::env::temp_dir().join(format!(
             "deepseek_mobile_git_test_{}",
-            std::process::id()
+            hasher.finish()
         ));
         let _ = fs::remove_dir_all(&root);
         fs::create_dir_all(&root).unwrap();
