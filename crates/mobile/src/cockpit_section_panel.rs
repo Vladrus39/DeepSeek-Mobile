@@ -6,6 +6,8 @@ use crate::pc_pairing_panel::pc_pairing_panel;
 use crate::pc_pairing_state::PcPairingUiState;
 use crate::project_files_panel::project_files_panel;
 use crate::project_files_state::ProjectFilesUiState;
+use crate::git_panel::git_panel;
+use crate::git_state::GitUiState;
 use crate::snapshots_panel::snapshots_panel;
 use crate::snapshots_state::SnapshotsUiState;
 use dioxus::prelude::*;
@@ -17,6 +19,7 @@ pub fn cockpit_section_panel(
     project_files_state: Signal<ProjectFilesUiState>,
     snapshots_state: Signal<SnapshotsUiState>,
     diagnostics_state: Signal<DiagnosticsUiState>,
+    git_state: Signal<GitUiState>,
 ) -> Element {
     match section {
         CockpitSection::Chat => chat_empty_state(),
@@ -34,11 +37,7 @@ pub fn cockpit_section_panel(
             "Risky actions from the AI agent will require explicit confirmation here.",
             &["Approve once", "Approve for session", "Deny", "Show diff"],
         ),
-        CockpitSection::Git => placeholder_panel(
-            "Git & GitHub",
-            "Repository status, commits, branches, push/pull and pull requests.",
-            &["Status", "Diff", "Commit", "Push / Pull"],
-        ),
+        CockpitSection::Git => git_panel(&git_state()),
         CockpitSection::Settings => placeholder_panel(
             "Settings",
             "DeepSeek API key, GitHub, cloud disks, PC-host and security settings.",

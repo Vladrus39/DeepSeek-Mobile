@@ -177,7 +177,7 @@ Checklist:
 - [x] Add `move_file` / `copy_file` with approval when writing.
 - [x] Add `read_many_files` or bounded project search.
 - [x] Upgrade `git` tool from contract placeholder to real routed operations.
-- [ ] Add Git UI panel: status, diff, branch, commit draft, pull/push approval.
+- [x] Add Git UI panel: status, diff, branch, commit draft, pull/push approval.
 - [ ] Add web/fetch/search tools only behind explicit network capability and approval policy.
 - [ ] Add GitHub tool surface later, preferably PC-side or remote-safe.
 
@@ -426,6 +426,7 @@ The next implementation sequence is fixed:
 - 2026-05-17: Added first mobile snapshot and diagnostics surfaces: tool-result events now retain structured metadata, automatic pre-tool snapshots and post-edit diagnostics are echoed into the timeline, restored runtime events rebuild snapshot/diagnostics state on launch, and the drawer now exposes dedicated `Snapshots` and `Diagnostics` panels.
 - 2026-05-17: Implemented long-running command streaming via SSE on PC-host (`/v1/gateway/exec/stream`): added `CommandStreamEvent` type, `PcGatewayClient.stream_command()` with mpsc channel and endpoint failover, `parse_sse_event()` helper, and wired streaming into `ToolExecutionCoordinator` for `exec_shell` on PC gateway.
 - 2026-05-17: Completed git tool PC gateway routing: added `git_commit`, `git_push`, `git_pull`, `git_branch` to `PcGatewayClient`; updated `ToolExecutionCoordinator.execute_on_pc_gateway` to use dedicated git handlers instead of generic `execute_command`; fixed parallel test race condition in `git` tool tests.
+- 2026-05-17: Added Git UI panel to mobile cockpit: created `GitUiState` with status/diff/branch/commit tracking, `git_panel` Dioxus component with `SectionCard` + `DiffBlock` sub-components, wired into `cockpit_section_panel` and `main.rs` replacing the placeholder; build verified clean across all crates.
 
 ## 6. Definition of done for the project
 

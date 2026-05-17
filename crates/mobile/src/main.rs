@@ -6,6 +6,8 @@ mod attachment_ingestion;
 mod chat_attachment;
 mod cockpit_section_panel;
 mod diagnostics_panel;
+mod git_panel;
+mod git_state;
 mod diagnostics_state;
 mod document_picker;
 mod mobile_approval_panel;
@@ -34,6 +36,7 @@ use chat_attachment::ChatComposerState;
 use cockpit_section_panel::cockpit_section_panel;
 use deepseek_mobile_core::{AgentEvent, ApprovalCardView, Config, ReviewDecision};
 use diagnostics_state::DiagnosticsUiState;
+use git_state::GitUiState;
 use dioxus::prelude::*;
 use document_picker::{DocumentPickerRequest, DocumentPickerState};
 use mobile_approval_panel::mobile_approval_panel;
@@ -67,6 +70,7 @@ fn app() -> Element {
     let project_files_state = use_signal(ProjectFilesUiState::default);
     let mut snapshots_state = use_signal(SnapshotsUiState::default);
     let mut diagnostics_state = use_signal(DiagnosticsUiState::default);
+    let git_state = use_signal(GitUiState::default);
 
     if !did_load_saved_runtime() {
         did_load_saved_runtime.set(true);
@@ -222,6 +226,7 @@ fn app() -> Element {
                         project_files_state,
                         snapshots_state,
                         diagnostics_state,
+                        git_state,
                     )}
                 }
             }
