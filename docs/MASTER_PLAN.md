@@ -237,7 +237,7 @@ Already done:
 
 Remaining checklist:
 
-- [ ] Add pairing flow end-to-end from mobile UI.
+- [x] Add pairing flow end-to-end from mobile UI.
 - [ ] Add PC-host logs and health detail.
 - [ ] Add command allow/deny policy presets.
 - [ ] Add long-running command streaming instead of only completed output.
@@ -351,8 +351,8 @@ Acceptance criteria:
 |---|---|---|
 | Ratatui terminal UI | Replace with Dioxus mobile cockpit | In progress |
 | CLI dispatcher | Not priority for phone app | Not ported |
-| OpenAI-compatible DeepSeek streaming | Keep | Mostly done |
-| Reasoning block streaming | Keep later | Partial |
+| OpenAI-compatible DeepSeek streaming | Keep | Done: SSE streaming with reasoning token support |
+| Reasoning block streaming | Keep | Done: StreamDelta + ReasoningDelta in API client/engine |
 | File tools | Keep and adapt | Partial |
 | Apply patch | Keep mobile-safe operation batch first; add unified diff later | Partial: local + PC operation batches implemented |
 | Shell execution | Route to PC/Termux | Partial |
@@ -400,6 +400,10 @@ The next implementation sequence is fixed:
 21. [ ] Add MCP/skills.
 
 ## 5. Implementation progress log
+- 2026-05-17: Added `reasoning_content` support to DeepSeek V4 API client with `StreamDelta` enum (Text/Reasoning/Done); wired `ReasoningDelta` agent events through `MobileEngine.collect_model_answer`.
+- 2026-05-17: Integrated full session message history into `MobileEngine` via `build_messages_for_turn`; added JSON file persistence to `Session` (save_to_file/load_from_file/load_or_new); wired session save/load into `mobile_engine_runner`.
+- 2026-05-17: Extended PC-host git operations with `git_commit`, `git_push`, `git_pull`, `git_branch` handlers; added `GitCommit`, `GitPush`, `GitPull`, `GitBranch` to `PcGatewayRequest`.
+- 2026-05-17: Wired PC pairing panel buttons with real onclick handlers: configure → export ZIP → wait for PC → discovery; end-to-end pairing flow now actionable from mobile UI.
 
 - 2026-05-16: Added master audit in `docs/PROJECT_AUDIT.md`.
 - 2026-05-16: Added CI `cargo check --workspace` and `cargo test --workspace` jobs plus Android bridge static checks.

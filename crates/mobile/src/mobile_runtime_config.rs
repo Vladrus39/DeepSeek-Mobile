@@ -54,6 +54,10 @@ impl MobileRuntimeConfig {
         self.runtime_store_root.display().to_string()
     }
 
+    pub fn session_file_path(&self) -> PathBuf {
+        self.runtime_store_root.join("session.json")
+    }
+
     pub fn workspace_root_display(&self) -> String {
         self.workspace_connection
             .as_ref()

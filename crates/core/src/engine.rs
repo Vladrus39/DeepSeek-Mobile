@@ -3,8 +3,11 @@
 //! The engine owns one agent turn: it emits timeline events, stores turn state,
 //! parses tool calls from the model response, saves pending approvals and can
 //! later continue a stored approval after the mobile UI sends a decision.
+//!
+//! Sessions maintain full conversation history so the model has context across turns.
 
 use crate::agent::DeepSeekAgent;
+use crate::api_client::{Message, StreamDelta};
 use crate::approval::ReviewDecision;
 use crate::approval_card::{approval_cards_from_records, ApprovalCardView};
 use crate::approval_session::ApprovalSessionPolicy;
@@ -12,6 +15,7 @@ use crate::config::Config;
 use crate::events::AgentEvent;
 use crate::pc_gateway_client::PcGatewayClient;
 use crate::runtime_store::{RuntimeThreadStore, TurnRecord};
+use crate::session::Session;
 use crate::tool_loop::{
     continue_pending_tool_approval_with_session_and_pc_gateway,
     process_model_text_with_tools_and_session_and_pc_gateway, ToolLoopExecutionRecord,
@@ -54,6 +58,8 @@ pub struct MobileEngine {
     pc_gateway: Option<PcGatewayClient>,
     approval_session: ApprovalSessionPolicy,
     event_observer: Option<Arc<dyn Fn(AgentEvent)>>,
+    /// Active session with full conversation history
+    session: Session,
 }
 
 impl MobileEngine {
@@ -72,6 +78,7 @@ impl MobileEngine {
             pc_gateway: None,
             approval_session: ApprovalSessionPolicy::new(),
             event_observer: None,
+            session: Session::new("default"),
         }
     }
 
@@ -126,6 +133,19 @@ impl MobileEngine {
         &self.approval_session
     }
 
+    pub fn with_session(mut self, session: Session) -> Self {
+        self.session = session;
+        self
+    }
+
+    pub fn session(&self) -> &Session {
+        &self.session
+    }
+
+    pub fn session_mut(&mut self) -> &mut Session {
+        &mut self.session
+    }
+
     pub fn with_event_observer<F>(mut self, observer: F) -> Self
     where
         F: Fn(AgentEvent) + 'static,
@@ -150,14 +170,26 @@ impl MobileEngine {
         self.run_turn_internal(user_input, false).await
     }
 
-    async fn run_turn_internal(&mut self, user_input: String, streaming: bool) -> Result<EngineTurnResult> {
+    async fn run_turn_internal(
+        &mut self,
+        user_input: String,
+        streaming: bool,
+    ) -> Result<EngineTurnResult> {
         let mut turn = TurnContext::new(100);
         turn.start();
         self.persist_turn(&turn)?;
 
+        // Add user message to session history
+        self.session.push_message("user", &user_input);
+
         let mut events = Vec::new();
         self.push_event(&mut events, AgentEvent::Started)?;
-        self.push_event(&mut events, AgentEvent::TurnStarted { turn_id: turn.id.clone() })?;
+        self.push_event(
+            &mut events,
+            AgentEvent::TurnStarted {
+                turn_id: turn.id.clone(),
+            },
+        )?;
         self.push_event(
             &mut events,
             AgentEvent::Status(if streaming {
@@ -167,7 +199,10 @@ impl MobileEngine {
             }),
         )?;
 
-        let answer = match self.collect_model_answer(user_input, &mut events, streaming).await {
+        let answer = match self
+            .collect_model_answer(user_input, &mut events, streaming)
+            .await
+        {
             Ok(answer) => answer,
             Err(error) => {
                 turn.fail(error.to_string());
@@ -190,6 +225,9 @@ impl MobileEngine {
                 });
             }
         };
+
+        // Add assistant answer to session history
+        self.session.push_message("assistant", &answer);
 
         let context = ToolContext::new(self.workspace.clone());
         let outcome = process_model_text_with_tools_and_session_and_pc_gateway(
@@ -239,7 +277,9 @@ impl MobileEngine {
         streaming: bool,
     ) -> Result<String> {
         if !streaming {
-            let answer = self.agent.run(user_input).await?;
+            // Use full session history for non-streaming
+            let messages = self.build_messages_for_turn(&user_input);
+            let answer = self.agent.run_with_messages(messages).await?;
             self.push_event(events, AgentEvent::TextDelta(answer.clone()))?;
             return Ok(answer);
         }
@@ -251,24 +291,70 @@ impl MobileEngine {
                 role: "assistant".to_string(),
             },
         )?;
-        self.push_event(events, AgentEvent::Status("DeepSeek streaming response opened".to_string()))?;
+        self.push_event(
+            events,
+            AgentEvent::Status("DeepSeek streaming response opened".to_string()),
+        )?;
 
-        let mut receiver = self.agent.run_stream(user_input).await?;
+        // Use full session history for streaming
+        let messages = self.build_messages_for_turn(&user_input);
+        let mut receiver = self.agent.run_stream_with_messages(messages).await?;
         let mut answer = String::new();
+        let mut reasoning_buffer = String::new();
+
         while let Some(delta) = receiver.recv().await {
-            if delta == "[DONE]" {
-                break;
+            match delta {
+                StreamDelta::Text(text) => {
+                    answer.push_str(&text);
+                    self.push_event(events, AgentEvent::TextDelta(text))?;
+                }
+                StreamDelta::Reasoning(reasoning) => {
+                    reasoning_buffer.push_str(&reasoning);
+                    self.push_event(events, AgentEvent::ReasoningDelta(reasoning))?;
+                }
+                StreamDelta::Done => {
+                    break;
+                }
             }
-            if delta.is_empty() {
-                continue;
-            }
-            answer.push_str(&delta);
-            self.push_event(events, AgentEvent::TextDelta(delta))?;
+        }
+
+        // Emit full reasoning as a status for the timeline
+        if !reasoning_buffer.is_empty() {
+            self.push_event(
+                events,
+                AgentEvent::Status(format!(
+                    "Reasoning completed ({} chars)",
+                    reasoning_buffer.len()
+                )),
+            )?;
         }
 
         self.push_event(events, AgentEvent::MessageFinished { index: 0 })?;
-        self.push_event(events, AgentEvent::Status("DeepSeek streaming response completed".to_string()))?;
+        self.push_event(
+            events,
+            AgentEvent::Status("DeepSeek streaming response completed".to_string()),
+        )?;
         Ok(answer)
+    }
+
+    /// Build the messages array for a turn: system prompt + full conversation history.
+    fn build_messages_for_turn(&self, _user_input: &str) -> Vec<Message> {
+        // Start with system prompt
+        let mut messages = vec![Message {
+            role: "system".to_string(),
+            content: "You are a helpful coding assistant with access to tools for \
+                      reading, writing, editing files, running shell commands, \
+                      and managing git repositories. You are running inside \
+                      DeepSeek-Mobile — a full coding agent on Android with \
+                      PC-host execution capabilities."
+                .to_string(),
+        }];
+
+        // Append full session history (already includes the latest user message
+        // since it was pushed before collect_model_answer is called)
+        messages.extend(self.session.messages.clone());
+
+        messages
     }
 
     pub async fn continue_stored_approval(
@@ -326,7 +412,11 @@ impl MobileEngine {
     fn store_pending_approvals(&self, turn: &TurnContext, outcome: &ToolLoopOutcome) -> Result<()> {
         if let Some(store) = &self.runtime_store {
             for pending in outcome.pending_approvals.iter().cloned() {
-                store.save_pending_approval(self.thread_id.clone(), turn.id.clone(), pending)?;
+                store.save_pending_approval(
+                    self.thread_id.clone(),
+                    turn.id.clone(),
+                    pending,
+                )?;
             }
         }
         Ok(())
@@ -372,20 +462,35 @@ mod tests {
 
     #[test]
     fn engine_can_be_configured_from_pc_workspace_connection() {
-        let mut gateway = PcGatewayConfig::new("pc-1", "Laptop", "http://127.0.0.1:8787", "phone-1");
+        let mut gateway =
+            PcGatewayConfig::new("pc-1", "Laptop", "http://127.0.0.1:8787", "phone-1");
         gateway.allow_http_on_local_network = true;
         let connection = WorkspaceConnection::pc_gateway(
-            "pc",
-            "Laptop",
-            "w1",
-            "Project",
-            "/pc/project",
-            gateway,
+            "pc", "Laptop", "w1", "Project", "/pc/project", gateway,
         );
         let engine = MobileEngine::new(Config::default())
             .with_workspace_connection(&connection)
             .expect("configure pc gateway");
         assert!(engine.has_pc_gateway());
         assert_eq!(engine.workspace.executor, ExecutorKind::PcGateway);
+    }
+
+    #[test]
+    fn engine_has_default_session() {
+        let engine = MobileEngine::new(Config::default());
+        assert_eq!(engine.session().id, "default");
+        assert!(engine.session().messages.is_empty());
+    }
+
+    #[test]
+    fn engine_session_persists_messages() {
+        let mut engine = MobileEngine::new(Config::default());
+        engine
+            .session_mut()
+            .push_message("user", "hello");
+        engine
+            .session_mut()
+            .push_message("assistant", "hi there");
+        assert_eq!(engine.session().messages.len(), 2);
     }
 }

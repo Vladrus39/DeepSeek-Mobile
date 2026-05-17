@@ -538,6 +538,10 @@ pub enum PcGatewayRequest {
     GetDiagnostics { workspace_id: String, path: Option<String> },
     GitStatus { workspace_id: String },
     GitDiff { workspace_id: String },
+    GitCommit { workspace_id: String, message: String },
+    GitPush { workspace_id: String, remote: Option<String>, branch: Option<String> },
+    GitPull { workspace_id: String, remote: Option<String>, branch: Option<String> },
+    GitBranch { workspace_id: String },
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]

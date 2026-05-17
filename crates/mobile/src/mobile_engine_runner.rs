@@ -1,7 +1,7 @@
 use crate::mobile_runtime_config::MobileRuntimeConfig;
 use deepseek_mobile_core::{
     AgentEvent, ApprovalCardView, ApprovalSessionRuntimeStore, Config, MobileEngine, ReviewDecision,
-    RuntimeThreadStore, TokenUsage, TurnContext, TurnStatus, UserChatInput,
+    RuntimeThreadStore, Session, TokenUsage, TurnContext, TurnStatus, UserChatInput,
 };
 
 #[derive(Clone, Debug, PartialEq)]
@@ -76,12 +76,21 @@ where
     let store = RuntimeThreadStore::open(runtime.runtime_store_root.clone())?;
     let approval_session_store = ApprovalSessionRuntimeStore::new(runtime.runtime_store_root.clone());
     let approval_session = approval_session_store.load(&runtime.thread_id)?;
+
+    // Load or create session with conversation history
+    let session_path = runtime.session_file_path();
+    let session = Session::load_or_new(&runtime.thread_id, &session_path)?;
+
     let mut engine = build_engine(config, &runtime, store)?
         .with_approval_session(approval_session)
+        .with_session(session)
         .with_event_observer(on_event);
 
     let result = engine.run_turn(input.to_prompt_text()).await?;
     approval_session_store.save(runtime.thread_id.clone(), engine.approval_session())?;
+
+    // Persist session history after turn
+    engine.session().save_to_file(&session_path)?;
     let approval_card_count = result.approval_cards.len();
     Ok(MobileTurnUiResult {
         events: result.events,
@@ -136,12 +145,21 @@ pub async fn continue_mobile_approval_with_runtime(
     };
     turn.error = turn_record.error.clone();
 
-    let mut engine = build_engine(config, &runtime, store)?.with_approval_session(approval_session);
+    // Load session for continuation
+    let session_path = runtime.session_file_path();
+    let session = Session::load_or_new(&runtime.thread_id, &session_path)?;
+
+    let mut engine = build_engine(config, &runtime, store)?
+        .with_approval_session(approval_session)
+        .with_session(session);
 
     let result = engine
         .continue_stored_approval(&approval_id, decision, turn)
         .await?;
     approval_session_store.save(runtime.thread_id, engine.approval_session())?;
+
+    // Persist session history after continuation
+    engine.session().save_to_file(&session_path)?;
     let remaining_approval_cards = engine.pending_approval_cards_for_current_thread()?;
 
     Ok(MobileApprovalContinuationUiResult {

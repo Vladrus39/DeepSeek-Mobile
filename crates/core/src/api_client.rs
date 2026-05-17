@@ -1,4 +1,6 @@
 //! DeepSeek API Client with real streaming support (OpenAI-compatible SSE)
+//!
+//! Supports DeepSeek V4 reasoning tokens via `reasoning_content` in deltas.
 
 use anyhow::{anyhow, Result};
 use futures_util::StreamExt;
@@ -33,6 +35,21 @@ struct Choice {
 #[derive(Deserialize, Debug)]
 struct Delta {
     content: Option<String>,
+    /// DeepSeek V4 reasoning/thinking tokens
+    #[serde(rename = "reasoning_content")]
+    reasoning_content: Option<String>,
+}
+
+/// A structured streaming delta from the DeepSeek API.
+/// Distinguishes between final visible text and V4 thinking tokens.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum StreamDelta {
+    /// Final visible text content
+    Text(String),
+    /// V4 reasoning/thinking tokens (may arrive before or interleaved with text)
+    Reasoning(String),
+    /// Stream completed
+    Done,
 }
 
 pub struct DeepSeekClient {
@@ -85,13 +102,14 @@ impl DeepSeekClient {
             .ok_or_else(|| anyhow!("No response from model"))
     }
 
-    /// Streaming chat - returns a receiver for text deltas.
-    /// Enables real-time reasoning blocks in the mobile UI.
+    /// Streaming chat — returns a receiver for structured deltas.
+    /// Emits `Text`, `Reasoning`, and `Done` variants.
+    /// V4 models send reasoning tokens before or interleaved with final text.
     pub async fn chat_stream(
         &self,
         model: &str,
         messages: Vec<Message>,
-    ) -> Result<tokio::sync::mpsc::Receiver<String>> {
+    ) -> Result<tokio::sync::mpsc::Receiver<StreamDelta>> {
         if self.api_key.is_empty() {
             return Err(anyhow!("DEEPSEEK_API_KEY is not set"));
         }
@@ -116,7 +134,7 @@ impl DeepSeekClient {
             return Err(anyhow!("DeepSeek API error {}: {}", status, text));
         }
 
-        let (tx, rx) = mpsc::channel::<String>(128);
+        let (tx, rx) = mpsc::channel::<StreamDelta>(256);
 
         // Background task to process SSE stream
         tokio::spawn(async move {
@@ -137,16 +155,25 @@ impl DeepSeekClient {
                                 if let Some(data) = line.strip_prefix("data: ") {
                                     let data = data.trim();
                                     if data == "[DONE]" {
-                                        let _ = tx.send("[DONE]".to_string()).await;
+                                        let _ = tx.send(StreamDelta::Done).await;
                                         return;
                                     }
 
-                                    // Parse delta
+                                    // Parse delta — supports both content and reasoning_content
                                     if let Ok(parsed) = serde_json::from_str::<ChatResponse>(data) {
                                         if let Some(choice) = parsed.choices.first() {
                                             if let Some(delta) = &choice.delta {
+                                                // Emit reasoning first (V4 thinking tokens)
+                                                if let Some(reasoning) = &delta.reasoning_content {
+                                                    if !reasoning.is_empty() {
+                                                        let _ = tx.send(StreamDelta::Reasoning(reasoning.clone())).await;
+                                                    }
+                                                }
+                                                // Emit final text content
                                                 if let Some(content) = &delta.content {
-                                                    let _ = tx.send(content.clone()).await;
+                                                    if !content.is_empty() {
+                                                        let _ = tx.send(StreamDelta::Text(content.clone())).await;
+                                                    }
                                                 }
                                             }
                                         }
@@ -157,6 +184,9 @@ impl DeepSeekClient {
                     }
                 }
             }
+
+            // Stream ended without [DONE] — send Done anyway
+            let _ = tx.send(StreamDelta::Done).await;
         });
 
         Ok(rx)

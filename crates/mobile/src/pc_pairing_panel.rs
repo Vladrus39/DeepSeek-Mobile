@@ -1,4 +1,5 @@
 use crate::native_bridge::NativeBridgeState;
+use crate::pc_pairing_manager::MobilePcPairingRequest;
 use crate::pc_pairing_state::{PcPairingUiState, PcPairingUiStatus, PcReconnectEffect};
 use dioxus::prelude::*;
 
@@ -206,6 +207,43 @@ pub fn pc_pairing_panel(mut state: Signal<PcPairingUiState>, mut native_bridge: 
                     border_radius: "10px",
                     border: "none",
                     font_weight: "bold",
+                    onclick: move |_| {
+                        let snap = state();
+                        let status = snap.status.clone();
+                        match status {
+                            PcPairingUiStatus::NotConfigured => {
+                                let request = MobilePcPairingRequest::new(
+                                    "pc-1".to_string(),
+                                    "My PC".to_string(),
+                                    "phone-1".to_string(),
+                                    "My Phone".to_string(),
+                                    "default".to_string(),
+                                    ".".to_string(),
+                                    "".to_string(),
+                                );
+                                let mut next = state();
+                                next.configure(request);
+                                state.set(next);
+                            }
+                            PcPairingUiStatus::ReadyToExport => {
+                                let output_dir = std::env::temp_dir().join("deepseek-mobile-pairing");
+                                let mut next = state();
+                                next.export_zip(&output_dir);
+                                state.set(next);
+                            }
+                            PcPairingUiStatus::Exported => {
+                                let mut next = state();
+                                next.mark_waiting_for_pc();
+                                state.set(next);
+                            }
+                            PcPairingUiStatus::WaitingForPc | PcPairingUiStatus::Offline => {
+                                let mut bridge = native_bridge();
+                                bridge.enqueue_pc_gateway_discovery("pc-pairing-check".to_string());
+                                native_bridge.set(bridge);
+                            }
+                            PcPairingUiStatus::Online | PcPairingUiStatus::Error(_) => {}
+                        }
+                    },
                     "{action_label}"
                 }
 
@@ -215,6 +253,11 @@ pub fn pc_pairing_panel(mut state: Signal<PcPairingUiState>, mut native_bridge: 
                     padding: "10px 14px",
                     border_radius: "10px",
                     border: "none",
+                    onclick: move |_| {
+                        let mut next = state();
+                        next.set_error("Pairing instructions: 1) Configure PC details 2) Create pairing ZIP 3) Share ZIP to your PC 4) Unzip and run launch script 5) Phone will discover PC on local network".to_string());
+                        state.set(next);
+                    },
                     "Instructions"
                 }
             }

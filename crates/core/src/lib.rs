@@ -34,7 +34,7 @@ pub mod workspace_diagnostics;
 pub mod workspace_files;
 
 pub use agent::DeepSeekAgent;
-pub use api_client::{DeepSeekClient, Message};
+pub use api_client::{DeepSeekClient, Message, StreamDelta};
 pub use approval::{
     categorize_tool, classify_risk, should_request_approval, ApprovalMode, ApprovalRisk,
     MobileApprovalRequest, ReviewDecision, ToolCategory,

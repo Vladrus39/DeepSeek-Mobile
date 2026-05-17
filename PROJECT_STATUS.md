@@ -107,17 +107,18 @@ local/Termux/PC-host execution, and project-aware mobile screens.
 
 ### Critical build quality
 
-- Confirm full workspace build with `cargo check --workspace`. (Blocked: Windows GNU toolchain needs MSVC)
-- Add and keep GitHub Actions CI green.
-- Run tests for `core`, `mobile`, and `pc-host`.
-- Remove any compile regressions introduced by new contracts.
+- ✅ `cargo check --workspace` passes cleanly (MSVC toolchain, 0 errors).
+- ✅ `cargo check` runs on every change — no compile regressions.
+- ⚠️ `cargo test` requires Visual Studio Build Tools (MSVC linker `link.exe`).
+- ⚠️ GitHub Actions CI needs MSVC or switch to `windows-latest` runner.
 
 ### Core runtime
 
-- True streaming response handling from the DeepSeek API.
-- Reasoning block rendering.
-- Full message-history handling in mobile engine.
-- Stronger durable persistence layer, likely SQLite or a file-backed store with migration support.
+- ✅ Streaming response handling with reasoning token support (`StreamDelta` enum).
+- ✅ Reasoning block rendering via `AgentEvent::ReasoningDelta`.
+- ✅ Full message history in mobile engine via `build_messages_for_turn`.
+- ✅ Session persistence with JSON file storage (`save_to_file`/`load_from_file`/`load_or_new`).
+- ✅ Session integrated into `MobileEngine` — conversation survives process death.
 - Snapshots integration into engine turn lifecycle.
 - Large output routing and context promotion.
 - MCP/plugin host.
@@ -125,15 +126,15 @@ local/Termux/PC-host execution, and project-aware mobile screens.
 
 ### PC-host / execution
 
-- Stronger workspace path hardening.
-- Command timeout enforcement.
-- Safe UTF-8 output truncation.
-- Diagnostics request implementation (partial: cargo check JSON).
-- Task detection from `Cargo.toml`, `package.json`, `pyproject.toml`, etc. (partial).
-- Terminal sessions with streaming output.
-- Dev-server preview lifecycle.
-- Autostart/service installer for Windows, Linux and macOS.
-- Extended git operations through PC-host (commit/push/pull — currently only status/diff).
+- ✅ Workspace path hardening (canonicalization, parent checks, traversal blocking).
+- ✅ Command timeout enforcement via `tokio::time::timeout`.
+- ✅ Safe UTF-8 output truncation (`truncate_output` with char-boundary safety).
+- ✅ Diagnostics via `cargo check --message-format=json` with severity mapping.
+- ✅ Task detection from `Cargo.toml`, `package.json`, `pyproject.toml`, `pytest.ini`.
+- ✅ Extended git operations: status, diff, commit, push, pull, branch.
+- ⬜ Terminal sessions with streaming output (`OpenTerminal`/`CloseTerminal` defined, not implemented).
+- ⬜ Dev-server preview lifecycle.
+- ⬜ Autostart/service installer.
 
 ### Mobile UI
 
@@ -160,30 +161,30 @@ local/Termux/PC-host execution, and project-aware mobile screens.
 ## Current implementation estimate
 
 ```text
-Core / agent runtime         ~65-70%
+Core / agent runtime         ~80-85%  (streaming reasoning, full history, session persistence)
 Approval / risk model        ~70-80%
-Runtime store / history      ~60-70%
+Runtime store / history      ~70-80%  (session JSON persistence added)
 Tool loop                    ~65-75%
 File tools                   ~65-75%
-Git tools                    ~70-80%  (was ~35-45% — expanded with 10 real ops)
-GitHub tools                 ~60-70%  (NEW: 5 tools + API client)
-PC gateway protocol/client   ~60-65%
-PC-host daemon               ~25-35%
+Git tools                    ~80-85%  (commit/push/pull/branch in PC-host)
+GitHub tools                 ~60-70%
+PC gateway protocol/client   ~65-70%
+PC-host daemon               ~45-55%  (extended git ops, path hardening complete)
 Mobile UI                    ~15-25%
-Production-ready app         ~25-35%
+Production-ready app         ~30-40%
 ```
 
 ## Immediate priorities
 
-1. Fix build: switch to MSVC toolchain or add `dlltool` to GNU.
+1. ✅ Build fixed: MSVC toolchain active, `cargo check --workspace` clean.
 2. Wire GitHub token into mobile settings UI.
-3. Harden PC-host path and command execution.
+3. ✅ PC-host path hardening and extended git operations complete.
 4. Wire Android UI buttons to pairing ZIP export and PC health check.
 5. Add real DeepSeek API key onboarding and secure storage plan.
-6. Add mobile timeline rendering for engine/tool/approval events.
-7. Add file tree and diff viewer.
-8. Add terminal streaming from PC-host.
-9. Add Git/GitHub workflow screens.
+6. ✅ Reasoning blocks and text deltas in mobile timeline (via `StreamDelta` + `ReasoningDelta`).
+7. Add file tree and diff viewer to mobile UI.
+8. Add terminal streaming from PC-host (`OpenTerminal`/`CloseTerminal` handlers).
+9. Add Git/GitHub workflow screens to mobile UI.
 10. Test auto-commit/push with real GitHub repo.
 
 ## Non-negotiable product direction

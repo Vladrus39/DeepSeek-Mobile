@@ -255,6 +255,18 @@ async fn handle_gateway_request(config: &PcHostConfig, request: PcGatewayRequest
         }
         PcGatewayRequest::GitStatus { workspace_id } => git_text(config, &workspace_id, "status", &["status", "--short"]).await,
         PcGatewayRequest::GitDiff { workspace_id } => git_text(config, &workspace_id, "diff", &["diff", "--"]).await,
+        PcGatewayRequest::GitCommit { workspace_id, message } => {
+            git_commit(config, &workspace_id, &message).await
+        }
+        PcGatewayRequest::GitPush { workspace_id, remote, branch } => {
+            git_push(config, &workspace_id, remote.as_deref(), branch.as_deref()).await
+        }
+        PcGatewayRequest::GitPull { workspace_id, remote, branch } => {
+            git_pull(config, &workspace_id, remote.as_deref(), branch.as_deref()).await
+        }
+        PcGatewayRequest::GitBranch { workspace_id } => {
+            git_text(config, &workspace_id, "branch", &["branch", "--list"]).await
+        }
         unsupported => Ok(PcGatewayResponse::Error(PcGatewayError::new(
             "unsupported_request",
             format!("request is not implemented by this PC host build: {:?}", unsupported),
@@ -413,6 +425,92 @@ async fn git_text(
     text.push_str(&String::from_utf8_lossy(&output.stderr));
     Ok(PcGatewayResponse::GitText {
         operation: operation.to_string(),
+        output: truncate_output(text, config.security_policy.max_output_bytes),
+    })
+}
+async fn git_commit(config: &PcHostConfig, workspace_id: &str, message: &str) -> Result<PcGatewayResponse> {
+    if workspace_id != config.workspace.id {
+        return Err(anyhow!("unknown workspace id: {}", workspace_id));
+    }
+    let output = timeout(
+        Duration::from_secs(config.security_policy.max_command_seconds),
+        Command::new("git")
+            .args(["commit", "-m", message])
+            .current_dir(&config.workspace_root)
+            .output(),
+    )
+    .await
+    .map_err(|_| anyhow!("git commit timed out after {} seconds", config.security_policy.max_command_seconds))?
+    .with_context(|| "git commit")?;
+    let mut text = String::new();
+    text.push_str(&String::from_utf8_lossy(&output.stdout));
+    text.push_str(&String::from_utf8_lossy(&output.stderr));
+    Ok(PcGatewayResponse::GitText {
+        operation: "commit".to_string(),
+        output: truncate_output(text, config.security_policy.max_output_bytes),
+    })
+}
+
+async fn git_push(
+    config: &PcHostConfig,
+    workspace_id: &str,
+    remote: Option<&str>,
+    branch: Option<&str>,
+) -> Result<PcGatewayResponse> {
+    if workspace_id != config.workspace.id {
+        return Err(anyhow!("unknown workspace id: {}", workspace_id));
+    }
+    let mut args = vec!["push"];
+    if let Some(remote) = remote {
+        args.push(remote);
+        if let Some(branch) = branch {
+            args.push(branch);
+        }
+    }
+    let output = timeout(
+        Duration::from_secs(config.security_policy.max_command_seconds),
+        Command::new("git").args(&args).current_dir(&config.workspace_root).output(),
+    )
+    .await
+    .map_err(|_| anyhow!("git push timed out after {} seconds", config.security_policy.max_command_seconds))?
+    .with_context(|| "git push")?;
+    let mut text = String::new();
+    text.push_str(&String::from_utf8_lossy(&output.stdout));
+    text.push_str(&String::from_utf8_lossy(&output.stderr));
+    Ok(PcGatewayResponse::GitText {
+        operation: "push".to_string(),
+        output: truncate_output(text, config.security_policy.max_output_bytes),
+    })
+}
+
+async fn git_pull(
+    config: &PcHostConfig,
+    workspace_id: &str,
+    remote: Option<&str>,
+    branch: Option<&str>,
+) -> Result<PcGatewayResponse> {
+    if workspace_id != config.workspace.id {
+        return Err(anyhow!("unknown workspace id: {}", workspace_id));
+    }
+    let mut args = vec!["pull"];
+    if let Some(remote) = remote {
+        args.push(remote);
+        if let Some(branch) = branch {
+            args.push(branch);
+        }
+    }
+    let output = timeout(
+        Duration::from_secs(config.security_policy.max_command_seconds),
+        Command::new("git").args(&args).current_dir(&config.workspace_root).output(),
+    )
+    .await
+    .map_err(|_| anyhow!("git pull timed out after {} seconds", config.security_policy.max_command_seconds))?
+    .with_context(|| "git pull")?;
+    let mut text = String::new();
+    text.push_str(&String::from_utf8_lossy(&output.stdout));
+    text.push_str(&String::from_utf8_lossy(&output.stderr));
+    Ok(PcGatewayResponse::GitText {
+        operation: "pull".to_string(),
         output: truncate_output(text, config.security_policy.max_output_bytes),
     })
 }
@@ -610,6 +708,9 @@ fn host_capabilities() -> Vec<PcGatewayCapability> {
         PcGatewayCapability::Diagnostics,
         PcGatewayCapability::RunTests,
         PcGatewayCapability::RunBuilds,
+        PcGatewayCapability::GitCommit,
+        PcGatewayCapability::GitPushPull,
+        PcGatewayCapability::TerminalSessions,
     ]
 }
 
