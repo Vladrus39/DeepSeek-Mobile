@@ -240,7 +240,7 @@ Remaining checklist:
 - [x] Add pairing flow end-to-end from mobile UI.
 - [ ] Add PC-host logs and health detail.
 - [ ] Add command allow/deny policy presets.
-- [ ] Add long-running command streaming instead of only completed output.
+- [x] Add long-running command streaming instead of only completed output.
 - [ ] Add terminal session persistence.
 - [ ] Add diagnostics implementation for TypeScript and Python.
 
@@ -424,6 +424,7 @@ The next implementation sequence is fixed:
 - 2026-05-17: Established the synchronized PC + GitHub operating model, created the desktop working copy at `C:\Users\vladi\Desktop\DeepSeek-Mobile`, and added the one-command `deploy.ps1` publish script.
 - 2026-05-17: Stabilized P0 build integrity: removed obsolete direct `dioxus-mobile` usage in favor of stable `dioxus::launch`, consolidated duplicate Rust workflows into one CI path, added `Cargo.lock`, fixed snapshot/runtime/mobile API drift, made workspace path tests cross-platform, and verified `cargo check --workspace --all-targets` plus `cargo test --workspace` locally through the installed MSVC toolchain.
 - 2026-05-17: Added first mobile snapshot and diagnostics surfaces: tool-result events now retain structured metadata, automatic pre-tool snapshots and post-edit diagnostics are echoed into the timeline, restored runtime events rebuild snapshot/diagnostics state on launch, and the drawer now exposes dedicated `Snapshots` and `Diagnostics` panels.
+- 2026-05-17: Implemented long-running command streaming via SSE on PC-host (`/v1/gateway/exec/stream`): added `CommandStreamEvent` type, `PcGatewayClient.stream_command()` with mpsc channel and endpoint failover, `parse_sse_event()` helper, and wired streaming into `ToolExecutionCoordinator` for `exec_shell` on PC gateway.
 
 ## 6. Definition of done for the project
 
