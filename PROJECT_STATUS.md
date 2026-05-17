@@ -186,6 +186,7 @@ Production-ready app         ~30-40%
 8. ✅ Terminal streaming from PC-host already implemented (open_terminal/terminal_input/close_terminal + PcTerminalSession).
 9. Add Git/GitHub workflow screens to mobile UI.
 10. Test auto-commit/push with real GitHub repo.
+11. ✅ Long-running command streaming via SSE (`/v1/gateway/exec/stream`) — ToolExecutionCoordinator streams exec_shell output from PC gateway.
 
 ## Non-negotiable product direction
 
