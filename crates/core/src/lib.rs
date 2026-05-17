@@ -72,7 +72,8 @@ pub use pc_gateway::{
     PcGatewayHealth, PcGatewayPairingRequest, PcGatewayPairingResponse, PcGatewayRequest,
     PcGatewayRequestEnvelope, PcGatewayResponse, PcGatewayResponseEnvelope,
     PcGatewaySecurityPolicy, PcGatewayTransportMode, PcGatewayTrustLevel, PcPreviewDescriptor,
-    PcTaskDescriptor, PcTaskKind, PcTerminalSession, PcWorkspaceGrant, PcWorkspaceIndexSummary,
+    CommandStreamEvent, PcTaskDescriptor, PcTaskKind, PcTerminalSession, PcWorkspaceGrant,
+    PcWorkspaceIndexSummary,
 };
 pub use pc_gateway_client::{PcGatewayClient, PcGatewayEndpointHealth};
 pub use pc_gateway_discovery::{

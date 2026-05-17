@@ -1,8 +1,13 @@
 use anyhow::{anyhow, Context, Result};
 use axum::extract::State;
 use axum::http::{HeaderMap, StatusCode};
+use axum::response::sse::{Event, Sse};
 use axum::routing::{get, post};
 use axum::{Json, Router};
+use std::convert::Infallible;
+use tokio::io::{AsyncBufReadExt, BufReader};
+use tokio::process::Command as TokioCommand;
+use tokio_stream::wrappers::ReceiverStream;
 use deepseek_mobile_core::{
     CommandOutput, CommandRequest, PcDiagnostic, PcDiagnosticSeverity, PcEnvironmentDescriptor,
     PcGatewayCapability, PcGatewayConnectionStatus, PcGatewayDirEntry, PcGatewayError,
@@ -17,7 +22,7 @@ use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::fs;
-use tokio::io::{AsyncWriteExt, BufReader, AsyncBufReadExt};
+use tokio::io::AsyncWriteExt;
 use tokio::process::{Child, Command};
 use tokio::sync::Mutex;
 use tokio::time::timeout;
@@ -199,6 +204,7 @@ async fn main() -> Result<()> {
     let app = Router::new()
         .route("/health", get(health_handler))
         .route("/v1/gateway/request", post(gateway_request_handler))
+        .route("/v1/gateway/exec/stream", post(exec_stream_handler))
         .with_state(state);
 
     let listener = tokio::net::TcpListener::bind(bind_addr)
@@ -233,6 +239,124 @@ async fn gateway_request_handler(
     };
 
     Ok(Json(state.config.response(request_id, response)))
+}
+
+/// SSE streaming endpoint for long-running commands.
+/// Accepts workspace_id + CommandRequest, spawns the process,
+/// and streams stdout/stderr lines as SSE events.
+async fn exec_stream_handler(
+    State(state): State<PcHostState>,
+    headers: HeaderMap,
+    Json(body): Json<ExecStreamBody>,
+) -> Result<Sse<ReceiverStream<Result<Event, Infallible>>>, (StatusCode, String)> {
+    if let Err(e) = authorize(&state.config, &headers) {
+        return Err((StatusCode::UNAUTHORIZED, e.to_string()));
+    }
+    if body.workspace_id != state.config.workspace.id {
+        return Err((StatusCode::BAD_REQUEST, "unknown workspace".to_string()));
+    }
+    if let Err(e) = state.config.security_policy.validate_command(&body.command) {
+        return Err((StatusCode::FORBIDDEN, e.to_string()));
+    }
+
+    let working_dir = match body.command.working_dir.as_ref() {
+        Some(dir) => {
+            if dir.is_absolute() {
+                return Err((StatusCode::BAD_REQUEST, "absolute paths not accepted".to_string()));
+            }
+            match state.config.resolve_workspace_path(&body.workspace_id, &dir.to_string_lossy()) {
+                Ok(resolved) => match state.config.ensure_path_inside_workspace(&resolved).await {
+                    Ok(dir) => dir,
+                    Err(e) => return Err((StatusCode::FORBIDDEN, e.to_string())),
+                },
+                Err(e) => return Err((StatusCode::BAD_REQUEST, e.to_string())),
+            }
+        }
+        None => state.config.workspace_root.clone(),
+    };
+
+    let (tx, rx) = tokio::sync::mpsc::channel::<Result<Event, Infallible>>(64);
+    let max_seconds = state.config.security_policy.max_command_seconds;
+
+    tokio::spawn(async move {
+        let result = stream_process_output(body.command, working_dir, max_seconds, tx.clone()).await;
+        if let Err(e) = result {
+            let _ = tx
+                .send(Ok(Event::default().data(
+                    serde_json::json!({"kind": "stderr", "data": format!("stream error: {}", e)}).to_string(),
+                )))
+                .await;
+        }
+    });
+
+    Ok(Sse::new(ReceiverStream::new(rx)))
+}
+
+#[derive(Deserialize)]
+struct ExecStreamBody {
+    workspace_id: String,
+    command: CommandRequest,
+}
+
+async fn stream_process_output(
+    command: CommandRequest,
+    working_dir: PathBuf,
+    max_seconds: u64,
+    tx: tokio::sync::mpsc::Sender<Result<Event, Infallible>>,
+) -> Result<()> {
+    let mut child = TokioCommand::new(&command.program)
+        .args(&command.args)
+        .current_dir(&working_dir)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .with_context(|| format!("spawn {}", command.program))?;
+
+    let stdout = child.stdout.take().context("capture stdout")?;
+    let stderr = child.stderr.take().context("capture stderr")?;
+
+    let tx_stdout = tx.clone();
+    let tx_stderr = tx.clone();
+    let tx_exit = tx.clone();
+
+    let stdout_task = tokio::spawn(async move {
+        let mut reader = BufReader::new(stdout).lines();
+        while let Ok(Some(line)) = reader.next_line().await {
+            let event = Ok(Event::default().data(
+                serde_json::json!({"kind": "stdout", "data": line}).to_string(),
+            ));
+            if tx_stdout.send(event).await.is_err() {
+                break;
+            }
+        }
+    });
+
+    let stderr_task = tokio::spawn(async move {
+        let mut reader = BufReader::new(stderr).lines();
+        while let Ok(Some(line)) = reader.next_line().await {
+            let event = Ok(Event::default().data(
+                serde_json::json!({"kind": "stderr", "data": line}).to_string(),
+            ));
+            if tx_stderr.send(event).await.is_err() {
+                break;
+            }
+        }
+    });
+
+    let status = timeout(Duration::from_secs(max_seconds), child.wait())
+        .await
+        .map_err(|_| anyhow!("command timed out after {} seconds", max_seconds))?
+        .context("wait for command")?;
+
+    let _ = tokio::join!(stdout_task, stderr_task);
+
+    let _ = tx_exit
+        .send(Ok(Event::default().data(
+            serde_json::json!({"kind": "exit", "code": status.code()}).to_string(),
+        )))
+        .await;
+
+    Ok(())
 }
 
 fn authorize(config: &PcHostConfig, headers: &HeaderMap) -> Result<()> {

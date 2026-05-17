@@ -7,7 +7,7 @@
 //! on Android.
 
 use crate::executor::CommandRequest;
-use crate::pc_gateway::{PcDiagnostic, PcDiagnosticSeverity, PcGatewayResponse};
+use crate::pc_gateway::{CommandStreamEvent, PcDiagnostic, PcDiagnosticSeverity, PcGatewayResponse};
 use crate::pc_gateway_client::PcGatewayClient;
 use crate::tool_call::ToolCallRequest;
 use crate::tools::{ToolContext, ToolRegistry, ToolResult};
@@ -169,7 +169,39 @@ impl<'a> ToolExecutionCoordinator<'a> {
             "exec_shell" => {
                 let command = required_str(&call.arguments, "command")?;
                 let request = command_request_from_shell(command, context.workspace.root.clone())?;
-                gateway_response_to_tool_result(client.execute_command(workspace_id, request, None).await?)
+                let mut rx = client.stream_command(workspace_id, request).await?;
+                let mut stdout = String::new();
+                let mut stderr = String::new();
+                let mut exit_code: Option<i32> = None;
+                let mut error_msg: Option<String> = None;
+                while let Some(event) = rx.recv().await {
+                    match event {
+                        CommandStreamEvent::Stdout(line) => {
+                            stdout.push_str(&line);
+                            stdout.push('\n');
+                        }
+                        CommandStreamEvent::Stderr(line) => {
+                            stderr.push_str(&line);
+                            stderr.push('\n');
+                        }
+                        CommandStreamEvent::Exit(code) => exit_code = code,
+                        CommandStreamEvent::Error(msg) => error_msg = Some(msg),
+                    }
+                }
+                if let Some(err) = error_msg {
+                    Ok(ToolResult::error(err))
+                } else {
+                    let combined = format!(
+                        "{}EXIT_CODE: {}
+
+{}",
+                        stdout,
+                        exit_code.map_or_else(|| "unknown".to_string(), |c| c.to_string()),
+                        stderr
+                    );
+                    Ok(ToolResult::success(combined))
+                }
+
             }
             "git" => {
                 let operation = required_str(&call.arguments, "operation")?;

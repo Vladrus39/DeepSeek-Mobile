@@ -665,6 +665,16 @@ fn current_unix_time() -> u64 {
         .unwrap_or_default()
 }
 
+
+/// Streaming event from a long-running command execution.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub enum CommandStreamEvent {
+    Stdout(String),
+    Stderr(String),
+    Exit(Option<i32>),
+    Error(String),
+}
+
 #[cfg(test)]
 mod tests {
     use super::{

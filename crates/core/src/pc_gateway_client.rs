@@ -8,6 +8,7 @@ use crate::executor::CommandRequest;
 use crate::pc_gateway::{
     PcGatewayConfig, PcGatewayEndpointCandidate, PcGatewayError, PcGatewayHealth,
     PcGatewayRequest, PcGatewayRequestEnvelope, PcGatewayResponse, PcGatewayResponseEnvelope,
+    CommandStreamEvent,
     PcGatewaySecurityPolicy,
 };
 use anyhow::{anyhow, Result};
@@ -16,6 +17,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
+use futures_util::StreamExt;
+use tokio::sync::mpsc;
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub struct PcGatewayEndpointHealth {
@@ -177,6 +180,70 @@ impl PcGatewayClient {
         .await
     }
 
+
+    /// Execute a command with streaming output via SSE.
+    /// Returns an mpsc receiver that produces CommandStreamEvent items.
+    pub async fn stream_command(
+        &self,
+        workspace_id: impl Into<String>,
+        command: CommandRequest,
+    ) -> Result<mpsc::Receiver<CommandStreamEvent>> {
+        self.policy.validate_command(&command).map_err(|m| anyhow!(m))?;
+        let workspace_id = workspace_id.into();
+        let (tx, rx) = mpsc::channel::<CommandStreamEvent>(64);
+        let http = self.http.clone();
+        let endpoints = self.endpoint_plan();
+        let auth_token = self.config.auth_token.clone();
+        let config = self.config.clone();
+        let tx_err = tx.clone();
+        tokio::spawn(async move {
+            let mut last_error = String::new();
+            for endpoint in &endpoints {
+                if let Err(e) = endpoint.validate(config.allow_http_on_local_network) {
+                    last_error = e;
+                    continue;
+                }
+                let url = format!("{}/v1/gateway/exec/stream", endpoint.base_url.trim_end_matches('/'));
+                let mut builder = http.post(&url).json(&serde_json::json!({"workspace_id": workspace_id, "command": command}));
+                if let Some(ref token) = auth_token {
+                    builder = builder.bearer_auth(token);
+                }
+                match builder.send().await {
+                    Ok(response) => {
+                        if !response.status().is_success() {
+                            let status = response.status();
+                            let text = response.text().await.unwrap_or_default();
+                            let _ = tx_err.send(CommandStreamEvent::Error(format!("HTTP {}: {}", status, text))).await;
+                            continue;
+                        }
+                        let mut bytes_stream = response.bytes_stream();
+                        let mut buf = String::new();
+                        while let Some(Ok(chunk)) = bytes_stream.next().await {
+                            if let Ok(text) = String::from_utf8(chunk.to_vec()) {
+                                buf.push_str(&text);
+                                while let Some(pos) = buf.find("\n\n") {
+                                    let raw = buf[..pos].to_string();
+                                    buf = buf[pos + 2..].to_string();
+                                    if let Some(ev) = parse_sse_event(&raw) {
+                                        if tx.send(ev).await.is_err() {
+                                            return;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        return;
+                    }
+                    Err(e) => {
+                        last_error = e.to_string();
+                        continue;
+                    }
+                }
+            }
+            let _ = tx_err.send(CommandStreamEvent::Error(format!("all endpoints failed: {}", last_error))).await;
+        });
+        Ok(rx)
+    }
     pub async fn open_terminal(
         &self,
         workspace_id: impl Into<String>,
@@ -356,6 +423,19 @@ fn health_record(endpoint: &PcGatewayEndpointCandidate) -> PcGatewayEndpointHeal
         failure_count: 0,
         last_latency_ms: None,
         last_error: None,
+    }
+}
+
+
+/// Parse a single SSE event string (without the trailing `\n\n`).
+fn parse_sse_event(raw: &str) -> Option<CommandStreamEvent> {
+    let data = raw.strip_prefix("data: ")?;
+    let value: serde_json::Value = serde_json::from_str(data).ok()?;
+    match value.get("kind")?.as_str()? {
+        "stdout" => Some(CommandStreamEvent::Stdout(value.get("data")?.as_str()?.to_string())),
+        "stderr" => Some(CommandStreamEvent::Stderr(value.get("data")?.as_str()?.to_string())),
+        "exit" => Some(CommandStreamEvent::Exit(value.get("code")?.as_i64().map(|c| c as i32))),
+        _ => None,
     }
 }
 
