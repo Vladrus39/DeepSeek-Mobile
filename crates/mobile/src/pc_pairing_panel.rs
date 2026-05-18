@@ -253,9 +253,15 @@ pub fn pc_pairing_panel(mut state: Signal<PcPairingUiState>, mut native_bridge: 
                                 state.set(next);
                             }
                             PcPairingUiStatus::Exported => {
+                                let zip_path = snap.export.as_ref().map(|e| e.zip_path.display().to_string());
                                 let mut next = state();
                                 next.mark_waiting_for_pc();
                                 state.set(next);
+                                if let Some(path) = zip_path {
+                                    let mut bridge = native_bridge();
+                                    bridge.enqueue_share_file(&path);
+                                    native_bridge.set(bridge);
+                                }
                             }
                             PcPairingUiStatus::WaitingForPc | PcPairingUiStatus::Offline => {
                                 let mut bridge = native_bridge();
