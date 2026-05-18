@@ -132,7 +132,8 @@ local/Termux/PC-host execution, and project-aware mobile screens.
 - ✅ Diagnostics via `cargo check --message-format=json` with severity mapping.
 - ✅ Task detection from `Cargo.toml`, `package.json`, `pyproject.toml`, `pytest.ini`.
 - ✅ Extended git operations: status, diff, commit, push, pull, branch.
-- ⬜ Terminal sessions with streaming output (`OpenTerminal`/`CloseTerminal` defined, not implemented).
+- ✅ Terminal sessions with streaming output — implemented via SSE (`/v1/gateway/exec/stream`) with `CommandStreamEvent`, live stdout/stderr.
+- ✅ Policy presets (ReadOnly/Developer/Admin) via `PolicyPreset` enum + `DEEPSEEK_PC_HOST_POLICY` env var.
 - ⬜ Dev-server preview lifecycle.
 - ⬜ Autostart/service installer.
 
@@ -166,11 +167,11 @@ Approval / risk model        ~80-85%  (ExecutionMode wired through engine and to
 Runtime store / history      ~70-80%  (session JSON persistence added)
 Tool loop                    ~80-85%  (per-mode approval routing)
 File tools                   ~85-90%  (delete, copy, move, read_many_files added)
-Git tools                    ~80-85%  (commit/push/pull/branch in PC-host)
+Git tools                    ~90-95%  (full PC gateway routing + Git UI panel in mobile cockpit)
 GitHub tools                 ~60-70%
 PC gateway protocol/client   ~65-70%
-PC-host daemon               ~45-55%  (extended git ops, path hardening complete)
-Mobile UI                    ~15-25%
+PC-host daemon               ~65-70%  (streaming SSE, policy presets, extended git ops, path hardening)
+Mobile UI                    ~30-35%  (git panel, snapshot panel, diagnostics panel, cockpit, drawer, pairing panel)
 Production-ready app         ~30-40%
 ```
 

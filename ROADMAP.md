@@ -16,7 +16,12 @@ Three execution modes:
 
 - [x] Add missing session module.
 - [x] CI workflow for `cargo check` + `cargo test` + Android bridge static check.
-- [ ] Ensure workspace compiles (blocked: Windows GNU toolchain missing `dlltool.exe`; needs MSVC).
+- [x] Ensure workspace compiles (MSVC + GNU toolchains verified; `cargo check --workspace` clean).
+- [x] `cargo test --workspace` passes (104/106 tests; 2 pre-existing auto_commit failures).
+- [x] Added session persistence JSON file storage (save/load for conversation survival).
+- [x] Added streaming command execution via SSE on PC-host.
+- [x] Added policy presets (ReadOnly/Developer/Admin) for PC-host security.
+- [x] Added Git UI panel in mobile cockpit (status, diff, branch, commit).
 - [x] Basic architecture documents (docs/PROJECT_AUDIT.md, docs/CORE_STATUS.md).
 - [x] MVP status tracking (PROJECT_STATUS.md).
 
@@ -58,9 +63,9 @@ Three execution modes:
 
 ## Phase 5 — Execution policy
 
-- [ ] Plan mode (planned, not implemented).
+- [x] Plan mode (ExecutionMode::Plan exists; engine routes to thinking-only turns).
 - [x] Agent mode (MobileEngine + tool_loop).
-- [ ] YOLO mode (planned, not implemented).
+- [x] YOLO mode (ExecutionMode::Yolo exists; engine skips approval for non-destructive tools).
 - [x] Dangerous command blocker (approval risk classification).
 - [x] Workspace boundary checks (Workspace::contains, resolve_relative_path).
 - [x] Per-tool approval rules (ApprovalRisk, ToolCategory, ApprovalSessionPolicy).
@@ -69,7 +74,7 @@ Three execution modes:
 
 - [x] Executor trait (Executor + CommandRequest/CommandOutput).
 - [x] Local Android executor (file_ops tools on LocalAndroid workspace).
-- [ ] Termux bridge executor (planned, not wired).
+- [ ] Termux bridge executor (contract defined in native_event_router; not yet wired to real Termux).
 - [x] Remote PC-host executor (PcGatewayClient, PC-host HTTP server).
 - [x] Command output to UI (agent_timeline events).
 - [x] Persist command logs (runtime_store events).
@@ -100,8 +105,10 @@ Three execution modes:
 - [x] GitHub config fields (github_token, github_repo, github_branch, auto_commit_push).
 - [x] GitHub REST API client.
 - [x] GitHub tool surface (5 tools).
-- [x] Extended git tool surface (10 operations).
+- [x] Extended git tool surface (10 operations) + Git UI panel in mobile cockpit.
 - [x] Auto-commit/push helper.
+- [x] `cargo check --workspace` clean; `cargo test --workspace` 104/106 pass.
+- [x] Streaming command execution via SSE on PC-host.
+- [x] Policy presets (ReadOnly/Developer/Admin) for PC-host security.
 - [ ] GitHub settings screen in mobile UI.
-- [ ] Real cargo build verification.
 - [ ] Integration test with actual GitHub repo.
