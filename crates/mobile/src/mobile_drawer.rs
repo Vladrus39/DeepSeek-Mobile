@@ -205,6 +205,87 @@ pub fn mobile_drawer(
     }
 }
 
+
+/// Bottom navigation bar component — 5 quick-access tabs at screen bottom.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BottomNavTab {
+    pub section: CockpitSection,
+    pub icon: &'static str,
+    pub label: &'static str,
+}
+
+pub fn default_bottom_nav_tabs() -> Vec<BottomNavTab> {
+    vec![
+        BottomNavTab { section: CockpitSection::Chat, icon: "\u{1f4ac}", label: "Chat" },
+        BottomNavTab { section: CockpitSection::Files, icon: "\u{1f4c1}", label: "Files" },
+        BottomNavTab { section: CockpitSection::Terminal, icon: "\u{2328}", label: "Terminal" },
+        BottomNavTab { section: CockpitSection::Git, icon: "\u{1f500}", label: "Git" },
+        BottomNavTab { section: CockpitSection::Settings, icon: "\u{2699}", label: "Settings" },
+    ]
+}
+
+pub fn bottom_nav_bar(
+    active_section: CockpitSection,
+    approval_count: usize,
+    on_select: EventHandler<CockpitSection>,
+) -> Element {
+    let tabs = default_bottom_nav_tabs();
+
+    rsx! {
+        div {
+            display: "flex",
+            justify_content: "space-around",
+            align_items: "center",
+            background_color: "#0b1018",
+            border_top: "1px solid #1f2937",
+            padding: "6px 0",
+            padding_bottom: "10px",
+            position: "relative",
+            z_index: "5",
+
+            for tab in tabs {
+                button {
+                    key: "{tab.section.title()}",
+                    position: "relative",
+                    display: "flex",
+                    flex_direction: "column",
+                    align_items: "center",
+                    gap: "2px",
+                    background_color: "transparent",
+                    border: "none",
+                    color: if tab.section == active_section { "#3b82f6" } else { "#6b7280" },
+                    font_size: if tab.section == active_section { "20px" } else { "18px" },
+                    padding: "4px 12px",
+                    onclick: move |_| on_select.call(tab.section),
+
+                    div { "{tab.icon}" }
+                    div {
+                        font_size: "10px",
+                        font_weight: if tab.section == active_section { "700" } else { "400" },
+                        "{tab.label}"
+                    }
+                    if tab.section == CockpitSection::Chat && approval_count > 0 {
+                        div {
+                            position: "absolute",
+                            top: "2px",
+                            right: "2px",
+                            background_color: "#ca8a04",
+                            color: "white",
+                            border_radius: "999px",
+                            padding: "2px 6px",
+                            font_size: "9px",
+                            font_weight: "bold",
+                            line_height: "1",
+                            "{approval_count}"
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+
 #[cfg(test)]
 mod tests {
     use super::{default_drawer_items, CockpitSection};

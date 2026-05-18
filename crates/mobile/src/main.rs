@@ -18,6 +18,7 @@ mod native_bridge;
 mod native_document_picker;
 mod native_event_router;
 mod native_pc_discovery;
+mod onboarding_panel;
 mod pc_pairing_manager;
 mod pc_pairing_panel;
 mod pc_pairing_state;
@@ -44,7 +45,7 @@ use git_state::GitUiState;
 use dioxus::prelude::*;
 use document_picker::{DocumentPickerRequest, DocumentPickerState};
 use mobile_approval_panel::mobile_approval_panel;
-use mobile_drawer::{mobile_drawer, CockpitSection};
+use mobile_drawer::{bottom_nav_bar, mobile_drawer, CockpitSection};
 use mobile_engine_runner::{
     continue_mobile_approval, load_default_mobile_approval_cards, run_mobile_turn_streaming,
 };
@@ -55,6 +56,7 @@ use saved_timeline_loader::load_default_saved_events;
 use settings_state::SettingsFormState;
 use snapshots_state::SnapshotsUiState;
 use terminal_state::TerminalUiState;
+use onboarding_panel::onboarding_panel;
 
 fn main() {
     dioxus::launch(app);
@@ -78,7 +80,19 @@ fn app() -> Element {
     let mut diagnostics_state = use_signal(DiagnosticsUiState::default);
     let git_state = use_signal(GitUiState::default);
     let terminal_state = use_signal(TerminalUiState::default);
-    let settings_state = use_signal(SettingsFormState::default);
+    let mut settings_state = use_signal(SettingsFormState::default);
+    let mut onboarding_done = use_signal(|| {
+        let config_path = std::path::PathBuf::from(".deepseek-mobile").join("config.json");
+        if let Ok(json) = std::fs::read_to_string(&config_path) {
+            if let Ok(config) = serde_json::from_str::<Config>(&json) {
+                let key = config.api_key.trim();
+                if !key.is_empty() && key.starts_with("sk-") {
+                    return true;
+                }
+            }
+        }
+        false
+    });
 
     // Route native bridge terminal events into terminal UI state
     let terminal_event_bridge = native_bridge;
@@ -152,6 +166,17 @@ fn app() -> Element {
                 timeline.set(next_timeline);
             }
         }
+    }
+
+    if !onboarding_done() && settings_state().api_key.trim().is_empty() {
+        return rsx! {
+            {onboarding_panel(
+                EventHandler::new(move |api_key: String| {
+                    settings_state.write().api_key = api_key;
+                    onboarding_done.set(true);
+                })
+            )}
+        };
     }
 
     rsx! {
@@ -262,6 +287,7 @@ fn app() -> Element {
                 } else {
                     {cockpit_section_panel(
                         active_section(),
+                        approval_cards,
                         pc_pairing_state,
                         native_bridge,
                         project_files_state,
@@ -270,6 +296,37 @@ fn app() -> Element {
                         git_state,
                         terminal_state,
                         settings_state,
+                        EventHandler::new(move |(approval_id, decision): (String, ReviewDecision)| {
+                            let approval_id = approval_id.clone();
+                            let decision = decision.clone();
+                            is_loading.set(true);
+                            spawn(async move {
+                                match continue_mobile_approval(Config::default(), approval_id.clone(), decision.clone()).await {
+                                    Ok(result) => {
+                                        let mut next_timeline = timeline();
+                                        push_agent_event(&mut next_timeline, &AgentEvent::Status(format!("Approval decision applied: {:?}", decision)));
+                                        let mut next_snapshots = snapshots_state();
+                                        let mut next_diagnostics = diagnostics_state();
+                                        for event in &result.events {
+                                            push_agent_event(&mut next_timeline, event);
+                                            next_snapshots.apply_agent_event(event);
+                                            next_diagnostics.apply_agent_event(event);
+                                        }
+                                        push_agent_event(&mut next_timeline, &AgentEvent::Status(format!("Executed tools: {} | session grants: {}", result.executed_count, result.session_grant_count)));
+                                        timeline.set(next_timeline);
+                                        snapshots_state.set(next_snapshots);
+                                        diagnostics_state.set(next_diagnostics);
+                                        approval_cards.set(result.remaining_approval_cards);
+                                    }
+                                    Err(error) => {
+                                        let mut next_timeline = timeline();
+                                        push_agent_event(&mut next_timeline, &AgentEvent::Error(format!("Approval continuation failed: {}", error)));
+                                        timeline.set(next_timeline);
+                                    }
+                                }
+                                is_loading.set(false);
+                            });
+                        })
                     )}
                 }
             }
@@ -449,6 +506,14 @@ fn app() -> Element {
                     "Send"
                 }
             }
+
+            {bottom_nav_bar(
+                active_section(),
+                approval_cards().len(),
+                EventHandler::new(move |section| {
+                    active_section.set(section);
+                })
+            )}
         }
     }
 }

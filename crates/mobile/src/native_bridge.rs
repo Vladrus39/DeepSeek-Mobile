@@ -74,6 +74,13 @@ impl NativeBridgeState {
         });
     }
 
+    pub fn enqueue_share_file(&mut self, path: impl Into<String>) {
+        self.enqueue(NativeMobileCommand::ShareFile {
+            path: path.into(),
+            mime_type: Some("application/zip".to_string()),
+        });
+    }
+
     pub fn pop_next_command(&mut self) -> Option<NativeMobileCommand> {
         if self.pending_commands.is_empty() {
             None
