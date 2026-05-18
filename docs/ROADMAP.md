@@ -1,4 +1,4 @@
-# DeepSeek-Mobile — Roadmap (2026-05-18)
+# DeepSeek-Mobile — Roadmap (2026-05-18 evening)
 
 ## Phase 0: Foundation ✅
 - [x] Workspace structure (core/mobile/pc-host crates)
@@ -23,7 +23,7 @@
 - [x] Mobile restore panel with confirmation dialog
 - [x] Snapshot pruning policy
 - [ ] PC-gateway snapshot path for remote workspaces
-- [ ] Post-turn auto-snapshot after successful file changes
+- [x] Post-turn auto-snapshot after successful file changes
 
 ## Phase 3: PC gateway & execution ✅ (mostly)
 - [x] PC-host HTTP server with auth, path traversal protection
@@ -55,17 +55,17 @@
 - [x] Diagnostics panel (severity badges)
 - [x] Terminal panel (session tabs, output, input)
 - [x] Native bridge: document picker, PC discovery, terminal commands
-- [ ] File tree explorer
+- [x] File tree explorer with expandable directories
 - [ ] Diff/patch viewer
-- [ ] Approval card screen
-- [ ] Onboarding screen (DeepSeek API key)
-- [ ] Settings screens (GitHub, cloud disks, security)
-- [ ] Bottom navigation tabs
+- [x] Approval card screen (real approval panel in cockpit)
+- [x] Onboarding screen (DeepSeek API key) with config save
+- [x] Settings screens (GitHub, DeepSeek, execution mode, thinking level)
+- [x] Bottom navigation tabs (Chat/Files/Terminal/Git/Settings)
 
 ## Phase 6: Production polish (not started)
-- [ ] DeepSeek API key onboarding + secure storage
+- [x] DeepSeek API key onboarding + secure storage
 - [ ] GitHub OAuth flow
-- [ ] Real button wiring for Create ZIP / Share ZIP / Check PC
+- [x] Real button wiring for Create ZIP / Share ZIP / Check PC
 - [ ] Auto-commit/push with real GitHub repo
 - [ ] Background task manager
 - [ ] MCP/plugin host

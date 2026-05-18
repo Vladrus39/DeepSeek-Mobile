@@ -74,7 +74,7 @@ Three execution modes:
 
 - [x] Executor trait (Executor + CommandRequest/CommandOutput).
 - [x] Local Android executor (file_ops tools on LocalAndroid workspace).
-- [ ] Termux bridge executor (contract defined in native_event_router; not yet wired to real Termux).
+- [ ] Termux bridge executor (contract defined; not yet wired to real Termux).
 - [x] Remote PC-host executor (PcGatewayClient, PC-host HTTP server).
 - [x] Command output to UI (agent_timeline events).
 - [x] Persist command logs (runtime_store events).
@@ -111,4 +111,4 @@ Three execution modes:
 - [x] Streaming command execution via SSE on PC-host.
 - [x] Policy presets (ReadOnly/Developer/Admin) for PC-host security.
 - [x] GitHub settings screen in mobile UI.
-- [ ] Integration test with actual GitHub repo.
+- [*] Integration test with actual GitHub repo (needs real token).
