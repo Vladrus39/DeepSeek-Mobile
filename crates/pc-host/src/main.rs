@@ -12,7 +12,7 @@ use deepseek_mobile_core::{
     CommandOutput, CommandRequest, PcDiagnostic, PcDiagnosticSeverity, PcEnvironmentDescriptor,
     PcGatewayCapability, PcGatewayConnectionStatus, PcGatewayDirEntry, PcGatewayError,
     PcGatewayHealth, PcGatewayRequest, PcGatewayRequestEnvelope, PcGatewayResponse,
-    PcGatewayResponseEnvelope, PcGatewaySecurityPolicy, PcTaskDescriptor, PcTaskKind,
+    PcGatewayResponseEnvelope, PcGatewaySecurityPolicy, PolicyPreset, PcTaskDescriptor, PcTaskKind,
     PcTerminalSession, PcWorkspaceGrant,
 };
 use serde::Deserialize;
@@ -90,6 +90,15 @@ impl PcHostConfig {
             .canonicalize()
             .with_context(|| format!("canonicalize workspace root {}", workspace_root.display()))?;
         let auth_token = env::var("DEEPSEEK_PC_HOST_TOKEN").ok().filter(|token| !token.is_empty());
+        let preset = env::var("DEEPSEEK_PC_HOST_POLICY")
+            .ok()
+            .and_then(|v| match v.to_lowercase().as_str() {
+                "readonly" | "read-only" => Some(PolicyPreset::ReadOnly),
+                "developer" | "dev" => Some(PolicyPreset::Developer),
+                "admin" => Some(PolicyPreset::Admin),
+                _ => None,
+            })
+            .unwrap_or(PolicyPreset::Developer);
 
         let workspace = PcWorkspaceGrant::new(
             workspace_id,
@@ -108,7 +117,7 @@ impl PcHostConfig {
             auth_token,
             workspace,
             workspace_root,
-            security_policy: PcGatewaySecurityPolicy::default(),
+            security_policy: PcGatewaySecurityPolicy::from_preset(preset),
         })
     }
 

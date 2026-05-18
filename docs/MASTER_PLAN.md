@@ -239,7 +239,7 @@ Remaining checklist:
 
 - [x] Add pairing flow end-to-end from mobile UI.
 - [ ] Add PC-host logs and health detail.
-- [ ] Add command allow/deny policy presets.
+- [x] Add command allow/deny policy presets.
 - [x] Add long-running command streaming instead of only completed output.
 - [ ] Add terminal session persistence.
 - [ ] Add diagnostics implementation for TypeScript and Python.
@@ -427,6 +427,7 @@ The next implementation sequence is fixed:
 - 2026-05-17: Implemented long-running command streaming via SSE on PC-host (`/v1/gateway/exec/stream`): added `CommandStreamEvent` type, `PcGatewayClient.stream_command()` with mpsc channel and endpoint failover, `parse_sse_event()` helper, and wired streaming into `ToolExecutionCoordinator` for `exec_shell` on PC gateway.
 - 2026-05-17: Completed git tool PC gateway routing: added `git_commit`, `git_push`, `git_pull`, `git_branch` to `PcGatewayClient`; updated `ToolExecutionCoordinator.execute_on_pc_gateway` to use dedicated git handlers instead of generic `execute_command`; fixed parallel test race condition in `git` tool tests.
 - 2026-05-17: Added Git UI panel to mobile cockpit: created `GitUiState` with status/diff/branch/commit tracking, `git_panel` Dioxus component with `SectionCard` + `DiffBlock` sub-components, wired into `cockpit_section_panel` and `main.rs` replacing the placeholder; build verified clean across all crates.
+- 2026-05-18: Added command allow/deny policy presets: `PolicyPreset` enum (ReadOnly/Developer/Admin), preset constructors on `PcGatewaySecurityPolicy`, `DEEPSEEK_PC_HOST_POLICY` env var support in PC-host config; exported from core lib.
 
 ## 6. Definition of done for the project
 

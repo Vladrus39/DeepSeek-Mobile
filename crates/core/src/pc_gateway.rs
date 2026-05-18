@@ -277,6 +277,9 @@ impl PcGatewayConfig {
     }
 }
 
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub enum PolicyPreset { ReadOnly, Developer, Admin }
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct PcGatewaySecurityPolicy {
     pub require_tls: bool,
@@ -327,6 +330,28 @@ impl Default for PcGatewaySecurityPolicy {
 }
 
 impl PcGatewaySecurityPolicy {
+    pub fn read_only() -> Self {
+        Self { max_command_seconds: 0, max_output_bytes: 64 * 1024, allowed_programs: vec![], ..Self::default() }
+    }
+    pub fn developer() -> Self { Self::default() }
+    pub fn admin() -> Self {
+        Self {
+            require_tls: false,
+            require_per_action_approval: false,
+            max_command_seconds: 600,
+            max_output_bytes: 4 * 1024 * 1024,
+            allowed_programs: vec![],
+            blocked_path_fragments: vec![],
+        }
+    }
+    pub fn from_preset(preset: PolicyPreset) -> Self {
+        match preset {
+            PolicyPreset::ReadOnly => Self::read_only(),
+            PolicyPreset::Developer => Self::developer(),
+            PolicyPreset::Admin => Self::admin(),
+        }
+    }
+
     pub fn allows_program(&self, program: &str) -> bool {
         self.allowed_programs
             .iter()

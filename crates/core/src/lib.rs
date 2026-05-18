@@ -71,7 +71,7 @@ pub use pc_gateway::{
     PcGatewayConnectionStatus, PcGatewayDirEntry, PcGatewayEndpointCandidate, PcGatewayError,
     PcGatewayHealth, PcGatewayPairingRequest, PcGatewayPairingResponse, PcGatewayRequest,
     PcGatewayRequestEnvelope, PcGatewayResponse, PcGatewayResponseEnvelope,
-    PcGatewaySecurityPolicy, PcGatewayTransportMode, PcGatewayTrustLevel, PcPreviewDescriptor,
+    PcGatewaySecurityPolicy, PcGatewayTransportMode, PcGatewayTrustLevel, PolicyPreset, PcPreviewDescriptor,
     CommandStreamEvent, PcTaskDescriptor, PcTaskKind, PcTerminalSession, PcWorkspaceGrant,
     PcWorkspaceIndexSummary,
 };
