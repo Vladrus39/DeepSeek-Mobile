@@ -2,13 +2,14 @@ use crate::project_files::{
     choose_default_preview_file, read_project_file, scan_project_tree, ProjectFilePreview,
     ProjectTreeSnapshot, DEFAULT_MAX_FILE_BYTES, DEFAULT_MAX_TREE_ENTRIES,
 };
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 const DEFAULT_WORKSPACE_ROOT: &str = ".";
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ProjectFilesUiState {
     pub workspace_root: String,
+    pub browsing_dir: String,
     pub snapshot: ProjectTreeSnapshot,
     pub selected_path: Option<String>,
     pub preview: Option<ProjectFilePreview>,
@@ -26,6 +27,7 @@ impl Default for ProjectFilesUiState {
                 truncated: false,
             },
             workspace_root,
+            browsing_dir: String::new(),
             selected_path: None,
             preview: None,
             last_error: None,
@@ -38,7 +40,12 @@ impl ProjectFilesUiState {
     pub fn refresh(&mut self) {
         self.loaded = true;
         let root = PathBuf::from(&self.workspace_root);
-        match scan_project_tree(&root, DEFAULT_MAX_TREE_ENTRIES) {
+        let scan_root = if self.browsing_dir.is_empty() {
+            root.clone()
+        } else {
+            root.join(&self.browsing_dir)
+        };
+        match scan_project_tree(&scan_root, DEFAULT_MAX_TREE_ENTRIES) {
             Ok(snapshot) => {
                 let selected = self
                     .selected_path
@@ -62,10 +69,37 @@ impl ProjectFilesUiState {
         }
     }
 
+    pub fn navigate_to_dir(&mut self, subdir: String) {
+        self.browsing_dir = subdir;
+        self.selected_path = None;
+        self.preview = None;
+        self.refresh();
+    }
+
+    pub fn navigate_up(&mut self) {
+        if self.browsing_dir.is_empty() {
+            return;
+        }
+        let parent = Path::new(&self.browsing_dir).parent();
+        match parent {
+            Some(p) if p.to_string_lossy().is_empty() => self.browsing_dir = String::new(),
+            Some(p) => self.browsing_dir = p.to_string_lossy().to_string(),
+            None => self.browsing_dir = String::new(),
+        }
+        self.selected_path = None;
+        self.preview = None;
+        self.refresh();
+    }
+
     pub fn open_file(&mut self, path: impl Into<String>) {
         let path = path.into();
         let root = PathBuf::from(&self.workspace_root);
-        match read_project_file(&root, &path, DEFAULT_MAX_FILE_BYTES) {
+        let file_path = if self.browsing_dir.is_empty() {
+            PathBuf::from(&path)
+        } else {
+            PathBuf::from(&self.browsing_dir).join(&path)
+        };
+        match read_project_file(&root, &file_path, DEFAULT_MAX_FILE_BYTES) {
             Ok(preview) => {
                 self.selected_path = Some(path);
                 self.preview = Some(preview);
@@ -76,6 +110,14 @@ impl ProjectFilesUiState {
                 self.preview = None;
                 self.last_error = Some(format!("Failed to open {}: {}", path, error));
             }
+        }
+    }
+
+    pub fn current_browsing_display(&self) -> String {
+        if self.browsing_dir.is_empty() {
+            format!("Root: {}", self.workspace_root)
+        } else {
+            format!("Browse: {}/{}", self.workspace_root, self.browsing_dir)
         }
     }
 

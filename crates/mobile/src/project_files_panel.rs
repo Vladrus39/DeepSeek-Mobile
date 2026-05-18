@@ -112,6 +112,7 @@ fn tree_card(
     selected_path: Option<&str>,
     mut state: Signal<ProjectFilesUiState>,
 ) -> Element {
+    let browsing_dir = state().browsing_dir.clone();
     rsx! {
         div {
             background_color: "#020617",
@@ -122,10 +123,34 @@ fn tree_card(
             flex_direction: "column",
             gap: "6px",
 
-            div { font_size: "14px", font_weight: "bold", "Workspace tree" }
+            div {
+                display: "flex",
+                justify_content: "space-between",
+                align_items: "center",
+                gap: "8px",
+                div { font_size: "14px", font_weight: "bold", "Workspace tree" }
+                if !browsing_dir.is_empty() {
+                    button {
+                        background_color: "#1f2937",
+                        color: "white",
+                        border: "1px solid #374151",
+                        border_radius: "999px",
+                        padding: "4px 8px",
+                        font_size: "11px",
+                        onclick: move |_| {
+                            let mut next = state();
+                            next.navigate_up();
+                            state.set(next);
+                        },
+                        "\u{2190} Up"
+                    }
+                }
+            }
+
+            div { color: "#9ca3af", font_size: "11px", "{state().current_browsing_display()}" }
 
             if snapshot.entries.is_empty() {
-                div { color: "#9ca3af", font_size: "12px", "No files found in workspace root yet." }
+                div { color: "#9ca3af", font_size: "12px", "No files found in this directory." }
             } else {
                 for entry in snapshot.entries.iter().take(120) {
                     if matches!(entry.kind, ProjectEntryKind::File) {
@@ -139,7 +164,6 @@ fn tree_card(
                             justify_content: "space-between",
                             gap: "8px",
                             text_align: "left",
-                            margin_left: "{entry.depth * 12}px",
                             onclick: {
                                 let path = entry.path.clone();
                                 move |_| {
@@ -155,21 +179,37 @@ fn tree_card(
                                 white_space: "nowrap",
                                 overflow: "hidden",
                                 text_overflow: "ellipsis",
-                                "• {entry.name}"
+                                "\u{2022} {entry.name}"
                             }
                             if let Some(size_bytes) = entry.size_bytes {
                                 div { color: "#6b7280", font_size: "11px", "{size_bytes} B" }
                             }
                         }
                     } else {
-                        div {
+                        button {
                             display: "flex",
                             justify_content: "space-between",
                             gap: "8px",
                             padding: "6px 8px",
                             border_radius: "10px",
+                            border: "1px solid transparent",
                             background_color: "#0f172a",
-                            margin_left: "{entry.depth * 12}px",
+                            text_align: "left",
+                            color: "white",
+                            onclick: {
+                                let path = entry.path.clone();
+                                let browsing = state().browsing_dir.clone();
+                                let target = if browsing.is_empty() {
+                                    path.clone()
+                                } else {
+                                    format!("{}/{}", browsing, path)
+                                };
+                                move |_| {
+                                    let mut next = state();
+                                    next.navigate_to_dir(target.clone());
+                                    state.set(next);
+                                }
+                            },
 
                             div {
                                 color: "#93c5fd",
@@ -177,7 +217,7 @@ fn tree_card(
                                 white_space: "nowrap",
                                 overflow: "hidden",
                                 text_overflow: "ellipsis",
-                                "▸ {entry.name}"
+                                "\u{25b8} {entry.name}/"
                             }
                         }
                     }
