@@ -179,7 +179,7 @@ Checklist:
 - [x] Upgrade `git` tool from contract placeholder to real routed operations.
 - [x] Add Git UI panel: status, diff, branch, commit draft, pull/push approval.
 - [x] Add web/fetch/search tools only behind explicit network capability and approval policy.
-- [ ] Add GitHub tool surface later, preferably PC-side or remote-safe.
+- [x] Add GitHub tool surface later, preferably PC-side or remote-safe.
 
 Acceptance criteria:
 
@@ -238,7 +238,7 @@ Already done:
 Remaining checklist:
 
 - [x] Add pairing flow end-to-end from mobile UI.
-- [ ] Add PC-host logs and health detail.
+- [x] Add PC-host logs and health detail.
 - [x] Add command allow/deny policy presets.
 - [x] Add long-running command streaming instead of only completed output.
 - [ ] Add terminal session persistence.
@@ -332,11 +332,11 @@ Goal: turn the prototype into a usable product.
 
 Checklist:
 
-- [ ] Cockpit dashboard: status, active workspace, executor, pending approvals, diagnostics, tasks.
-- [ ] Git panel.
-- [ ] Snapshot/rollback panel.
-- [ ] Settings/profile screen.
-- [ ] API key setup and secret storage plan.
+- [x] Cockpit dashboard: status, active workspace, executor, pending approvals, diagnostics, tasks.
+- [x] Git panel.
+- [x] Snapshot/rollback panel.
+- [x] Settings/profile screen.
+- [x] API key setup and secret storage plan.
 - [ ] Android build/release notes.
 - [ ] PC-host binary/release notes.
 - [ ] Troubleshooting docs.
@@ -429,6 +429,7 @@ The next implementation sequence is fixed:
 - 2026-05-17: Added Git UI panel to mobile cockpit: created `GitUiState` with status/diff/branch/commit tracking, `git_panel` Dioxus component with `SectionCard` + `DiffBlock` sub-components, wired into `cockpit_section_panel` and `main.rs` replacing the placeholder; build verified clean across all crates.
 - 2026-05-18: Added command allow/deny policy presets: `PolicyPreset` enum (ReadOnly/Developer/Admin), preset constructors on `PcGatewaySecurityPolicy`, `DEEPSEEK_PC_HOST_POLICY` env var support in PC-host config; exported from core lib.
 - 2026-05-18 (continued): Added web tools (`web_fetch`/`web_search` with DuckDuckGo, `ApprovalRequirement::Suggest`, `Network` capability), snapshot pruning (`prune_old_snapshots`), mobile snapshot restore UI (confirmation dialog with file-count/deletion warning), terminal panel UI + state + native bridge commands/events (`OpenTerminal`/`TerminalInput`/`CloseTerminal`, `TerminalOpened`/`TerminalOutput`/`TerminalClosed`/`TerminalFailed`), terminal event routing in `native_event_router.rs` and `main.rs` `use_effect`, all wired into cockpit drawer. Build verified clean across all crates.
+- 2026-05-18 (session 2): Added mobile Settings panel (`settings_panel.rs`, `settings_state.rs`) with full config form: DeepSeek API key, model mode (Auto/Flash/Pro), execution mode (Plan/Agent/YOLO), thinking level (Off-High-Max), external access, GitHub token/repo/branch, auto-push toggle. Config persisted to `.deepseek-mobile/config.json`. Wired Settings panel into `cockpit_section_panel.rs` replacing placeholder. Extended `PcGatewayHealth` with `uptime_secs`, `request_count`, `error_count`. Created `pc_logs` module (`LogRing`, `PcGatewayLogEntry`, `PcGatewayLogs`). Added `/v1/gateway/logs` endpoint on PC-host with 200-entry ring buffer, request logging with operation names and latency tracking. `health_handler` returns live uptime + request/error stats. Added `host_detail_text()` to `PcPairingUiState` and "Host details" section in `pc_pairing_panel`. Build: `cargo check` clean across core, pc-host, mobile. Pushed to `origin/main`.
 
 ## 6. Definition of done for the project
 

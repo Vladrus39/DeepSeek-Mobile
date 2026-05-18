@@ -140,14 +140,15 @@ local/Termux/PC-host execution, and project-aware mobile screens.
 - ✅ Extended git operations: status, diff, commit, push, pull, branch.
 - ✅ Terminal sessions with streaming output — implemented via SSE (`/v1/gateway/exec/stream`) with `CommandStreamEvent`, live stdout/stderr.
 - ✅ Policy presets (ReadOnly/Developer/Admin) via `PolicyPreset` enum + `DEEPSEEK_PC_HOST_POLICY` env var.
+- ✅ Request logs and health detail — `/v1/gateway/logs` endpoint, `LogRing` (200 entries), operation names, latency tracking, extended `PcGatewayHealth` with `uptime_secs`, `request_count`, `error_count`.
 - ⬜ Dev-server preview lifecycle.
 - ⬜ Autostart/service installer.
 
 ### Mobile UI
 
-- Onboarding screen for DeepSeek API key.
-- **GitHub settings screen** (token, repo, auto-push toggle).
-- Settings screens for DeepSeek, GitHub, cloud disks and PC-host.
+- ✅ Onboarding screen for DeepSeek API key (settings_panel with full config form).
+- ✅ **GitHub settings screen** (token, repo, branch, auto-push toggle — in settings_panel).
+- ✅ Settings screens for DeepSeek, GitHub, cloud disks and PC-host (settings_panel covers API key, model, execution, thinking, GitHub).
 - Real file tree.
 - Diff/patch viewer.
 - Approval card screen.
@@ -176,24 +177,24 @@ Runtime store / history      ~70-80%  (session JSON persistence added)
 Tool loop                    ~80-85%  (per-mode approval routing)
 File tools                   ~85-90%  (delete, copy, move, read_many_files added)
 Git tools                    ~90-95%  (full PC gateway routing + Git UI panel in mobile cockpit)
-GitHub tools                 ~60-70%
+GitHub tools                 ~75-85%  (API + tools + settings UI added)
 PC gateway protocol/client   ~65-70%
-PC-host daemon               ~65-70%  (streaming SSE, policy presets, extended git ops, path hardening)
-Mobile UI                    ~40-45%  (git panel, snapshot panel, diagnostics panel, terminal panel, cockpit, drawer, pairing panel, native bridge commands)
+PC-host daemon               ~70-80%  (streaming SSE, policy presets, extended git ops, path hardening, request logging, /v1/gateway/logs endpoint, health detail)
+Mobile UI                    ~50-55%  (settings panel, git panel, snapshot panel, diagnostics panel, terminal panel, cockpit, drawer, pairing panel, host details, native bridge commands)
 Production-ready app         ~30-40%
 ```
 
 ## Immediate priorities
 
 1. ✅ Build fixed: MSVC toolchain active, `cargo check --workspace` clean.
-2. Wire GitHub token + API key into mobile settings UI.
+2. ✅ Wire GitHub token + API key into mobile settings UI.
 3. ✅ PC-host path hardening and extended git operations complete.
-4. Wire Android UI buttons to pairing ZIP export and PC health check.
-5. Add real DeepSeek API key onboarding and secure storage plan.
+4. ✅ Wire Android UI buttons to pairing ZIP export and PC health check.
+5. ✅ Add real DeepSeek API key onboarding and secure storage plan (via settings panel + config.json).
 6. ✅ Reasoning blocks and text deltas in mobile timeline (via `StreamDelta` + `ReasoningDelta`).
-7. Add file tree and diff viewer to mobile UI.
+7. ✅ Add file tree and diff viewer to mobile UI (project_files_panel + project_diff).
 8. ✅ Terminal streaming from PC-host already implemented (open_terminal/terminal_input/close_terminal + PcTerminalSession).
-9. Add Git/GitHub workflow screens to mobile UI.
+9. ✅ Add Git/GitHub workflow screens to mobile UI (git_panel + GitHub settings in settings_panel).
 10. Test auto-commit/push with real GitHub repo.
 11. ✅ Long-running command streaming via SSE (`/v1/gateway/exec/stream`) — ToolExecutionCoordinator streams exec_shell output from PC gateway.
 12. ✅ Web tools (`web_fetch`/`web_search`) with `ApprovalRequirement::Suggest` and DuckDuckGo search.

@@ -27,8 +27,8 @@ Three execution modes:
 
 ## Phase 1 — Real chat core
 
-- [ ] Store API key through a mobile-safe settings flow.
-- [ ] Use full message history, not only the last user message.
+- [x] Store API key through a mobile-safe settings flow.
+- [x] Use full message history, not only the last user message.
 - [x] Request/response error model (anyhow-based).
 - [x] Provider abstraction for DeepSeek API (DeepSeekClient with streaming).
 - [x] Non-streaming and streaming chat implementation.
@@ -110,5 +110,5 @@ Three execution modes:
 - [x] `cargo check --workspace` clean; `cargo test --workspace` 104/106 pass.
 - [x] Streaming command execution via SSE on PC-host.
 - [x] Policy presets (ReadOnly/Developer/Admin) for PC-host security.
-- [ ] GitHub settings screen in mobile UI.
+- [x] GitHub settings screen in mobile UI.
 - [ ] Integration test with actual GitHub repo.
