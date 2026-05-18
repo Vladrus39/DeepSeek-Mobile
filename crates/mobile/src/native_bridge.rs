@@ -9,6 +9,9 @@ pub enum NativeMobileCommand {
     StartPcGatewayDiscovery(AndroidPcGatewayDiscoveryCommand),
     ShareFile { path: String, mime_type: Option<String> },
     OpenUrl { url: String },
+    OpenTerminal { workspace_id: String },
+    TerminalInput { session_id: String, input: String },
+    CloseTerminal { session_id: String },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -22,6 +25,10 @@ pub enum NativeMobileEvent {
     PcGatewayDiscoveryFailed(String),
     FileShared,
     ShareFailed(String),
+    TerminalOpened { session_id: String, title: String, cwd: String },
+    TerminalOutput { session_id: String, chunk: String },
+    TerminalClosed { session_id: String, exit_code: Option<i32> },
+    TerminalFailed { session_id: Option<String>, message: String },
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -46,6 +53,25 @@ impl NativeBridgeState {
         self.enqueue(NativeMobileCommand::StartPcGatewayDiscovery(
             AndroidPcGatewayDiscoveryCommand::new(request_id),
         ));
+    }
+
+    pub fn enqueue_open_terminal(&mut self, workspace_id: impl Into<String>) {
+        self.enqueue(NativeMobileCommand::OpenTerminal {
+            workspace_id: workspace_id.into(),
+        });
+    }
+
+    pub fn enqueue_terminal_input(&mut self, session_id: impl Into<String>, input: impl Into<String>) {
+        self.enqueue(NativeMobileCommand::TerminalInput {
+            session_id: session_id.into(),
+            input: input.into(),
+        });
+    }
+
+    pub fn enqueue_close_terminal(&mut self, session_id: impl Into<String>) {
+        self.enqueue(NativeMobileCommand::CloseTerminal {
+            session_id: session_id.into(),
+        });
     }
 
     pub fn pop_next_command(&mut self) -> Option<NativeMobileCommand> {
@@ -83,6 +109,21 @@ impl NativeBridgeState {
             }
             _ => None,
         }
+    }
+
+    pub fn pop_terminal_command(&mut self) -> Option<NativeMobileCommand> {
+        let command_index = self
+            .pending_commands
+            .iter()
+            .position(|command| {
+                matches!(
+                    command,
+                    NativeMobileCommand::OpenTerminal { .. }
+                        | NativeMobileCommand::TerminalInput { .. }
+                        | NativeMobileCommand::CloseTerminal { .. }
+                )
+            })?;
+        Some(self.pending_commands.remove(command_index))
     }
 
     pub fn accept_android_document_picker_callback(
@@ -152,7 +193,8 @@ impl NativeBridgeState {
         self.last_error = match &event {
             NativeMobileEvent::DocumentPickerFailed(message)
             | NativeMobileEvent::PcGatewayDiscoveryFailed(message)
-            | NativeMobileEvent::ShareFailed(message) => Some(message.clone()),
+            | NativeMobileEvent::ShareFailed(message)
+            | NativeMobileEvent::TerminalFailed { message, .. } => Some(message.clone()),
             _ => None,
         };
         self.last_event = Some(event);
@@ -279,5 +321,52 @@ mod tests {
         let mut state = NativeBridgeState::default();
         state.accept_event(NativeMobileEvent::DocumentPickerFailed("permission denied".to_string()));
         assert_eq!(state.last_error.as_deref(), Some("permission denied"));
+    }
+
+    #[test]
+    fn bridge_queues_terminal_commands() {
+        let mut state = NativeBridgeState::default();
+        state.enqueue_open_terminal("w1");
+        state.enqueue_terminal_input("term-1", "echo hello");
+        state.enqueue_close_terminal("term-1");
+        assert!(state.has_pending_commands());
+
+        assert!(matches!(
+            state.pop_terminal_command(),
+            Some(NativeMobileCommand::OpenTerminal { .. })
+        ));
+        assert!(matches!(
+            state.pop_terminal_command(),
+            Some(NativeMobileCommand::TerminalInput { .. })
+        ));
+        assert!(matches!(
+            state.pop_terminal_command(),
+            Some(NativeMobileCommand::CloseTerminal { .. })
+        ));
+        assert!(state.pop_terminal_command().is_none());
+    }
+
+    #[test]
+    fn bridge_accepts_terminal_events() {
+        let mut state = NativeBridgeState::default();
+        state.accept_event(NativeMobileEvent::TerminalOpened {
+            session_id: "term-1".to_string(),
+            title: "test".to_string(),
+            cwd: "/workspace".to_string(),
+        });
+        assert!(matches!(state.last_event, Some(NativeMobileEvent::TerminalOpened { .. })));
+        assert!(state.last_error.is_none());
+
+        state.accept_event(NativeMobileEvent::TerminalOutput {
+            session_id: "term-1".to_string(),
+            chunk: "output line".to_string(),
+        });
+        assert!(matches!(state.last_event, Some(NativeMobileEvent::TerminalOutput { .. })));
+
+        state.accept_event(NativeMobileEvent::TerminalFailed {
+            session_id: Some("term-1".to_string()),
+            message: "timeout".to_string(),
+        });
+        assert_eq!(state.last_error.as_deref(), Some("timeout"));
     }
 }

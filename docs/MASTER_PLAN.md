@@ -178,7 +178,7 @@ Checklist:
 - [x] Add `read_many_files` or bounded project search.
 - [x] Upgrade `git` tool from contract placeholder to real routed operations.
 - [x] Add Git UI panel: status, diff, branch, commit draft, pull/push approval.
-- [ ] Add web/fetch/search tools only behind explicit network capability and approval policy.
+- [x] Add web/fetch/search tools only behind explicit network capability and approval policy.
 - [ ] Add GitHub tool surface later, preferably PC-side or remote-safe.
 
 Acceptance criteria:
@@ -202,9 +202,9 @@ Remaining checklist:
 - [ ] Add PC-gateway snapshot path for remote workspaces.
 - [ ] Auto-create post-turn snapshot after successful turns with file changes.
 - [x] Emit snapshot events to the mobile timeline.
-- [ ] Add mobile restore panel.
-- [ ] Add restore confirmation screen with file counts and deletion warning.
-- [ ] Add snapshot pruning policy.
+- [x] Add mobile restore panel.
+- [x] Add restore confirmation screen with file counts and deletion warning.
+- [x] Add snapshot pruning policy.
 
 Acceptance criteria:
 
@@ -428,6 +428,7 @@ The next implementation sequence is fixed:
 - 2026-05-17: Completed git tool PC gateway routing: added `git_commit`, `git_push`, `git_pull`, `git_branch` to `PcGatewayClient`; updated `ToolExecutionCoordinator.execute_on_pc_gateway` to use dedicated git handlers instead of generic `execute_command`; fixed parallel test race condition in `git` tool tests.
 - 2026-05-17: Added Git UI panel to mobile cockpit: created `GitUiState` with status/diff/branch/commit tracking, `git_panel` Dioxus component with `SectionCard` + `DiffBlock` sub-components, wired into `cockpit_section_panel` and `main.rs` replacing the placeholder; build verified clean across all crates.
 - 2026-05-18: Added command allow/deny policy presets: `PolicyPreset` enum (ReadOnly/Developer/Admin), preset constructors on `PcGatewaySecurityPolicy`, `DEEPSEEK_PC_HOST_POLICY` env var support in PC-host config; exported from core lib.
+- 2026-05-18 (continued): Added web tools (`web_fetch`/`web_search` with DuckDuckGo, `ApprovalRequirement::Suggest`, `Network` capability), snapshot pruning (`prune_old_snapshots`), mobile snapshot restore UI (confirmation dialog with file-count/deletion warning), terminal panel UI + state + native bridge commands/events (`OpenTerminal`/`TerminalInput`/`CloseTerminal`, `TerminalOpened`/`TerminalOutput`/`TerminalClosed`/`TerminalFailed`), terminal event routing in `native_event_router.rs` and `main.rs` `use_effect`, all wired into cockpit drawer. Build verified clean across all crates.
 
 ## 6. Definition of done for the project
 

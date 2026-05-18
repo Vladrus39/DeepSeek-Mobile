@@ -275,6 +275,39 @@ impl WorkspaceSnapshotService {
             .ok_or_else(|| anyhow!("snapshot path escapes workspace: {}", relative.display()))
     }
 
+    /// Prune old snapshots, keeping at most `max_count` most recent entries
+    /// and removing any snapshot older than `max_age_secs`.
+    /// Returns the ids of removed snapshots.
+    pub fn prune_old_snapshots(&self, max_count: usize, max_age_secs: u64) -> Result<Vec<String>> {
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        let mut snapshots = self.list_snapshots()?;
+        if snapshots.len() <= max_count {
+            return Ok(Vec::new());
+        }
+        snapshots.sort_by(|a, b| a.created_unix.cmp(&b.created_unix));
+
+        let mut removed = Vec::new();
+        for snapshot in &snapshots {
+            if snapshots.len() - removed.len() <= max_count {
+                break;
+            }
+            let age = now.saturating_sub(snapshot.created_unix);
+            if age >= max_age_secs {
+                let dir = self.snapshot_dir(&snapshot.id);
+                if dir.exists() {
+                    fs::remove_dir_all(&dir)
+                        .with_context(|| format!("remove pruned snapshot directory {}", dir.display()))?;
+                }
+                removed.push(snapshot.id.clone());
+            }
+        }
+        Ok(removed)
+    }
+
     fn should_skip_path(&self, path: &Path) -> bool {
         let name = path.file_name().and_then(|value| value.to_str()).unwrap_or_default();
         if matches!(name, ".git" | "target" | "node_modules" | ".deepseek" | ".deepseek-mobile") {

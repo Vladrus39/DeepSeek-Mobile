@@ -1,8 +1,79 @@
 use crate::snapshots_state::SnapshotsUiState;
 use dioxus::prelude::*;
 
-pub fn snapshots_panel(state: &SnapshotsUiState) -> Element {
-    let latest = state.latest();
+#[derive(Clone)]
+struct SnapshotDisplayInfo {
+    id: String,
+    file_count: usize,
+    total_bytes: u64,
+    reason: String,
+}
+
+pub fn snapshots_panel(mut state: Signal<SnapshotsUiState>) -> Element {
+    let latest = state.read().latest().cloned();
+    let pending_info = state.read().pending_restore_snapshot().map(|s| {
+        (s.id.clone(), s.file_count, s.total_bytes)
+    });
+    let error_text = state.read().last_error.clone();
+    let report_text = state.read().last_restore_report.clone();
+    let has_pending = state.read().pending_restore_snapshot_id.is_some();
+    let restore_running = state.read().restore_in_progress;
+
+    let snapshot_list: Vec<SnapshotDisplayInfo> = state.read().snapshots.iter().take(12).map(|s| {
+        SnapshotDisplayInfo {
+            id: s.id.clone(),
+            file_count: s.file_count,
+            total_bytes: s.total_bytes,
+            reason: s.reason.clone(),
+        }
+    }).collect();
+
+    // Build the snapshot cards outside rsx to avoid let-bindings inside the macro
+    let snapshot_cards: Vec<Element> = snapshot_list.iter().map(|info| {
+        let sid = info.id.clone();
+        let fc = info.file_count;
+        let tb = info.total_bytes;
+        let reason = info.reason.clone();
+        let disabled = has_pending || restore_running;
+
+        rsx! {
+            div {
+                key: "{sid}",
+                background_color: "#111827",
+                border: "1px solid #1f2937",
+                border_radius: "12px",
+                padding: "10px",
+                display: "flex",
+                flex_direction: "column",
+                gap: "4px",
+
+                div {
+                    display: "flex",
+                    justify_content: "space_between",
+                    align_items: "center",
+
+                    div { font_size: "13px", font_weight: "bold", "{sid}" }
+                    button {
+                        background_color: "#b45309",
+                        border: "none",
+                        border_radius: "8px",
+                        padding: "4px 12px",
+                        color: "white",
+                        font_size: "12px",
+                        font_weight: "bold",
+                        onclick: move |_| {
+                            let mut s = state.write();
+                            s.request_restore(&sid);
+                        },
+                        disabled: if disabled { "true" } else { "false" },
+                        "Restore"
+                    }
+                }
+                div { color: "#9ca3af", font_size: "12px", "{fc} file(s) · {tb} bytes" }
+                div { color: "#d1d5db", font_size: "12px", "{reason}" }
+            }
+        }
+    }).collect();
 
     rsx! {
         div {
@@ -15,6 +86,7 @@ pub fn snapshots_panel(state: &SnapshotsUiState) -> Element {
             flex_direction: "column",
             gap: "12px",
 
+            // --- Header card ---
             div {
                 background_color: "#0f172a",
                 border: "1px solid #334155",
@@ -25,7 +97,7 @@ pub fn snapshots_panel(state: &SnapshotsUiState) -> Element {
                 gap: "6px",
 
                 div { font_size: "18px", font_weight: "bold", "Snapshots" }
-                if let Some(snapshot) = latest {
+                if let Some(ref snapshot) = latest {
                     div { color: "#d1d5db", font_size: "13px", "Latest safety point: {snapshot.id}" }
                     div { color: "#9ca3af", font_size: "12px", "{snapshot.file_count} file(s) · {snapshot.total_bytes} bytes · {snapshot.reason}" }
                 } else {
@@ -33,7 +105,62 @@ pub fn snapshots_panel(state: &SnapshotsUiState) -> Element {
                 }
             }
 
-            if let Some(error) = state.last_error.as_ref() {
+            // --- Restore confirmation dialog ---
+            if let Some((ref snapshot_id, file_count, total_bytes)) = pending_info {
+                div {
+                    background_color: "#422006",
+                    border: "2px solid #ca8a04",
+                    border_radius: "14px",
+                    padding: "14px",
+                    display: "flex",
+                    flex_direction: "column",
+                    gap: "10px",
+
+                    div { font_size: "16px", font_weight: "bold", color: "#fde68a", "⚠ Restore snapshot?" }
+                    div { color: "#fef3c7", font_size: "13px", "This will overwrite files and delete any files not in the snapshot." }
+                    div { color: "#fde68a", font_size: "13px", "Snapshot: {snapshot_id}" }
+                    div { color: "#d1d5db", font_size: "13px", "Files to restore: {file_count}" }
+                    div { color: "#d1d5db", font_size: "13px", "Total size: {total_bytes} bytes" }
+                    div { color: "#fca5a5", font_size: "12px", "Deleted files cannot be recovered unless another snapshot exists." }
+
+                    div {
+                        display: "flex",
+                        gap: "10px",
+                        margin_top: "4px",
+
+                        button {
+                            background_color: "#dc2626",
+                            border: "none",
+                            border_radius: "10px",
+                            padding: "8px 18px",
+                            color: "white",
+                            font_size: "13px",
+                            font_weight: "bold",
+                            onclick: move |_| {
+                                let mut s = state.write();
+                                s.confirm_restore();
+                            },
+                            disabled: if restore_running { "true" } else { "false" },
+                            "Confirm Restore"
+                        }
+                        button {
+                            background_color: "#374151",
+                            border: "none",
+                            border_radius: "10px",
+                            padding: "8px 18px",
+                            color: "white",
+                            font_size: "13px",
+                            onclick: move |_| {
+                                state.write().cancel_restore();
+                            },
+                            "Cancel"
+                        }
+                    }
+                }
+            }
+
+            // --- Error display ---
+            if let Some(ref err) = error_text {
                 div {
                     background_color: "#7f1d1d",
                     border: "1px solid #dc2626",
@@ -41,10 +168,24 @@ pub fn snapshots_panel(state: &SnapshotsUiState) -> Element {
                     padding: "10px",
                     color: "white",
                     font_size: "12px",
-                    "{error}"
+                    "{err}"
                 }
             }
 
+            // --- Restore report ---
+            if let Some(ref report) = report_text {
+                div {
+                    background_color: "#14532d",
+                    border: "1px solid #22c55e",
+                    border_radius: "12px",
+                    padding: "10px",
+                    color: "#bbf7d0",
+                    font_size: "12px",
+                    "{report}"
+                }
+            }
+
+            // --- Available snapshots list ---
             div {
                 background_color: "#020617",
                 border: "1px solid #1f2937",
@@ -55,35 +196,11 @@ pub fn snapshots_panel(state: &SnapshotsUiState) -> Element {
                 gap: "8px",
 
                 div { font_size: "14px", font_weight: "bold", "Available snapshots" }
-                if state.snapshots.is_empty() {
+                if snapshot_cards.is_empty() {
                     div { color: "#9ca3af", font_size: "12px", "Approved destructive tools will create safety snapshots automatically." }
                 } else {
-                    for snapshot in state.snapshots.iter().take(12) {
-                        div {
-                            background_color: "#111827",
-                            border: "1px solid #1f2937",
-                            border_radius: "12px",
-                            padding: "10px",
-                            display: "flex",
-                            flex_direction: "column",
-                            gap: "4px",
-
-                            div { font_size: "13px", font_weight: "bold", "{snapshot.id}" }
-                            div { color: "#9ca3af", font_size: "12px", "{snapshot.file_count} file(s) · {snapshot.total_bytes} bytes" }
-                            div { color: "#d1d5db", font_size: "12px", "{snapshot.reason}" }
-                        }
-                    }
+                    {snapshot_cards.into_iter()}
                 }
-            }
-
-            div {
-                background_color: "#422006",
-                border: "1px solid #ca8a04",
-                border_radius: "14px",
-                padding: "10px",
-                color: "#fde68a",
-                font_size: "12px",
-                "Restore actions are intentionally not wired into this panel yet; the next rollback step is a dedicated confirmation screen with deletion warnings."
             }
         }
     }

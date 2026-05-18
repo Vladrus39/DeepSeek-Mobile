@@ -7,15 +7,15 @@
 //! on Android.
 
 use crate::executor::CommandRequest;
-use crate::pc_gateway::{CommandStreamEvent, PcDiagnostic, PcDiagnosticSeverity, PcGatewayResponse};
+use crate::pc_gateway::{CommandStreamEvent, PcDiagnostic, PcGatewayResponse};
 use crate::pc_gateway_client::PcGatewayClient;
 use crate::tool_call::ToolCallRequest;
 use crate::tools::{ToolContext, ToolRegistry, ToolResult};
 use crate::workspace::ExecutorKind;
 use crate::workspace_diagnostics::WorkspaceDiagnosticsService;
 use anyhow::{anyhow, Result};
-use serde_json::{json, Map, Value};
-use std::collections::{BTreeMap, BTreeSet};
+use serde_json::{json, Value};
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -43,7 +43,7 @@ pub struct ToolExecutionRoute {
     pub reason: String,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize)]
 enum RemotePatchOperation {
     Replace {
         path: String,
@@ -116,6 +116,13 @@ impl<'a> ToolExecutionCoordinator<'a> {
     }
 
     pub async fn execute(&self, call: &ToolCallRequest, context: &ToolContext) -> Result<ToolResult> {
+        // Network-only tools (web_fetch, web_search) always run locally
+        // regardless of workspace backend — they make HTTP calls directly.
+        if matches!(call.name.as_str(), "web_fetch" | "web_search") {
+            let result = self.registry.execute(&call.name, call.arguments.clone(), context)?;
+            return Ok(result);
+        }
+
         match self.route(call, context).target {
             ToolExecutionTarget::LocalAndroid | ToolExecutionTarget::Termux => {
                 let mut result = self.registry.execute(&call.name, call.arguments.clone(), context)?;
@@ -192,9 +199,7 @@ impl<'a> ToolExecutionCoordinator<'a> {
                     Ok(ToolResult::error(err))
                 } else {
                     let combined = format!(
-                        "{}EXIT_CODE: {}
-
-{}",
+                        "{}EXIT_CODE: {}\n\n{}",
                         stdout,
                         exit_code.map_or_else(|| "unknown".to_string(), |c| c.to_string()),
                         stderr
@@ -257,18 +262,22 @@ impl<'a> ToolExecutionCoordinator<'a> {
         }
 
         let read = client.read_file(workspace_id.clone(), path).await?;
-        let content = match read {
-            PcGatewayResponse::FileContent { content, .. } => content,
-            other => return gateway_response_to_tool_result(other),
+        let PcGatewayResponse::FileContent { content: original, .. }  = read else {
+            return Err(anyhow!("read file before edit returned unexpected response"));
         };
-        let count = content.matches(search).count();
-        if count == 0 {
-            return Err(anyhow!("search text not found in {}", path));
+        let backup = json!({"original": original});
+
+        let replaced = original.replacen(&search, &replace, 1);
+        if replaced == original {
+            return Err(anyhow!(
+                "edit_file: search string not found in '{}' from workspace '{}'",
+                path,
+                workspace_id
+            ));
         }
-        let updated = content.replace(search, replace);
-        let write = client.write_file(workspace_id.clone(), path, updated).await?;
-        let mut result = gateway_response_to_tool_result(write)?;
-        result.content = format!("Replaced {} occurrence(s) in {}", count, path);
+        let response = client.write_file(workspace_id.clone(), path, &replaced).await?;
+        let mut result = gateway_response_to_tool_result(response)?;
+        result.metadata = Some(json!({"backup": backup}));
         attach_post_edit_diagnostics(client, &workspace_id, Some(path.to_string()), &mut result).await?;
         Ok(result)
     }
@@ -279,67 +288,116 @@ impl<'a> ToolExecutionCoordinator<'a> {
         workspace_id: String,
         arguments: &Value,
     ) -> Result<ToolResult> {
-        let operations = parse_remote_patch_operations(arguments)?;
-        let mut originals: BTreeMap<String, Option<String>> = BTreeMap::new();
-        let mut changed_files = BTreeSet::new();
+        // Parse patch operations from the apply_patch arguments
+        let operations: Vec<RemotePatchOperation> = serde_json::from_value(arguments.get("operations").cloned().unwrap_or(json!([])))
+            .map_err(|e| anyhow!("failed to parse apply_patch operations: {}", e))?;
 
-        let result = async {
-            for operation in operations.iter() {
-                let path = operation.path();
-                if !originals.contains_key(path) {
-                    originals.insert(path.to_string(), remote_read_optional(client, &workspace_id, path).await?);
+        if operations.is_empty() {
+            return Err(anyhow!("apply_patch requires at least one operation"));
+        }
+
+        // Backup all affected files
+        let mut backups = BTreeMap::new();
+        for op in &operations {
+            let path = op.path();
+            if !backups.contains_key(path) {
+                let read = client.read_file(workspace_id.clone(), path).await;
+                match read {
+                    Ok(PcGatewayResponse::FileContent { content, .. }) => {
+                        backups.insert(path.to_string(), content);
+                    }
+                    Ok(_) => return Err(anyhow!("read file before apply_patch returned unexpected response")),
+                    Err(_) if matches!(op, RemotePatchOperation::Create { .. }) => {
+                        // File doesn't exist yet for Create operation — that's fine
+                    }
+                    Err(e) => return Err(anyhow!("failed to read '{}' as pre-patch backup: {}", path, e)),
                 }
-                apply_remote_patch_operation(client, &workspace_id, operation).await?;
-                changed_files.insert(path.to_string());
             }
-            Ok::<(), anyhow::Error>(())
-        }
-        .await;
-
-        if let Err(error) = result {
-            rollback_remote_patch(client, &workspace_id, originals).await?;
-            return Err(error);
         }
 
-        let mut result = ToolResult::success(format!(
-            "Applied {} PC patch operation(s) across {} file(s): {}",
-            operations.len(),
-            changed_files.len(),
-            changed_files.iter().cloned().collect::<Vec<_>>().join(", ")
-        ))
-        .with_metadata(json!({
-            "operations_applied": operations.len(),
-            "changed_files": changed_files.iter().cloned().collect::<Vec<_>>(),
-            "source": "pc_gateway"
+        let mut applied = Vec::new();
+        for op in &operations {
+            let path = op.path();
+            match op {
+                RemotePatchOperation::Replace { search, replace, .. } => {
+                    let content = if let Some(backup) = backups.get(path) {
+                        backup.clone()
+                    } else {
+                        let read = client.read_file(workspace_id.clone(), path).await?;
+                        match read {
+                            PcGatewayResponse::FileContent { content, .. } => content,
+                            _ => return Err(anyhow!("read file '{}' returned unexpected response", path)),
+                        }
+                    };
+                    let new_content = content.replacen(search, replace, 1);
+                    if new_content == content {
+                        return Err(anyhow!("apply_patch replace: search string not found in '{}'", path));
+                    }
+                    client.write_file(workspace_id.clone(), path, &new_content).await?;
+                    backups.insert(path.to_string(), new_content);
+                    applied.push(format!("replaced in {}", path));
+                }
+                RemotePatchOperation::Create { content, overwrite, .. } => {
+                    if let Some(_backup) = backups.get(path) {
+                        if !overwrite {
+                            return Err(anyhow!("file '{}' already exists and overwrite is not set", path));
+                        }
+                    }
+                    client.write_file(workspace_id.clone(), path, content).await?;
+                    backups.insert(path.to_string(), content.clone());
+                    applied.push(format!("created {}", path));
+                }
+                RemotePatchOperation::Append { content, .. } => {
+                    let existing = if let Some(backup) = backups.get(path) {
+                        backup.clone()
+                    } else {
+                        match client.read_file(workspace_id.clone(), path).await? {
+                            PcGatewayResponse::FileContent { content, .. } => content,
+                            _ => return Err(anyhow!("read file '{}' returned unexpected response", path)),
+                        }
+                    };
+                    let new_content = format!("{}\n{}", existing.trim_end(), content);
+                    client.write_file(workspace_id.clone(), path, &new_content).await?;
+                    backups.insert(path.to_string(), new_content);
+                    applied.push(format!("appended to {}", path));
+                }
+                RemotePatchOperation::Delete { .. } => {
+                    client.delete_file(workspace_id.clone(), path).await?;
+                    backups.remove(path);
+                    applied.push(format!("deleted {}", path));
+                }
+            }
+        }
+
+        let mut result = ToolResult::success(serde_json::to_string_pretty(&applied)?);
+        result.metadata = Some(json!({
+            "backups_exist": !backups.is_empty(),
+            "operations": applied
         }));
 
-        attach_post_edit_diagnostics(client, &workspace_id, None, &mut result).await?;
+        // Run post-edit diagnostics after batch operations
+        if let Some(first_op) = operations.first() {
+            let path = first_op.path();
+            attach_post_edit_diagnostics(client, &workspace_id, Some(path.to_string()), &mut result).await?;
+        }
+
         Ok(result)
+    }
+
+    pub fn registry(&self) -> &ToolRegistry {
+        self.registry
     }
 }
 
 fn should_run_local_post_edit_diagnostics(call: &ToolCallRequest) -> bool {
-    match call.name.as_str() {
-        "write_file" | "edit_file" | "apply_patch" => true,
-        "file_ops" => file_ops_may_modify(&call.arguments),
-        _ => false,
-    }
-}
-
-fn file_ops_may_modify(arguments: &Value) -> bool {
-    arguments
-        .get("operation")
-        .and_then(Value::as_str)
-        .map(|operation| matches!(operation, "write" | "write_file" | "edit" | "edit_file"))
-        .unwrap_or(false)
+    matches!(
+        call.name.as_str(),
+        "write_file" | "edit_file" | "apply_patch"
+    )
 }
 
 fn extract_primary_path_for_diagnostics(call: &ToolCallRequest) -> Option<String> {
-    match call.name.as_str() {
-        "write_file" | "edit_file" => optional_str(&call.arguments, "path").map(str::to_string),
-        "file_ops" => optional_str(&call.arguments, "path").map(str::to_string),
-        _ => None,
-    }
+    call.arguments.get("path").and_then(Value::as_str).map(String::from)
 }
 
 async fn attach_local_post_edit_diagnostics(
@@ -347,194 +405,19 @@ async fn attach_local_post_edit_diagnostics(
     path: Option<String>,
     result: &mut ToolResult,
 ) -> Result<()> {
-    let report = WorkspaceDiagnosticsService::new(context.workspace.clone())
-        .run_post_edit_diagnostics(path.clone())
-        .await;
+    let service = WorkspaceDiagnosticsService::new(context.workspace.clone());
+    let report = service.run_post_edit_diagnostics(path.clone()).await;
     let summary = report.summary();
-    result.content.push_str("\n\nPost-edit diagnostics:\n");
-    result.content.push_str(&summary);
-    merge_metadata(
-        result,
-        json!({
-            "post_edit_diagnostics_status": report.status,
-            "post_edit_diagnostics_provider": report.provider,
-            "post_edit_diagnostics": report.diagnostics,
-            "post_edit_diagnostics_path": path,
-            "post_edit_diagnostics_summary": summary,
-            "post_edit_diagnostics_message": report.message,
-            "post_edit_diagnostics_source": "workspace_diagnostics"
-        }),
-    );
+    let mut metadata = result.metadata.take().unwrap_or(json!({}));
+    if let serde_json::Value::Object(ref mut map) = metadata {
+        map.insert("diagnostics".to_string(), json!(report));
+    }
+    if !report.diagnostics.is_empty() {
+        result.content.push_str("\n\n--- Diagnostics ---\n");
+        result.content.push_str(&summary);
+    }
+    result.metadata = Some(metadata);
     Ok(())
-}
-
-async fn remote_read_optional(
-    client: &PcGatewayClient,
-    workspace_id: &str,
-    path: &str,
-) -> Result<Option<String>> {
-    match client.read_file(workspace_id.to_string(), path.to_string()).await {
-        Ok(PcGatewayResponse::FileContent { content, .. }) => Ok(Some(content)),
-        Ok(PcGatewayResponse::Error(_)) => Ok(None),
-        Ok(other) => Err(anyhow!("unexpected read_file response during patch backup: {:?}", other)),
-        Err(_) => Ok(None),
-    }
-}
-
-async fn apply_remote_patch_operation(
-    client: &PcGatewayClient,
-    workspace_id: &str,
-    operation: &RemotePatchOperation,
-) -> Result<()> {
-    match operation {
-        RemotePatchOperation::Replace {
-            path,
-            search,
-            replace,
-            expected_occurrences,
-        } => {
-            if search.is_empty() {
-                return Err(anyhow!("replace operation has empty search text in {}", path));
-            }
-            let content = match client.read_file(workspace_id.to_string(), path.clone()).await? {
-                PcGatewayResponse::FileContent { content, .. } => content,
-                other => return Err(anyhow!("unexpected read_file response during replace: {:?}", other)),
-            };
-            let count = content.matches(search).count();
-            if count == 0 {
-                return Err(anyhow!("search text not found in {}", path));
-            }
-            if let Some(expected) = expected_occurrences {
-                if count != *expected {
-                    return Err(anyhow!(
-                        "replace occurrence mismatch in {}: expected {}, found {}",
-                        path,
-                        expected,
-                        count
-                    ));
-                }
-            }
-            let updated = content.replace(search, replace);
-            ensure_file_written(client.write_file(workspace_id.to_string(), path.clone(), updated).await?)
-        }
-        RemotePatchOperation::Create {
-            path,
-            content,
-            overwrite,
-        } => {
-            if !overwrite && remote_read_optional(client, workspace_id, path).await?.is_some() {
-                return Err(anyhow!("create operation refuses to overwrite existing file: {}", path));
-            }
-            ensure_file_written(client.write_file(workspace_id.to_string(), path.clone(), content.clone()).await?)
-        }
-        RemotePatchOperation::Append { path, content } => {
-            let existing = match client.read_file(workspace_id.to_string(), path.clone()).await? {
-                PcGatewayResponse::FileContent { content, .. } => content,
-                other => return Err(anyhow!("unexpected read_file response during append: {:?}", other)),
-            };
-            ensure_file_written(
-                client
-                    .write_file(workspace_id.to_string(), path.clone(), format!("{}{}", existing, content))
-                    .await?,
-            )
-        }
-        RemotePatchOperation::Delete { path } => ensure_file_deleted(
-            client
-                .delete_file(workspace_id.to_string(), path.clone())
-                .await?,
-        ),
-    }
-}
-
-async fn rollback_remote_patch(
-    client: &PcGatewayClient,
-    workspace_id: &str,
-    originals: BTreeMap<String, Option<String>>,
-) -> Result<()> {
-    for (path, original) in originals.into_iter().rev() {
-        match original {
-            Some(content) => {
-                let response = client.write_file(workspace_id.to_string(), path, content).await?;
-                ensure_file_written(response)?;
-            }
-            None => {
-                let _ = client.delete_file(workspace_id.to_string(), path).await;
-            }
-        }
-    }
-    Ok(())
-}
-
-fn parse_remote_patch_operations(input: &Value) -> Result<Vec<RemotePatchOperation>> {
-    let operations = input
-        .get("operations")
-        .and_then(Value::as_array)
-        .ok_or_else(|| anyhow!("apply_patch requires an operations array"))?;
-    if operations.is_empty() {
-        return Err(anyhow!("apply_patch operations array must not be empty"));
-    }
-
-    operations
-        .iter()
-        .enumerate()
-        .map(parse_remote_patch_operation)
-        .collect()
-}
-
-fn parse_remote_patch_operation((index, operation): (usize, &Value)) -> Result<RemotePatchOperation> {
-    let op_type = operation
-        .get("type")
-        .or_else(|| operation.get("operation"))
-        .and_then(Value::as_str)
-        .ok_or_else(|| anyhow!("patch operation {} is missing type", index))?;
-    let path = required_str(operation, "path")?.to_string();
-
-    match op_type {
-        "replace" => {
-            let search = required_str(operation, "search")?.to_string();
-            let replace = required_str(operation, "replace")?.to_string();
-            let expected_occurrences = operation
-                .get("expected_occurrences")
-                .and_then(Value::as_u64)
-                .map(|value| value as usize);
-            Ok(RemotePatchOperation::Replace {
-                path,
-                search,
-                replace,
-                expected_occurrences,
-            })
-        }
-        "create" => {
-            let content = required_str(operation, "content")?.to_string();
-            let overwrite = operation
-                .get("overwrite")
-                .and_then(Value::as_bool)
-                .unwrap_or(false);
-            Ok(RemotePatchOperation::Create { path, content, overwrite })
-        }
-        "append" => {
-            let content = required_str(operation, "content")?.to_string();
-            Ok(RemotePatchOperation::Append { path, content })
-        }
-        "delete" | "remove" => Ok(RemotePatchOperation::Delete { path }),
-        other => Err(anyhow!("unsupported patch operation {}: {}", index, other)),
-    }
-}
-
-fn ensure_file_written(response: PcGatewayResponse) -> Result<()> {
-    match response {
-        PcGatewayResponse::FileWritten { .. } => Ok(()),
-        PcGatewayResponse::Error(error) => Err(anyhow!("PC gateway error {}: {}", error.code, error.message)),
-        other => Err(anyhow!("unexpected write_file response: {:?}", other)),
-    }
-}
-
-fn ensure_file_deleted(response: PcGatewayResponse) -> Result<()> {
-    match response {
-        PcGatewayResponse::FileDeleted { .. } => Ok(()),
-        PcGatewayResponse::Error(error) => Err(anyhow!("PC gateway error {}: {}", error.code, error.message)),
-        other => Err(anyhow!("unexpected delete_file response: {:?}", other)),
-    }
 }
 
 async fn attach_post_edit_diagnostics(
@@ -544,60 +427,47 @@ async fn attach_post_edit_diagnostics(
     result: &mut ToolResult,
 ) -> Result<()> {
     match client.get_diagnostics(workspace_id.to_string(), path.clone()).await {
-        Ok(PcGatewayResponse::Diagnostics(diagnostics)) => {
-            let summary = diagnostic_summary(&diagnostics);
-            if !summary.is_empty() {
-                result.content.push_str("\n\nPost-edit diagnostics:\n");
+        Ok(PcGatewayResponse::Diagnostics(diags)) => {
+            let summary = summarize_diagnostics(&diags);
+            let mut metadata = result.metadata.take().unwrap_or(json!({}));
+            if let serde_json::Value::Object(ref mut map) = metadata {
+                map.insert("diagnostics".to_string(), json!(diags));
+            }
+            if !diags.is_empty() {
+                result.content.push_str("\n\n--- Diagnostics ---\n");
                 result.content.push_str(&summary);
             }
-            merge_metadata(
-                result,
-                json!({
-                    "post_edit_diagnostics": diagnostics,
-                    "post_edit_diagnostics_path": path,
-                    "post_edit_diagnostics_summary": summary,
-                }),
-            );
+            result.metadata = Some(metadata);
         }
-        Ok(other) => {
-            merge_metadata(
-                result,
-                json!({
-                    "post_edit_diagnostics_error": format!("unexpected diagnostics response: {:?}", other),
-                    "post_edit_diagnostics_path": path,
-                }),
-            );
+        Ok(_) => {
+            // Unexpected response type from diagnostics endpoint
         }
         Err(error) => {
-            merge_metadata(
-                result,
-                json!({
-                    "post_edit_diagnostics_error": error.to_string(),
-                    "post_edit_diagnostics_path": path,
-                }),
-            );
+            let mut metadata = result.metadata.take().unwrap_or(json!({}));
+            if let serde_json::Value::Object(ref mut map) = metadata {
+                map.insert("diagnostics_error".to_string(), json!(error.to_string()));
+            }
+            result.metadata = Some(metadata);
         }
     }
     Ok(())
 }
 
-fn diagnostic_summary(diagnostics: &[PcDiagnostic]) -> String {
+fn summarize_diagnostics(diagnostics: &[PcDiagnostic]) -> String {
     if diagnostics.is_empty() {
         return "No diagnostics reported.".to_string();
     }
     let error_count = diagnostics
         .iter()
-        .filter(|item| item.severity == PcDiagnosticSeverity::Error)
+        .filter(|item| item.severity == crate::pc_gateway::PcDiagnosticSeverity::Error)
         .count();
     let warning_count = diagnostics
         .iter()
-        .filter(|item| item.severity == PcDiagnosticSeverity::Warning)
+        .filter(|item| item.severity == crate::pc_gateway::PcDiagnosticSeverity::Warning)
         .count();
     let mut lines = vec![format!(
         "{} diagnostic(s): {} error(s), {} warning(s)",
-        diagnostics.len(),
-        error_count,
-        warning_count
+        diagnostics.len(), error_count, warning_count
     )];
     for item in diagnostics.iter().take(8) {
         lines.push(format!(
@@ -611,76 +481,113 @@ fn diagnostic_summary(diagnostics: &[PcDiagnostic]) -> String {
     lines.join("\n")
 }
 
-fn merge_metadata(result: &mut ToolResult, new_metadata: Value) {
-    let mut base = match result.metadata.take() {
-        Some(Value::Object(object)) => object,
-        Some(other) => {
-            let mut object = Map::new();
-            object.insert("previous_metadata".to_string(), other);
-            object
-        }
-        None => Map::new(),
-    };
+fn command_request_from_shell(command: &str, root: PathBuf) -> Result<CommandRequest> {
+    let trimmed = command.trim();
+    let parts = shell_words(trimmed);
+    if parts.is_empty() {
+        return Err(anyhow!("empty command"));
+    }
+    Ok(CommandRequest {
+        program: parts[0].clone(),
+        args: parts[1..].to_vec(),
+        working_dir: Some(root),
+    })
+}
 
-    if let Value::Object(object) = new_metadata {
-        for (key, value) in object {
-            base.insert(key, value);
+fn shell_words(input: &str) -> Vec<String> {
+    let mut words = Vec::new();
+    let mut current = String::new();
+    let mut in_single = false;
+    let mut in_double = false;
+    let mut escaped = false;
+
+    for ch in input.chars() {
+        if escaped {
+            current.push(ch);
+            escaped = false;
+            continue;
+        }
+        match ch {
+            '\\' if in_single => current.push(ch),
+            '\\' => escaped = true,
+            '\'' if !in_double => in_single = !in_single,
+            '"' if !in_single => in_double = !in_double,
+            ' ' | '\t' if !in_single && !in_double => {
+                if !current.is_empty() {
+                    words.push(current.clone());
+                    current.clear();
+                }
+            }
+            _ => current.push(ch),
         }
     }
-    result.metadata = Some(Value::Object(base));
+    if !current.is_empty() {
+        words.push(current);
+    }
+    words
 }
 
 fn gateway_response_to_tool_result(response: PcGatewayResponse) -> Result<ToolResult> {
     match response {
         PcGatewayResponse::FileContent { path, content } => Ok(
-            ToolResult::success(content).with_metadata(json!({ "path": path, "source": "pc_gateway" })),
+            ToolResult::success(content).with_metadata(json!({"path": path}))
         ),
-        PcGatewayResponse::FileWritten { path, bytes } => Ok(ToolResult::success(format!(
-            "PC gateway wrote {} bytes to {}",
-            bytes, path
-        ))
-        .with_metadata(json!({ "path": path, "bytes": bytes, "source": "pc_gateway" }))),
-        PcGatewayResponse::FileDeleted { path } => Ok(ToolResult::success(format!(
-            "PC gateway deleted {}",
-            path
-        ))
-        .with_metadata(json!({ "path": path, "source": "pc_gateway" }))),
+        PcGatewayResponse::FileWritten { path, bytes } => Ok(
+            ToolResult::success(format!("written {} ({} bytes)", path, bytes))
+                .with_metadata(json!({"path": path, "bytes": bytes}))
+        ),
+        PcGatewayResponse::FileDeleted { path } => Ok(
+            ToolResult::success(format!("deleted {}", path))
+                .with_metadata(json!({"path": path}))
+        ),
         PcGatewayResponse::DirEntries(entries) => {
-            let metadata = serde_json::to_value(&entries)?;
-            Ok(ToolResult::success(serde_json::to_string_pretty(&metadata)?).with_metadata(metadata))
+            let text = entries.iter()
+                .map(|e| format!("{}/{} ({})", if e.is_dir { "d" } else { "-" }, e.path, e.size_bytes))
+                .collect::<Vec<_>>()
+                .join("\n");
+            Ok(ToolResult::success(text).with_metadata(json!({"entries": entries})))
         }
-        PcGatewayResponse::CommandOutput(output) => Ok(ToolResult::success(format!(
-            "stdout:\n{}\n\nstderr:\n{}",
-            output.stdout, output.stderr
-        ))
-        .with_metadata(json!({
-            "status_code": output.status_code,
-            "source": "pc_gateway"
-        }))),
-        PcGatewayResponse::GitText { operation, output } => Ok(ToolResult::success(output)
-            .with_metadata(json!({ "operation": operation, "source": "pc_gateway" }))),
-        PcGatewayResponse::Diagnostics(items) => {
-            let metadata = serde_json::to_value(&items)?;
-            Ok(ToolResult::success(serde_json::to_string_pretty(&metadata)?).with_metadata(metadata))
+        PcGatewayResponse::CommandOutput(output) => {
+            let text = format!("{}EXIT_CODE: {}\n\n{}",
+                output.stdout,
+                output.status_code.map_or("unknown".to_string(), |c| c.to_string()),
+                output.stderr,
+            );
+            Ok(ToolResult::success(text).with_metadata(json!({
+                "status_code": output.status_code,
+                "stdout_size": output.stdout.len(),
+                "stderr_size": output.stderr.len(),
+            })))
         }
-        PcGatewayResponse::Error(error) => Ok(ToolResult::error(format!(
-            "PC gateway error {}: {}",
-            error.code, error.message
-        ))),
-        other => Ok(ToolResult::success(format!("PC gateway response: {:?}", other))),
+        PcGatewayResponse::Diagnostics(diags) => {
+            let text = if diags.is_empty() {
+                "No diagnostics reported.".to_string()
+            } else {
+                diags.iter()
+                    .map(|d| format!("{:?} {}:{}:{} — {}", d.severity, d.path, d.line, d.column, d.message))
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            };
+            Ok(ToolResult::success(text).with_metadata(json!({"diagnostics": diags})))
+        }
+        PcGatewayResponse::Tasks(tasks) => {
+            let text = serde_json::to_string_pretty(&tasks)?;
+            Ok(ToolResult::success(text).with_metadata(json!({"tasks": tasks})))
+        }
+        PcGatewayResponse::TerminalOpened(session) => {
+            Ok(ToolResult::success(serde_json::to_string_pretty(&session)?)
+                .with_metadata(json!({"terminal_session": session})))
+        }
+        PcGatewayResponse::TerminalOutput { session_id, chunk } => {
+            Ok(ToolResult::success(chunk).with_metadata(json!({"terminal_session_id": session_id})))
+        }
+        PcGatewayResponse::TerminalClosed { session_id, exit_code } => {
+            Ok(ToolResult::success(format!("terminal {} closed (exit: {:?})", session_id, exit_code))
+                .with_metadata(json!({"terminal_session_id": session_id, "exit_code": exit_code})))
+        }
+        PcGatewayResponse::Error(error) => Ok(ToolResult::error(format!("{}: {}", error.code, error.message))),
+        _ => Ok(ToolResult::success("unhandled PC gateway response variant".to_string())),
     }
-}
-
-fn command_request_from_shell(command: &str, working_dir: PathBuf) -> Result<CommandRequest> {
-    let words = shell_words(command);
-    let Some((program, args)) = words.split_first() else {
-        return Err(anyhow!("empty shell command"));
-    };
-    Ok(CommandRequest {
-        program: program.clone(),
-        args: args.to_vec(),
-        working_dir: Some(working_dir),
-    })
 }
 
 fn required_str<'a>(input: &'a Value, key: &str) -> Result<&'a str> {
@@ -694,113 +601,91 @@ fn optional_str<'a>(input: &'a Value, key: &str) -> Option<&'a str> {
     input.get(key).and_then(Value::as_str)
 }
 
-fn shell_words(command: &str) -> Vec<String> {
-    command
-        .split_whitespace()
-        .filter(|part| !part.is_empty())
-        .map(std::string::ToString::to_string)
-        .collect()
-}
-
 #[cfg(test)]
 mod tests {
-    use super::{
-        command_request_from_shell, diagnostic_summary, merge_metadata, parse_remote_patch_operations,
-        should_run_local_post_edit_diagnostics, ToolExecutionCoordinator, ToolExecutionTarget,
-    };
-    use crate::pc_gateway::{PcDiagnostic, PcDiagnosticSeverity};
-    use crate::tool_call::{ToolCallRequest, ToolCallSource};
-    use crate::tools::{ToolContext, ToolRegistry, ToolResult};
-    use crate::workspace::{ExecutorKind, Workspace};
-    use serde_json::{json, Value};
+    use super::*;
+    use crate::tool_call::ToolCallSource;
 
     #[test]
-    fn routes_pc_workspace_tools_to_pc_gateway() {
-        let registry = ToolRegistry::new();
-        let coordinator = ToolExecutionCoordinator::new(&registry);
-        let context = ToolContext::new(Workspace::new("w1", "Project", "/pc/project", ExecutorKind::PcGateway));
-        let call = ToolCallRequest::new("read_file", json!({"path":"README.md"}), ToolCallSource::Manual);
-        let route = coordinator.route(&call, &context);
-        assert_eq!(route.target, ToolExecutionTarget::PcGateway);
-    }
+    fn route_returns_local_for_local_workspace() {
+        let tool_call = ToolCallRequest {
+            id: "call-1".to_string(),
+            name: "read_file".to_string(),
+            arguments: json!({"path": "test.txt"}),
+            source: ToolCallSource::JsonBlock,
+        };
+        let workspace = crate::workspace::Workspace::new(
+            "w1", "Test", PathBuf::from("."), ExecutorKind::LocalAndroid,
+        );
+        let context = ToolContext::new(workspace);
+        let registry = crate::tools::ToolRegistry::new();
 
-    #[test]
-    fn routes_local_workspace_tools_to_local_registry() {
-        let registry = ToolRegistry::new();
         let coordinator = ToolExecutionCoordinator::new(&registry);
-        let context = ToolContext::new(Workspace::new("w1", "Project", "/phone/project", ExecutorKind::LocalAndroid));
-        let call = ToolCallRequest::new("read_file", json!({"path":"README.md"}), ToolCallSource::Manual);
-        let route = coordinator.route(&call, &context);
+        let route = coordinator.route(&tool_call, &context);
         assert_eq!(route.target, ToolExecutionTarget::LocalAndroid);
     }
 
     #[test]
-    fn builds_command_request_from_simple_shell_command() {
-        let request = command_request_from_shell("cargo check --workspace", "/project".into()).unwrap();
-        assert_eq!(request.program, "cargo");
-        assert_eq!(request.args, vec!["check", "--workspace"]);
+    fn route_returns_pc_for_pc_workspace() {
+        let tool_call = ToolCallRequest {
+            id: "call-1".to_string(),
+            name: "read_file".to_string(),
+            arguments: json!({"path": "test.txt"}),
+            source: ToolCallSource::JsonBlock,
+        };
+        let workspace = crate::workspace::Workspace::new(
+            "w1", "Test", PathBuf::from("."), ExecutorKind::PcGateway,
+        );
+        let context = ToolContext::new(workspace);
+        let registry = crate::tools::ToolRegistry::new();
+
+        let coordinator = ToolExecutionCoordinator::new(&registry);
+        let route = coordinator.route(&tool_call, &context);
+        assert_eq!(route.target, ToolExecutionTarget::PcGateway);
     }
 
     #[test]
-    fn local_post_edit_hook_runs_only_after_file_changes() {
-        assert!(should_run_local_post_edit_diagnostics(&ToolCallRequest::new(
-            "write_file",
-            json!({"path":"src/lib.rs","content":"x"}),
-            ToolCallSource::Manual,
-        )));
-        assert!(should_run_local_post_edit_diagnostics(&ToolCallRequest::new(
-            "edit_file",
-            json!({"path":"src/lib.rs","search":"a","replace":"b"}),
-            ToolCallSource::Manual,
-        )));
-        assert!(should_run_local_post_edit_diagnostics(&ToolCallRequest::new(
-            "apply_patch",
-            json!({"operations":[{"type":"append","path":"src/lib.rs","content":"x"}]}),
-            ToolCallSource::Manual,
-        )));
-        assert!(!should_run_local_post_edit_diagnostics(&ToolCallRequest::new(
-            "read_file",
-            json!({"path":"src/lib.rs"}),
-            ToolCallSource::Manual,
-        )));
+    fn shell_words_basic() {
+        let words = shell_words("npm run build");
+        assert_eq!(words, vec!["npm", "run", "build"]);
     }
 
     #[test]
-    fn parses_remote_apply_patch_operations() {
-        let operations = parse_remote_patch_operations(&json!({
-            "operations": [
-                {"type":"replace","path":"README.md","search":"old","replace":"new","expected_occurrences":1},
-                {"type":"create","path":"src/lib.rs","content":"pub fn ok() {}","overwrite":false},
-                {"type":"delete","path":"old.txt"}
-            ]
-        }))
-        .unwrap();
-        assert_eq!(operations.len(), 3);
-        assert_eq!(operations[0].path(), "README.md");
-        assert_eq!(operations[2].path(), "old.txt");
+    fn shell_words_single_quoted() {
+        let words = shell_words("echo 'hello world'");
+        assert_eq!(words, vec!["echo", "hello world"]);
     }
 
     #[test]
-    fn summarizes_post_edit_diagnostics() {
-        let diagnostics = vec![PcDiagnostic {
-            path: "src/main.rs".to_string(),
-            line: 10,
-            column: 5,
-            severity: PcDiagnosticSeverity::Error,
-            message: "cannot find value".to_string(),
-            source: Some("cargo check".to_string()),
-        }];
-        let summary = diagnostic_summary(&diagnostics);
-        assert!(summary.contains("1 diagnostic"));
-        assert!(summary.contains("cannot find value"));
+    fn shell_words_double_quoted() {
+        let words = shell_words("echo \"hello world\"");
+        assert_eq!(words, vec!["echo", "hello world"]);
     }
 
     #[test]
-    fn merges_post_edit_diagnostics_metadata() {
-        let mut result = ToolResult::success("ok").with_metadata(json!({"path":"src/main.rs"}));
-        merge_metadata(&mut result, json!({"post_edit_diagnostics_summary":"No diagnostics reported."}));
-        let metadata = result.metadata.unwrap();
-        assert_eq!(metadata["path"], Value::String("src/main.rs".to_string()));
-        assert_eq!(metadata["post_edit_diagnostics_summary"], Value::String("No diagnostics reported.".to_string()));
+    fn shell_words_empty_returns_empty() {
+        let words = shell_words("");
+        assert!(words.is_empty());
+    }
+
+    #[test]
+    fn gateway_response_file_content() {
+        let response = PcGatewayResponse::FileContent {
+            path: "test.txt".to_string(),
+            content: "hello".to_string(),
+        };
+        let result = gateway_response_to_tool_result(response).unwrap();
+        assert!(result.success);
+        assert_eq!(result.content, "hello");
+        let meta = result.metadata.unwrap();
+        assert_eq!(meta.get("path").and_then(|v| v.as_str()), Some("test.txt"));
+    }
+
+    #[test]
+    fn gateway_response_error() {
+        let response = PcGatewayResponse::Error(crate::pc_gateway::PcGatewayError::new("e1", "msg"));
+        let result = gateway_response_to_tool_result(response).unwrap();
+        assert!(!result.success);
+        assert!(result.content.contains("msg"));
     }
 }

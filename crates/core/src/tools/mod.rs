@@ -10,6 +10,7 @@ pub mod github;
 pub mod patch;
 pub mod shell;
 pub mod snapshots;
+pub mod web;
 
 use crate::config::ExternalAccessMode;
 use crate::workspace::Workspace;
@@ -229,6 +230,8 @@ pub fn default_mobile_tool_registry() -> ToolRegistry {
     registry.register(Box::new(github::GitHubIssueTool));
     registry.register(Box::new(github::GitHubBrowseTool));
     registry.register(Box::new(github::GitHubPushFileTool));
+    registry.register(Box::new(web::WebFetchTool));
+    registry.register(Box::new(web::WebSearchTool));
     registry
 }
 
@@ -267,5 +270,7 @@ mod tests {
         assert!(names.contains(&"copy_file".to_string()));
         assert!(names.contains(&"move_file".to_string()));
         assert!(names.contains(&"github_browse".to_string()));
+        assert!(names.contains(&"web_fetch".to_string()));
+        assert!(names.contains(&"web_search".to_string()));
     }
 }

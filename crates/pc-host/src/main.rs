@@ -853,6 +853,15 @@ async fn diagnostics(config: &PcHostConfig, workspace_id: &str, path: Option<&st
     if config.workspace_root.join("Cargo.toml").exists() {
         diagnostics.extend(rust_cargo_diagnostics(config, requested_path.as_deref()).await?);
     }
+    if config.workspace_root.join("tsconfig.json").exists() {
+        diagnostics.extend(typescript_diagnostics(config, requested_path.as_deref()).await?);
+    }
+    if config.workspace_root.join("pyproject.toml").exists()
+        || config.workspace_root.join("setup.py").exists()
+        || config.workspace_root.join("requirements.txt").exists()
+    {
+        diagnostics.extend(python_diagnostics(config, requested_path.as_deref()).await?);
+    }
     diagnostics.sort_by(|left, right| {
         left.path
             .cmp(&right.path)
@@ -861,6 +870,191 @@ async fn diagnostics(config: &PcHostConfig, workspace_id: &str, path: Option<&st
             .then(left.message.cmp(&right.message))
     });
     Ok(PcGatewayResponse::Diagnostics(diagnostics))
+}
+
+async fn typescript_diagnostics(config: &PcHostConfig, _requested_path: Option<&Path>) -> Result<Vec<PcDiagnostic>> {
+    let output = timeout(
+        Duration::from_secs(config.security_policy.max_command_seconds),
+        Command::new("npx")
+            .args(["tsc", "--noEmit", "--pretty", "false"])
+            .current_dir(&config.workspace_root)
+            .output(),
+    )
+    .await
+    .map_err(|_| anyhow!("tsc diagnostics timed out"))?
+    .context("execute tsc diagnostics")?;
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let mut diagnostics = Vec::new();
+    // tsc outputs errors in format: path(line,col): error TS1234: message
+    for line in stderr.lines() {
+        if let Some(diag) = parse_tsc_line(line) {
+            diagnostics.push(diag);
+        }
+    }
+    Ok(diagnostics)
+}
+
+fn parse_tsc_line(line: &str) -> Option<PcDiagnostic> {
+    // Format: path(line,col): error TS1234: message
+    // or: path(line,col): warning TS1234: message
+    let trimmed = line.trim();
+    let paren_open = trimmed.find('(')?;
+    let paren_close = trimmed.find(')')?;
+    let colon_after = trimmed[paren_close + 1..].find(':')?;
+    let global_colon = paren_close + 1 + colon_after;
+
+    let path = trimmed[..paren_open].to_string();
+    let line_col = &trimmed[paren_open + 1..paren_close];
+    let (line_str, col_str) = line_col.split_once(',')
+        .map(|(l, c)| (l.trim(), c.trim()))
+        .unwrap_or((line_col, "1"));
+
+    let severity = if trimmed[global_colon + 1..].trim_start().starts_with("error") {
+        PcDiagnosticSeverity::Error
+    } else {
+        PcDiagnosticSeverity::Warning
+    };
+
+    // Split after severity code
+    let message_start = trimmed[global_colon + 1..].find(':')
+        .map(|pos| global_colon + 1 + pos + 1)
+        .unwrap_or(global_colon + 1);
+    let message = trimmed[message_start..].trim().to_string();
+
+    Some(PcDiagnostic {
+        path: path.replace('\\', "/"),
+        line: line_str.parse().unwrap_or(0),
+        column: col_str.parse().unwrap_or(0),
+        severity,
+        message,
+        source: Some("tsc".to_string()),
+    })
+}
+
+async fn python_diagnostics(config: &PcHostConfig, _requested_path: Option<&Path>) -> Result<Vec<PcDiagnostic>> {
+    // Try ruff first, fallback to pyright
+    let ruff_result = timeout(
+        Duration::from_secs(config.security_policy.max_command_seconds),
+        Command::new("ruff")
+            .args(["check", "--output-format=json", "."])
+            .current_dir(&config.workspace_root)
+            .output(),
+    )
+    .await;
+
+    if let Ok(Ok(output)) = ruff_result {
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let mut diagnostics = Vec::new();
+        if let Ok(ruff_diags) = serde_json::from_str::<Vec<RuffDiagnostic>>(&stdout) {
+            for d in ruff_diags {
+                diagnostics.push(d.to_pc_diagnostic(&config.workspace_root));
+            }
+        }
+        if !diagnostics.is_empty() || output.status.success() {
+            return Ok(diagnostics);
+        }
+    }
+
+    // Fallback: try pyright
+    let pyright_result = timeout(
+        Duration::from_secs(config.security_policy.max_command_seconds),
+        Command::new("pyright")
+            .args(["--outputjson"])
+            .current_dir(&config.workspace_root)
+            .output(),
+    )
+    .await;
+
+    if let Ok(Ok(output)) = pyright_result {
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let mut diagnostics = Vec::new();
+        if let Ok(pyright) = serde_json::from_str::<PyrightOutput>(&stdout) {
+            for d in pyright.general_diagnostics {
+                diagnostics.push(PcDiagnostic {
+                    path: d.file.replace('\\', "/"),
+                    line: d.range.start.line,
+                    column: d.range.start.column,
+                    severity: pyright_severity(d.severity.as_deref().unwrap_or("error")),
+                    message: d.message,
+                    source: Some("pyright".to_string()),
+                });
+            }
+        }
+        return Ok(diagnostics);
+    }
+
+    Ok(Vec::new())
+}
+
+#[derive(Clone, Debug, serde::Deserialize)]
+struct RuffDiagnostic {
+    location: RuffLocation,
+    code: Option<String>,
+    message: String,
+    filename: String,
+}
+
+#[derive(Clone, Debug, serde::Deserialize)]
+struct RuffLocation {
+    row: u32,
+    column: u32,
+}
+
+impl RuffDiagnostic {
+    fn to_pc_diagnostic(self, workspace_root: &Path) -> PcDiagnostic {
+        let path = PathBuf::from(&self.filename);
+        let relative = if let Ok(rel) = path.strip_prefix(workspace_root) {
+            rel.to_path_buf()
+        } else {
+            path
+        };
+        PcDiagnostic {
+            path: relative.to_string_lossy().replace('\\', "/"),
+            line: self.location.row,
+            column: self.location.column,
+            severity: PcDiagnosticSeverity::Error,
+            message: if let Some(code) = self.code {
+                format!("{}: {}", code, self.message)
+            } else {
+                self.message
+            },
+            source: Some("ruff".to_string()),
+        }
+    }
+}
+
+#[derive(Clone, Debug, serde::Deserialize)]
+struct PyrightOutput {
+    general_diagnostics: Vec<PyrightDiagnostic>,
+}
+
+#[derive(Clone, Debug, serde::Deserialize)]
+struct PyrightDiagnostic {
+    file: String,
+    severity: Option<String>,
+    message: String,
+    range: PyrightRange,
+}
+
+#[derive(Clone, Debug, serde::Deserialize)]
+struct PyrightRange {
+    start: PyrightPosition,
+}
+
+#[derive(Clone, Debug, serde::Deserialize)]
+struct PyrightPosition {
+    line: u32,
+    column: u32,
+}
+
+fn pyright_severity(s: &str) -> PcDiagnosticSeverity {
+    match s {
+        "error" => PcDiagnosticSeverity::Error,
+        "warning" => PcDiagnosticSeverity::Warning,
+        "information" => PcDiagnosticSeverity::Info,
+        _ => PcDiagnosticSeverity::Hint,
+    }
 }
 
 async fn rust_cargo_diagnostics(config: &PcHostConfig, requested_path: Option<&Path>) -> Result<Vec<PcDiagnostic>> {

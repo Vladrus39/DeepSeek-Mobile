@@ -28,6 +28,8 @@ mod project_files_state;
 mod saved_timeline_loader;
 mod snapshots_panel;
 mod snapshots_state;
+mod terminal_panel;
+mod terminal_state;
 
 use agent_event_adapter::push_agent_event;
 use agent_timeline::MobileTimelineState;
@@ -44,11 +46,12 @@ use mobile_drawer::{mobile_drawer, CockpitSection};
 use mobile_engine_runner::{
     continue_mobile_approval, load_default_mobile_approval_cards, run_mobile_turn_streaming,
 };
-use native_bridge::{NativeBridgeState, NativeMobileCommand};
+use native_bridge::{NativeBridgeState, NativeMobileCommand, NativeMobileEvent};
 use pc_pairing_state::PcPairingUiState;
 use project_files_state::ProjectFilesUiState;
 use saved_timeline_loader::load_default_saved_events;
 use snapshots_state::SnapshotsUiState;
+use terminal_state::TerminalUiState;
 
 fn main() {
     dioxus::launch(app);
@@ -71,6 +74,40 @@ fn app() -> Element {
     let mut snapshots_state = use_signal(SnapshotsUiState::default);
     let mut diagnostics_state = use_signal(DiagnosticsUiState::default);
     let git_state = use_signal(GitUiState::default);
+    let terminal_state = use_signal(TerminalUiState::default);
+
+    // Route native bridge terminal events into terminal UI state
+    let terminal_event_bridge = native_bridge;
+    let mut terminal_event_state = terminal_state;
+    use_effect(move || {
+        let event = terminal_event_bridge().last_event.clone();
+        match event {
+            Some(NativeMobileEvent::TerminalOpened { session_id, title, cwd }) => {
+                let session = deepseek_mobile_core::PcTerminalSession {
+                    id: session_id,
+                    workspace_id: "default".to_string(),
+                    title,
+                    cwd,
+                    environment_id: None,
+                    created_at_unix: std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map(|d| d.as_secs())
+                        .unwrap_or(0),
+                };
+                let mut ts = terminal_event_state.write();
+                ts.add_session(session);
+            }
+            Some(NativeMobileEvent::TerminalOutput { session_id, chunk }) => {
+                let mut ts = terminal_event_state.write();
+                ts.append_output(&session_id, &chunk);
+            }
+            Some(NativeMobileEvent::TerminalClosed { session_id, exit_code }) => {
+                let mut ts = terminal_event_state.write();
+                ts.close_session(&session_id, exit_code);
+            }
+            _ => {}
+        }
+    });
 
     if !did_load_saved_runtime() {
         did_load_saved_runtime.set(true);
@@ -227,6 +264,7 @@ fn app() -> Element {
                         snapshots_state,
                         diagnostics_state,
                         git_state,
+                        terminal_state,
                     )}
                 }
             }

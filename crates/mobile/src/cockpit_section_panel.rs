@@ -10,27 +10,43 @@ use crate::git_panel::git_panel;
 use crate::git_state::GitUiState;
 use crate::snapshots_panel::snapshots_panel;
 use crate::snapshots_state::SnapshotsUiState;
+use crate::terminal_panel::terminal_panel;
+use crate::terminal_state::TerminalUiState;
 use dioxus::prelude::*;
 
 pub fn cockpit_section_panel(
     section: CockpitSection,
     pc_pairing_state: Signal<PcPairingUiState>,
-    native_bridge: Signal<NativeBridgeState>,
+    mut native_bridge: Signal<NativeBridgeState>,
     project_files_state: Signal<ProjectFilesUiState>,
     snapshots_state: Signal<SnapshotsUiState>,
     diagnostics_state: Signal<DiagnosticsUiState>,
     git_state: Signal<GitUiState>,
+    mut terminal_state: Signal<TerminalUiState>,
 ) -> Element {
     match section {
         CockpitSection::Chat => chat_empty_state(),
         CockpitSection::PcHost => pc_pairing_panel(pc_pairing_state, native_bridge),
         CockpitSection::Files => project_files_panel(project_files_state),
-        CockpitSection::Snapshots => snapshots_panel(&snapshots_state()),
+        CockpitSection::Snapshots => snapshots_panel(snapshots_state),
         CockpitSection::Diagnostics => diagnostics_panel(&diagnostics_state()),
-        CockpitSection::Terminal => placeholder_panel(
-            "Terminal",
-            "Command output from PC-host, Termux or remote executors.",
-            &["Run task", "Stream output", "Stop command", "Copy logs"],
+        CockpitSection::Terminal => terminal_panel(
+            terminal_state,
+            EventHandler::new(move |_| {
+                let mut bridge = native_bridge.write();
+                bridge.enqueue_open_terminal("default");
+            }),
+            EventHandler::new(move |input: String| {
+                let ts = terminal_state.write();
+                if let Some(session_id) = ts.selected_session_id.clone() {
+                    let mut bridge = native_bridge.write();
+                    bridge.enqueue_terminal_input(session_id, input);
+                }
+            }),
+            EventHandler::new(move |session_id: String| {
+                let mut bridge = native_bridge.write();
+                bridge.enqueue_close_terminal(session_id);
+            }),
         ),
         CockpitSection::Approvals => placeholder_panel(
             "Approvals",

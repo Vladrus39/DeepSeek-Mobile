@@ -100,7 +100,9 @@ impl WorkspaceDiagnosticsService {
 
     pub async fn run_post_edit_diagnostics(&self, path: Option<String>) -> WorkspaceDiagnosticsReport {
         match self.workspace.executor {
-            ExecutorKind::LocalAndroid | ExecutorKind::Termux => self.run_local_rust_diagnostics(path.as_deref()).await,
+            ExecutorKind::LocalAndroid | ExecutorKind::Termux => {
+                self.run_local_multi_diagnostics(path.as_deref()).await
+            }
             ExecutorKind::PcGateway => WorkspaceDiagnosticsReport::not_applicable(
                 &self.workspace,
                 "PC gateway diagnostics are produced by PcGatewayClient/pc-host.",
@@ -110,6 +112,109 @@ impl WorkspaceDiagnosticsService {
                 "Remote Y-lit diagnostics are not wired yet.",
             ),
         }
+    }
+
+    async fn run_local_multi_diagnostics(&self, path: Option<&str>) -> WorkspaceDiagnosticsReport {
+        let mut all_diagnostics = Vec::new();
+        let mut message = String::new();
+
+        let rust_report = self.run_local_rust_diagnostics(path).await;
+        match rust_report.status {
+            WorkspaceDiagnosticsStatus::Completed => all_diagnostics.extend(rust_report.diagnostics),
+            _ => { if let Some(msg) = rust_report.message { message.push_str(&format!("Rust: {}; ", msg)); } }
+        }
+
+        let ts_report = self.run_local_typescript_diagnostics(path).await;
+        match ts_report.status {
+            WorkspaceDiagnosticsStatus::Completed => all_diagnostics.extend(ts_report.diagnostics),
+            _ => { if let Some(msg) = ts_report.message { message.push_str(&format!("TS: {}; ", msg)); } }
+        }
+
+        let py_report = self.run_local_python_diagnostics(path).await;
+        match py_report.status {
+            WorkspaceDiagnosticsStatus::Completed => all_diagnostics.extend(py_report.diagnostics),
+            _ => { if let Some(msg) = py_report.message { message.push_str(&format!("Python: {}; ", msg)); } }
+        }
+
+        if all_diagnostics.is_empty() && message.is_empty() {
+            WorkspaceDiagnosticsReport::not_applicable(&self.workspace, "No diagnostics applicable.")
+        } else if all_diagnostics.is_empty() {
+            WorkspaceDiagnosticsReport::unavailable(&self.workspace, "multi-provider", message)
+        } else {
+            WorkspaceDiagnosticsReport::completed(&self.workspace, "multi-provider", all_diagnostics)
+        }
+    }
+
+    async fn run_local_typescript_diagnostics(&self, _path: Option<&str>) -> WorkspaceDiagnosticsReport {
+        if !self.workspace.root.join("tsconfig.json").exists() {
+            return WorkspaceDiagnosticsReport::not_applicable(&self.workspace, "No tsconfig.json found.");
+        }
+        let run = Command::new("npx")
+            .args(["tsc", "--noEmit", "--pretty", "false"])
+            .current_dir(&self.workspace.root)
+            .output();
+        let output = match timeout(Duration::from_secs(self.timeout_secs), run).await {
+            Ok(Ok(o)) => o,
+            Ok(Err(e)) => return WorkspaceDiagnosticsReport::unavailable(&self.workspace, "tsc", e.to_string()),
+            Err(_) => return WorkspaceDiagnosticsReport::unavailable(&self.workspace, "tsc", "timed out"),
+        };
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let mut diagnostics = Vec::new();
+        for line in stderr.lines() {
+            if let Some(diag) = parse_tsc_line_local(line, &self.workspace) {
+                diagnostics.push(diag);
+            }
+        }
+        WorkspaceDiagnosticsReport::completed(&self.workspace, "tsc", diagnostics)
+    }
+
+    async fn run_local_python_diagnostics(&self, _path: Option<&str>) -> WorkspaceDiagnosticsReport {
+        if !self.workspace.root.join("pyproject.toml").exists()
+            && !self.workspace.root.join("setup.py").exists()
+            && !self.workspace.root.join("requirements.txt").exists()
+        {
+            return WorkspaceDiagnosticsReport::not_applicable(&self.workspace, "No Python project config found.");
+        }
+        // Try ruff
+        let run = Command::new("ruff")
+            .args(["check", "--output-format=json", "."])
+            .current_dir(&self.workspace.root)
+            .output();
+        if let Ok(Ok(output)) = timeout(Duration::from_secs(self.timeout_secs), run).await {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            let mut diagnostics = Vec::new();
+            if let Ok(ruff_diags) = serde_json::from_str::<Vec<LocalRuffDiagnostic>>(&stdout) {
+                for d in ruff_diags {
+                    diagnostics.push(d.to_pc_diagnostic(&self.workspace.root));
+                }
+            }
+            if !diagnostics.is_empty() || output.status.success() {
+                return WorkspaceDiagnosticsReport::completed(&self.workspace, "ruff", diagnostics);
+            }
+        }
+        // Fallback: pyright
+        let fallback = Command::new("pyright")
+            .args(["--outputjson"])
+            .current_dir(&self.workspace.root)
+            .output();
+        if let Ok(Ok(output)) = timeout(Duration::from_secs(self.timeout_secs), fallback).await {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            let mut diagnostics = Vec::new();
+            if let Ok(pyright) = serde_json::from_str::<LocalPyrightOutput>(&stdout) {
+                for d in pyright.general_diagnostics {
+                    diagnostics.push(PcDiagnostic {
+                        path: relative_path(&d.file, &self.workspace.root).replace('\\', "/"),
+                        line: d.range.start.line,
+                        column: d.range.start.column,
+                        severity: local_pyright_severity(d.severity.as_deref().unwrap_or("error")),
+                        message: d.message,
+                        source: Some("pyright".to_string()),
+                    });
+                }
+            }
+            return WorkspaceDiagnosticsReport::completed(&self.workspace, "pyright", diagnostics);
+        }
+        WorkspaceDiagnosticsReport::unavailable(&self.workspace, "python", "neither ruff nor pyright available")
     }
 
     async fn run_local_rust_diagnostics(&self, path: Option<&str>) -> WorkspaceDiagnosticsReport {
@@ -200,6 +305,8 @@ impl WorkspaceDiagnosticsService {
         WorkspaceDiagnosticsReport::completed(&self.workspace, "cargo check", diagnostics)
     }
 }
+
+// --- Cargo diagnostic helpers ---
 
 #[derive(Clone, Debug, Deserialize)]
 struct CargoCheckMessage {
@@ -298,6 +405,130 @@ fn summarize_diagnostics(diagnostics: &[PcDiagnostic]) -> String {
 
 fn normalize_path(path: &Path) -> String {
     path.to_string_lossy().replace('\\', "/")
+}
+
+// --- Local helpers for TS/Python diagnostics ---
+
+fn parse_tsc_line_local(line: &str, workspace: &Workspace) -> Option<PcDiagnostic> {
+    let trimmed = line.trim();
+    if !trimmed.contains("error ") && !trimmed.contains("warning ") {
+        return None;
+    }
+    let paren_open = trimmed.find('(')?;
+    let paren_close = trimmed.find(')')?;
+    let raw_path = trimmed[..paren_open].trim();
+    let path = Path::new(raw_path);
+
+    let relative = if let Ok(rel) = path.strip_prefix(&workspace.root) {
+        rel.to_string_lossy().to_string()
+    } else {
+        path.file_name().and_then(|n| n.to_str()).unwrap_or(raw_path).to_string()
+    };
+
+    let line_col = &trimmed[paren_open + 1..paren_close];
+    let (line_str, col_str) = line_col.split_once(',')
+        .map(|(l, c)| (l.trim(), c.trim()))
+        .unwrap_or((line_col, "1"));
+
+    let colon_after = trimmed[paren_close + 1..].find(':')?;
+    let global_colon = paren_close + 1 + colon_after;
+    let severity = if trimmed[global_colon + 1..].trim_start().starts_with("error") {
+        PcDiagnosticSeverity::Error
+    } else {
+        PcDiagnosticSeverity::Warning
+    };
+
+    let msg_start = trimmed[global_colon + 1..].find(':')
+        .map(|pos| global_colon + 1 + pos + 1)
+        .unwrap_or(global_colon + 1);
+
+    Some(PcDiagnostic {
+        path: relative.replace('\\', "/"),
+        line: line_str.parse().unwrap_or(0),
+        column: col_str.parse().unwrap_or(0),
+        severity,
+        message: trimmed[msg_start..].trim().to_string(),
+        source: Some("tsc".to_string()),
+    })
+}
+
+#[derive(Clone, Debug, serde::Deserialize)]
+struct LocalRuffDiagnostic {
+    location: LocalRuffLocation,
+    code: Option<String>,
+    message: String,
+    filename: String,
+}
+
+#[derive(Clone, Debug, serde::Deserialize)]
+struct LocalRuffLocation {
+    row: u32,
+    column: u32,
+}
+
+impl LocalRuffDiagnostic {
+    fn to_pc_diagnostic(self, workspace_root: &Path) -> PcDiagnostic {
+        let path = PathBuf::from(&self.filename);
+        let relative = if let Ok(rel) = path.strip_prefix(workspace_root) {
+            rel.to_path_buf()
+        } else {
+            path
+        };
+        PcDiagnostic {
+            path: relative.to_string_lossy().replace('\\', "/"),
+            line: self.location.row,
+            column: self.location.column,
+            severity: PcDiagnosticSeverity::Error,
+            message: if let Some(code) = self.code {
+                format!("{}: {}", code, self.message)
+            } else {
+                self.message
+            },
+            source: Some("ruff".to_string()),
+        }
+    }
+}
+
+#[derive(Clone, Debug, serde::Deserialize)]
+struct LocalPyrightOutput {
+    general_diagnostics: Vec<LocalPyrightDiagnostic>,
+}
+
+#[derive(Clone, Debug, serde::Deserialize)]
+struct LocalPyrightDiagnostic {
+    file: String,
+    severity: Option<String>,
+    message: String,
+    range: LocalPyrightRange,
+}
+
+#[derive(Clone, Debug, serde::Deserialize)]
+struct LocalPyrightRange {
+    start: LocalPyrightPosition,
+}
+
+#[derive(Clone, Debug, serde::Deserialize)]
+struct LocalPyrightPosition {
+    line: u32,
+    column: u32,
+}
+
+fn local_pyright_severity(s: &str) -> PcDiagnosticSeverity {
+    match s {
+        "error" => PcDiagnosticSeverity::Error,
+        "warning" => PcDiagnosticSeverity::Warning,
+        "information" => PcDiagnosticSeverity::Info,
+        _ => PcDiagnosticSeverity::Hint,
+    }
+}
+
+fn relative_path(file: &str, workspace_root: &Path) -> String {
+    let path = Path::new(file);
+    if let Ok(rel) = path.strip_prefix(workspace_root) {
+        rel.to_string_lossy().to_string()
+    } else {
+        path.file_name().and_then(|n| n.to_str()).unwrap_or(file).to_string()
+    }
 }
 
 #[cfg(test)]

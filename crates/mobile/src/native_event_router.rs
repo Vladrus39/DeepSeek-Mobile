@@ -68,6 +68,20 @@ pub fn route_native_mobile_event(
         NativeMobileEvent::ShareFailed(error) => {
             timeline.push_error(format!("Native share failed: {}", error));
         }
+        NativeMobileEvent::TerminalOpened { session_id, title, cwd } => {
+            timeline.push_status(format!("Terminal session opened: {} ({} - {})", session_id, title, cwd));
+        }
+        NativeMobileEvent::TerminalOutput { session_id, chunk } => {
+            timeline.push_status(format!("Terminal {} output: {} char(s)", session_id, chunk.len()));
+        }
+        NativeMobileEvent::TerminalClosed { session_id, exit_code } => {
+            let code = exit_code.map(|c| c.to_string()).unwrap_or_else(|| "unknown".to_string());
+            timeline.push_status(format!("Terminal {} closed (exit code: {})", session_id, code));
+        }
+        NativeMobileEvent::TerminalFailed { session_id, message } => {
+            let id = session_id.unwrap_or_else(|| "unknown".to_string());
+            timeline.push_error(format!("Terminal {} failed: {}", id, message));
+        }
     }
 
     NativeEventRouteResult {
@@ -167,5 +181,61 @@ mod tests {
         );
         assert_eq!(result.pc_pairing.status, PcPairingUiStatus::WaitingForPc);
         assert!(result.pc_pairing.discovery_rows()[0].contains("192.168.1.10"));
+    }
+
+    #[test]
+    fn routes_terminal_events_to_timeline() {
+        let result = route_native_mobile_event(
+            ChatComposerState::default(),
+            DocumentPickerState::default(),
+            NativeBridgeState::default(),
+            PcPairingUiState::default(),
+            MobileTimelineState::default(),
+            NativeMobileEvent::TerminalOpened {
+                session_id: "term-1".to_string(),
+                title: "test".to_string(),
+                cwd: "/workspace".to_string(),
+            },
+        );
+        assert!(result.timeline.items.iter().any(|i| i.body.contains("Terminal session opened")));
+
+        let result = route_native_mobile_event(
+            ChatComposerState::default(),
+            DocumentPickerState::default(),
+            NativeBridgeState::default(),
+            PcPairingUiState::default(),
+            MobileTimelineState::default(),
+            NativeMobileEvent::TerminalOutput {
+                session_id: "term-1".to_string(),
+                chunk: "hello".to_string(),
+            },
+        );
+        assert!(result.timeline.items.iter().any(|i| i.body.contains("Terminal term-1 output")));
+
+        let result = route_native_mobile_event(
+            ChatComposerState::default(),
+            DocumentPickerState::default(),
+            NativeBridgeState::default(),
+            PcPairingUiState::default(),
+            MobileTimelineState::default(),
+            NativeMobileEvent::TerminalClosed {
+                session_id: "term-1".to_string(),
+                exit_code: Some(0),
+            },
+        );
+        assert!(result.timeline.items.iter().any(|i| i.body.contains("Terminal term-1 closed")));
+
+        let result = route_native_mobile_event(
+            ChatComposerState::default(),
+            DocumentPickerState::default(),
+            NativeBridgeState::default(),
+            PcPairingUiState::default(),
+            MobileTimelineState::default(),
+            NativeMobileEvent::TerminalFailed {
+                session_id: Some("term-1".to_string()),
+                message: "timeout".to_string(),
+            },
+        );
+        assert!(result.timeline.items.iter().any(|i| i.body.contains("Terminal term-1 failed")));
     }
 }

@@ -58,6 +58,7 @@ local/Termux/PC-host execution, and project-aware mobile screens.
 - **Git tools**: status, diff, commit, push, pull, branch, log, add, checkout, clone.
 - **GitHub tools**: github_repo, github_pr, github_issue, github_browse, github_push_file.
 - **GitHub API client**: auth, repo info, branches, file content, PR management, issue tracking.
+- **Web tools**: `web_fetch` (URL fetch) and `web_search` (DuckDuckGo) with `ApprovalRequirement::Suggest` and `Network` capability.
 - **Auto-commit/push**: `auto_commit.rs` helper for persisting changes after each agent turn.
 - Executor abstraction.
 - PC gateway executor planning layer.
@@ -94,6 +95,11 @@ local/Termux/PC-host execution, and project-aware mobile screens.
 - Initial cockpit layout.
 - PC-host pairing/status card.
 - First visual direction: ChatGPT + Cursor + Replit style mobile cockpit.
+- Git panel (status, diff, branch, commit).
+- Snapshots panel (restore confirmation with file-count/deletion warning).
+- Diagnostics panel (severity badges, diagnostic cards).
+- Terminal panel (session tabs, output view, input field).
+- Native bridge terminal commands (`OpenTerminal`/`TerminalInput`/`CloseTerminal`) and events routing.
 
 ### GitHub integration (new — 2026-05-17)
 
@@ -145,8 +151,10 @@ local/Termux/PC-host execution, and project-aware mobile screens.
 - Real file tree.
 - Diff/patch viewer.
 - Approval card screen.
-- Terminal output screen.
-- Git panel.
+- ✅ Terminal output screen (panel, state, native bridge events — wired through `cockpit_section_panel`).
+- ✅ Git panel (status, diff, branch, commit — wired into drawer).
+- ✅ Snapshots panel (restore confirmation dialog — wired through `main.rs`).
+- ✅ Diagnostics panel (severity display — wired through `main.rs`).
 - Bottom tabs: Chat / Files / Terminal / Git / Settings.
 - Real button wiring for Create ZIP, Share ZIP and Check PC connection.
 
@@ -171,7 +179,7 @@ Git tools                    ~90-95%  (full PC gateway routing + Git UI panel in
 GitHub tools                 ~60-70%
 PC gateway protocol/client   ~65-70%
 PC-host daemon               ~65-70%  (streaming SSE, policy presets, extended git ops, path hardening)
-Mobile UI                    ~30-35%  (git panel, snapshot panel, diagnostics panel, cockpit, drawer, pairing panel)
+Mobile UI                    ~40-45%  (git panel, snapshot panel, diagnostics panel, terminal panel, cockpit, drawer, pairing panel, native bridge commands)
 Production-ready app         ~30-40%
 ```
 
@@ -188,6 +196,9 @@ Production-ready app         ~30-40%
 9. Add Git/GitHub workflow screens to mobile UI.
 10. Test auto-commit/push with real GitHub repo.
 11. ✅ Long-running command streaming via SSE (`/v1/gateway/exec/stream`) — ToolExecutionCoordinator streams exec_shell output from PC gateway.
+12. ✅ Web tools (`web_fetch`/`web_search`) with `ApprovalRequirement::Suggest` and DuckDuckGo search.
+13. ✅ Snapshot restore UI (confirmation dialog, pruning policy).
+14. ✅ Terminal panel in mobile cockpit with native bridge events routing.
 
 ## Non-negotiable product direction
 
