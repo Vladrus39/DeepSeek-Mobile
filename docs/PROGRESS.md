@@ -26,3 +26,20 @@
 3. Wire Android UI buttons (Create ZIP, Share ZIP, Check PC connection)
 4. Add GitHub token settings screen
 5. Test auto-commit/push with real GitHub repo
+
+## Session 2026-05-18 (afternoon)
+
+### Completed
+- Onboarding panel: full-screen first-launch API key setup with validation and config save
+- Bottom navigation bar: 5-tab (Chat/Files/Terminal/Git/Settings) with approval badge
+- Real approval panel in cockpit section (placeholder replaced)
+- Share file bridge: `enqueue_share_file` for Android share intent
+- "Share pairing ZIP" button now triggers Android share via native bridge
+- File tree with expandable directories: click to navigate in/out, "Up" button, path display
+- Post-turn auto snapshot: auto-creates workspace snapshot after successful turns with tool execution
+- Removed unused `placeholder_panel` function (cleanup)
+
+### Build status
+- `cargo check --workspace` — 0 errors
+- 87 mobile tests — all pass
+- 4 pre-existing core test failures (env-dependent: auto_commit, workspace_diagnostics)
