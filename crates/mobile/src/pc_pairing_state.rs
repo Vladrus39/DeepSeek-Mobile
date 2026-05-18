@@ -278,6 +278,24 @@ impl PcPairingUiState {
         ]
     }
 
+    /// Returns host detail from the discovery candidate health, if available.
+    pub fn host_detail_text(&self) -> Option<String> {
+        let report = self.discovery_report.as_ref()?;
+        let online = report.candidates.iter().find(|c| c.health.is_some())?;
+        let h = online.health.as_ref()?;
+        let mut lines = vec![
+            format!("Gateway: {}", h.gateway_id),
+            format!("Version: {}", h.version),
+        ];
+        if h.uptime_secs > 0 {
+            let hours = h.uptime_secs / 3600;
+            let mins = (h.uptime_secs % 3600) / 60;
+            lines.push(format!("Uptime: {}h {}m", hours, mins));
+        }
+        lines.push(format!("Requests: {} ({} errors)", h.request_count, h.error_count));
+        Some(lines.join("\n"))
+    }
+
     pub fn apply_reconnect_action(&mut self, action: PcReconnectAction) -> PcReconnectEffect {
         self.last_reconnect_action = Some(action.clone());
         self.reconnect_generation = self.reconnect_generation.saturating_add(1);

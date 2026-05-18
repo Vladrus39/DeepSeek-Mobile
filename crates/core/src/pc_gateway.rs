@@ -606,6 +606,15 @@ pub struct PcGatewayHealth {
     pub version: String,
     pub status: PcGatewayConnectionStatus,
     pub capabilities: Vec<PcGatewayCapability>,
+    /// Seconds since the PC-host process started.
+    #[serde(default)]
+    pub uptime_secs: u64,
+    /// Total number of gateway requests processed.
+    #[serde(default)]
+    pub request_count: u64,
+    /// Number of requests that resulted in an error.
+    #[serde(default)]
+    pub error_count: u64,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]

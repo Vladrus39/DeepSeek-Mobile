@@ -8,6 +8,8 @@ use crate::project_files_panel::project_files_panel;
 use crate::project_files_state::ProjectFilesUiState;
 use crate::git_panel::git_panel;
 use crate::git_state::GitUiState;
+use crate::settings_panel::settings_panel;
+use crate::settings_state::SettingsFormState;
 use crate::snapshots_panel::snapshots_panel;
 use crate::snapshots_state::SnapshotsUiState;
 use crate::terminal_panel::terminal_panel;
@@ -23,6 +25,7 @@ pub fn cockpit_section_panel(
     diagnostics_state: Signal<DiagnosticsUiState>,
     git_state: Signal<GitUiState>,
     mut terminal_state: Signal<TerminalUiState>,
+    settings_state: Signal<SettingsFormState>,
 ) -> Element {
     match section {
         CockpitSection::Chat => chat_empty_state(),
@@ -54,11 +57,7 @@ pub fn cockpit_section_panel(
             &["Approve once", "Approve for session", "Deny", "Show diff"],
         ),
         CockpitSection::Git => git_panel(&git_state()),
-        CockpitSection::Settings => placeholder_panel(
-            "Settings",
-            "DeepSeek API key, GitHub, cloud disks, PC-host and security settings.",
-            &["DeepSeek API", "GitHub", "Cloud disks", "Security"],
-        ),
+        CockpitSection::Settings => settings_panel(settings_state),
     }
 }
 

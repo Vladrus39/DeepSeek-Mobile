@@ -9,11 +9,12 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command as TokioCommand;
 use tokio_stream::wrappers::ReceiverStream;
 use deepseek_mobile_core::{
-    CommandOutput, CommandRequest, PcDiagnostic, PcDiagnosticSeverity, PcEnvironmentDescriptor,
-    PcGatewayCapability, PcGatewayConnectionStatus, PcGatewayDirEntry, PcGatewayError,
-    PcGatewayHealth, PcGatewayRequest, PcGatewayRequestEnvelope, PcGatewayResponse,
-    PcGatewayResponseEnvelope, PcGatewaySecurityPolicy, PolicyPreset, PcTaskDescriptor, PcTaskKind,
-    PcTerminalSession, PcWorkspaceGrant,
+    CommandOutput, CommandRequest, LogRing, PcDiagnostic, PcDiagnosticSeverity,
+    PcEnvironmentDescriptor, PcGatewayCapability, PcGatewayConnectionStatus, PcGatewayDirEntry,
+    PcGatewayError, PcGatewayHealth, PcGatewayLogEntry, PcGatewayLogs, PcGatewayRequest,
+    PcGatewayRequestEnvelope, PcGatewayResponse, PcGatewayResponseEnvelope,
+    PcGatewaySecurityPolicy, PolicyPreset, PcTaskDescriptor, PcTaskKind, PcTerminalSession,
+    PcWorkspaceGrant,
 };
 use serde::Deserialize;
 use std::env;
@@ -32,6 +33,8 @@ use std::collections::HashMap;
 struct PcHostState {
     config: Arc<PcHostConfig>,
     terminals: Arc<Mutex<HashMap<String, TerminalHandle>>>,
+    log_ring: Arc<Mutex<LogRing>>,
+    start_time: std::time::Instant,
 }
 
 #[derive(Clone, Debug)]
@@ -135,6 +138,9 @@ impl PcHostConfig {
             version: env!("CARGO_PKG_VERSION").to_string(),
             status: PcGatewayConnectionStatus::Online,
             capabilities: host_capabilities(),
+            uptime_secs: 0,
+            request_count: 0,
+            error_count: 0,
         }
     }
 
@@ -208,12 +214,15 @@ async fn main() -> Result<()> {
     let state = PcHostState {
         config: Arc::new(config),
         terminals: Arc::new(Mutex::new(HashMap::new())),
+        log_ring: Arc::new(Mutex::new(LogRing::new(200))),
+        start_time: std::time::Instant::now(),
     };
 
     let app = Router::new()
         .route("/health", get(health_handler))
         .route("/v1/gateway/request", post(gateway_request_handler))
         .route("/v1/gateway/exec/stream", post(exec_stream_handler))
+        .route("/v1/gateway/logs", get(logs_handler))
         .with_state(state);
 
     let listener = tokio::net::TcpListener::bind(bind_addr)
@@ -225,7 +234,13 @@ async fn main() -> Result<()> {
 }
 
 async fn health_handler(State(state): State<PcHostState>) -> Json<PcGatewayHealth> {
-    Json(state.config.health())
+    let mut health = state.config.health();
+    health.uptime_secs = state.start_time.elapsed().as_secs();
+    let log_ring = state.log_ring.lock().await;
+    let snapshot = log_ring.snapshot();
+    health.request_count = snapshot.entries.len() as u64;
+    health.error_count = snapshot.entries.iter().filter(|e| !e.success).count() as u64;
+    Json(health)
 }
 
 async fn gateway_request_handler(
@@ -242,10 +257,27 @@ async fn gateway_request_handler(
     }
 
     let request_id = envelope.id.clone();
+    let operation = request_operation_name(&envelope.request);
+    let start = std::time::Instant::now();
+
     let response = match handle_gateway_request(&state, envelope.request).await {
         Ok(response) => response,
         Err(error) => PcGatewayResponse::Error(PcGatewayError::new("host_error", error.to_string())),
     };
+
+    let duration_ms = start.elapsed().as_millis() as u64;
+    let success = !matches!(&response, PcGatewayResponse::Error(_));
+    {
+        let mut log_ring = state.log_ring.lock().await;
+        log_ring.push(PcGatewayLogEntry {
+            timestamp_unix: current_unix_time(),
+            request_id: request_id.clone(),
+            operation,
+            success,
+            error_message: if success { None } else { Some(format!("{:?}", response)) },
+            duration_ms,
+        });
+    }
 
     Ok(Json(state.config.response(request_id, response)))
 }
@@ -1189,6 +1221,46 @@ fn truncate_output(text: String, max_bytes: usize) -> String {
     let mut truncated = text[..cut].to_string();
     truncated.push_str("\n... <truncated by pc-host policy>");
     truncated
+}
+
+async fn logs_handler(
+    State(state): State<PcHostState>,
+    headers: HeaderMap,
+) -> Result<Json<PcGatewayLogs>, (StatusCode, String)> {
+    if let Err(error) = authorize(&state.config, &headers) {
+        return Err((StatusCode::UNAUTHORIZED, error.to_string()));
+    }
+    let log_ring = state.log_ring.lock().await;
+    Ok(Json(log_ring.snapshot()))
+}
+
+fn request_operation_name(request: &PcGatewayRequest) -> String {
+    match request {
+        PcGatewayRequest::Health => "health".to_string(),
+        PcGatewayRequest::ListWorkspaces => "list_workspaces".to_string(),
+        PcGatewayRequest::ListEnvironments { .. } => "list_environments".to_string(),
+        PcGatewayRequest::DetectTasks { .. } => "detect_tasks".to_string(),
+        PcGatewayRequest::IndexWorkspace { .. } => "index_workspace".to_string(),
+        PcGatewayRequest::ReadFile { .. } => "read_file".to_string(),
+        PcGatewayRequest::WriteFile { .. } => "write_file".to_string(),
+        PcGatewayRequest::DeleteFile { .. } => "delete_file".to_string(),
+        PcGatewayRequest::ListDir { .. } => "list_dir".to_string(),
+        PcGatewayRequest::OpenTerminal { .. } => "open_terminal".to_string(),
+        PcGatewayRequest::TerminalInput { .. } => "terminal_input".to_string(),
+        PcGatewayRequest::CloseTerminal { .. } => "close_terminal".to_string(),
+        PcGatewayRequest::ExecuteCommand { .. } => "execute_command".to_string(),
+        PcGatewayRequest::RunTask { .. } => "run_task".to_string(),
+        PcGatewayRequest::StopTask { .. } => "stop_task".to_string(),
+        PcGatewayRequest::StartDevServer { .. } => "start_dev_server".to_string(),
+        PcGatewayRequest::StopDevServer { .. } => "stop_dev_server".to_string(),
+        PcGatewayRequest::GetDiagnostics { .. } => "get_diagnostics".to_string(),
+        PcGatewayRequest::GitStatus { .. } => "git_status".to_string(),
+        PcGatewayRequest::GitDiff { .. } => "git_diff".to_string(),
+        PcGatewayRequest::GitCommit { .. } => "git_commit".to_string(),
+        PcGatewayRequest::GitPush { .. } => "git_push".to_string(),
+        PcGatewayRequest::GitPull { .. } => "git_pull".to_string(),
+        PcGatewayRequest::GitBranch { .. } => "git_branch".to_string(),
+    }
 }
 
 fn host_capabilities() -> Vec<PcGatewayCapability> {

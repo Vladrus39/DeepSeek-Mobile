@@ -18,6 +18,7 @@ pub mod model_router;
 pub mod pc_gateway;
 pub mod pc_gateway_client;
 pub mod pc_gateway_discovery;
+pub mod pc_logs;
 pub mod pc_pairing;
 pub mod runtime_store;
 pub mod session;
@@ -81,6 +82,7 @@ pub use pc_gateway_discovery::{
     PcGatewayDiscoverySource, PcGatewayDiscoveryStatus, PcGatewayMdnsRecord,
     DEFAULT_PC_GATEWAY_PORT, PC_GATEWAY_MDNS_SERVICE,
 };
+pub use pc_logs::{LogRing, PcGatewayLogEntry, PcGatewayLogs};
 pub use pc_pairing::{PcGatewayPairingBundle, PcPairingLaunchScript, PcPairingPlatform};
 pub use runtime_store::{
     ApprovalDecisionRecord, PendingApprovalRecord, RuntimeEventRecord, RuntimeThreadStore,

@@ -94,6 +94,27 @@ pub fn pc_pairing_panel(mut state: Signal<PcPairingUiState>, mut native_bridge: 
                 padding: "12px",
                 display: "flex",
                 flex_direction: "column",
+                gap: "6px",
+
+                div { color: "#d1d5db", font_size: "13px", "Host details" }
+                div {
+                    color: "#e5e7eb",
+                    font_size: "13px",
+                    white_space: "pre-wrap",
+                    if let Some(detail) = snapshot.host_detail_text() {
+                        "{detail}"
+                    } else {
+                        "No host health data yet. Complete pairing and connection first."
+                    }
+                }
+            }
+
+            div {
+                background_color: "#1f2937",
+                border_radius: "12px",
+                padding: "12px",
+                display: "flex",
+                flex_direction: "column",
                 gap: "8px",
 
                 div { color: "#d1d5db", font_size: "13px", "Reconnect controls" }

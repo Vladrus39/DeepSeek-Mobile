@@ -26,6 +26,8 @@ mod project_files;
 mod project_files_panel;
 mod project_files_state;
 mod saved_timeline_loader;
+mod settings_panel;
+mod settings_state;
 mod snapshots_panel;
 mod snapshots_state;
 mod terminal_panel;
@@ -50,6 +52,7 @@ use native_bridge::{NativeBridgeState, NativeMobileCommand, NativeMobileEvent};
 use pc_pairing_state::PcPairingUiState;
 use project_files_state::ProjectFilesUiState;
 use saved_timeline_loader::load_default_saved_events;
+use settings_state::SettingsFormState;
 use snapshots_state::SnapshotsUiState;
 use terminal_state::TerminalUiState;
 
@@ -75,6 +78,7 @@ fn app() -> Element {
     let mut diagnostics_state = use_signal(DiagnosticsUiState::default);
     let git_state = use_signal(GitUiState::default);
     let terminal_state = use_signal(TerminalUiState::default);
+    let settings_state = use_signal(SettingsFormState::default);
 
     // Route native bridge terminal events into terminal UI state
     let terminal_event_bridge = native_bridge;
@@ -265,6 +269,7 @@ fn app() -> Element {
                         diagnostics_state,
                         git_state,
                         terminal_state,
+                        settings_state,
                     )}
                 }
             }
