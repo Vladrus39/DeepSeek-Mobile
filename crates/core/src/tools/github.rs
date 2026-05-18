@@ -5,7 +5,10 @@
 //! GitHub REST API. Every operation that modifies repository state requires
 //! explicit approval from the mobile UI.
 
-use super::{optional_str, required_str, ApprovalRequirement, ToolCapability, ToolContext, ToolResult, ToolSpec};
+use super::{
+    optional_str, required_str, ApprovalRequirement, ToolCapability, ToolContext, ToolResult,
+    ToolSpec,
+};
 use crate::github::{GitHubClient, GitHubRepo};
 use anyhow::{anyhow, Result};
 use serde_json::{json, Value};
@@ -60,8 +63,10 @@ impl ToolSpec for GitHubRepoTool {
             }
             "branches" => {
                 let branches = rt.block_on(github.list_branches(&repo))?;
-                Ok(ToolResult::success(serde_json::to_string_pretty(&branches)?)
-                    .with_metadata(serde_json::to_value(branches)?))
+                Ok(
+                    ToolResult::success(serde_json::to_string_pretty(&branches)?)
+                        .with_metadata(serde_json::to_value(branches)?),
+                )
             }
             "read" => {
                 let path = required_str(&input, "path")?;
@@ -255,15 +260,20 @@ impl ToolSpec for GitHubBrowseTool {
 
         let mut output = String::new();
         for entry in &entries {
-            let prefix = if entry.entry_type == "dir" { "📁" } else { "📄" };
+            let prefix = if entry.entry_type == "dir" {
+                "📁"
+            } else {
+                "📄"
+            };
             output.push_str(&format!(
                 "{} {} ({})\n",
-                prefix, entry.name, entry.sha.chars().take(7).collect::<String>()
+                prefix,
+                entry.name,
+                entry.sha.chars().take(7).collect::<String>()
             ));
         }
 
-        Ok(ToolResult::success(output)
-            .with_metadata(serde_json::to_value(entries)?))
+        Ok(ToolResult::success(output).with_metadata(serde_json::to_value(entries)?))
     }
 }
 
@@ -292,7 +302,11 @@ impl ToolSpec for GitHubPushFileTool {
     }
 
     fn capabilities(&self) -> Vec<ToolCapability> {
-        vec![ToolCapability::WritesFiles, ToolCapability::Network, ToolCapability::RequiresApproval]
+        vec![
+            ToolCapability::WritesFiles,
+            ToolCapability::Network,
+            ToolCapability::RequiresApproval,
+        ]
     }
 
     fn approval_requirement(&self) -> ApprovalRequirement {
@@ -309,25 +323,28 @@ impl ToolSpec for GitHubPushFileTool {
         let sha = optional_str(&input, "sha");
 
         let rt = tokio::runtime::Handle::current();
-        let result = rt.block_on(github.create_or_update_file(
-            &repo, path, content, message, branch, sha,
-        ))?;
+        let result =
+            rt.block_on(github.create_or_update_file(&repo, path, content, message, branch, sha))?;
 
         Ok(ToolResult::success(format!(
             "Pushed {} to {}: {}",
-            path, repo.full_name(), result.html_url
+            path,
+            repo.full_name(),
+            result.html_url
         ))
         .with_metadata(json!({"sha": result.sha, "html_url": result.html_url})))
     }
 }
 
-fn github_client_from_context(_context: &ToolContext) -> Result<GitHubClient> {
-    let token = std::env::var("GITHUB_TOKEN")
-        .or_else(|_| std::env::var("DEEPSEEK_GITHUB_TOKEN"))
-        .unwrap_or_default();
+fn github_client_from_context(context: &ToolContext) -> Result<GitHubClient> {
+    let token = context.github_token.clone().unwrap_or_else(|| {
+        std::env::var("GITHUB_TOKEN")
+            .or_else(|_| std::env::var("DEEPSEEK_GITHUB_TOKEN"))
+            .unwrap_or_default()
+    });
     if token.is_empty() {
         return Err(anyhow!(
-            "GitHub token is not configured. Set GITHUB_TOKEN or DEEPSEEK_GITHUB_TOKEN environment variable."
+            "GitHub token is not configured. Save it in mobile settings or set GITHUB_TOKEN / DEEPSEEK_GITHUB_TOKEN."
         ));
     }
     Ok(GitHubClient::new(token))

@@ -1,4 +1,7 @@
-use deepseek_mobile_core::config::{Config, ExecutionMode, ExternalAccessMode, ModelMode, ThinkingLevel};
+use deepseek_mobile_core::config::{
+    Config, ExecutionMode, ExternalAccessMode, ModelMode, ThinkingLevel,
+};
+use std::path::PathBuf;
 
 /// In-memory settings form state that mirrors `Config`.
 #[derive(Clone, Debug)]
@@ -18,7 +21,7 @@ pub struct SettingsFormState {
 
 impl Default for SettingsFormState {
     fn default() -> Self {
-        Self::from_config(&Config::default())
+        Self::from_config(&load_saved_config().unwrap_or_default())
     }
 }
 
@@ -42,16 +45,42 @@ impl SettingsFormState {
     pub fn to_config(&self) -> Config {
         Config {
             api_key: self.api_key.clone(),
-            model: "deepseek-v4-flash".to_string(),
+            model: match self.model_mode {
+                ModelMode::Pro => "deepseek-v4-pro".to_string(),
+                ModelMode::Auto | ModelMode::Flash => "deepseek-v4-flash".to_string(),
+            },
             auto_mode: self.model_mode == ModelMode::Auto,
             model_mode: self.model_mode.clone(),
             execution_mode: self.execution_mode.clone(),
             thinking_level: self.thinking_level.clone(),
             external_access: self.external_access.clone(),
-            github_token: if self.github_token.is_empty() { None } else { Some(self.github_token.clone()) },
-            github_repo: if self.github_repo.is_empty() { None } else { Some(self.github_repo.clone()) },
-            github_branch: if self.github_branch.is_empty() { None } else { Some(self.github_branch.clone()) },
+            github_token: if self.github_token.is_empty() {
+                None
+            } else {
+                Some(self.github_token.clone())
+            },
+            github_repo: if self.github_repo.is_empty() {
+                None
+            } else {
+                Some(self.github_repo.clone())
+            },
+            github_branch: if self.github_branch.is_empty() {
+                None
+            } else {
+                Some(self.github_branch.clone())
+            },
             auto_commit_push: self.auto_commit_push,
         }
     }
+}
+
+pub fn config_file_path() -> PathBuf {
+    let base = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    base.join(".deepseek-mobile").join("config.json")
+}
+
+pub fn load_saved_config() -> Option<Config> {
+    std::fs::read_to_string(config_file_path())
+        .ok()
+        .and_then(|json| serde_json::from_str::<Config>(&json).ok())
 }

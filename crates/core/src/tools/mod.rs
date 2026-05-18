@@ -75,6 +75,7 @@ pub struct ToolContext {
     pub external_access: ExternalAccessMode,
     pub trusted_external_paths: Vec<PathBuf>,
     pub auto_approve: bool,
+    pub github_token: Option<String>,
 }
 
 impl ToolContext {
@@ -84,6 +85,7 @@ impl ToolContext {
             external_access: ExternalAccessMode::WorkspaceOnly,
             trusted_external_paths: Vec::new(),
             auto_approve: false,
+            github_token: None,
         }
     }
 
@@ -99,6 +101,11 @@ impl ToolContext {
 
     pub fn with_auto_approve(mut self, auto_approve: bool) -> Self {
         self.auto_approve = auto_approve;
+        self
+    }
+
+    pub fn with_github_token(mut self, github_token: Option<String>) -> Self {
+        self.github_token = github_token;
         self
     }
 

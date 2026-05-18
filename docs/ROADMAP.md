@@ -1,73 +1,66 @@
-# DeepSeek-Mobile — Roadmap (2026-05-18 evening)
+# DeepSeek-Mobile — roadmap
 
-## Phase 0: Foundation ✅
-- [x] Workspace structure (core/mobile/pc-host crates)
-- [x] CI: `cargo check --workspace` on every push
-- [x] MSVC toolchain, zero-compile workspace
+**Updated:** 2026-05-18
 
-## Phase 1: Core tool parity ✅ (mostly)
-- [x] File ops: read, write, edit, delete, copy, move, list, read_many_files
-- [x] Shell tool
-- [x] Git tool: status, diff, commit, push, pull, branch, log, add, checkout, clone
-- [x] Patch tool: apply_patch with rollback
-- [x] Web tools: web_fetch, web_search (DuckDuckGo, ApprovalRequirement::Suggest)
-- [x] Snapshot tools: create, list, restore, prune
-- [x] GitHub tools: repo, PR, issue, browse, push_file
-- [x] Tool registry with capabilities and approval routing
-- [ ] GitHub tool UI surface (PC-side or remote-safe)
+## Phase 0 — Foundation ✅
 
-## Phase 2: Snapshots & rollback ✅ (mostly)
-- [x] WorkspaceSnapshotService core
-- [x] Pre-tool snapshot auto-create before approved writes/shell/git
-- [x] Snapshot events in mobile timeline
-- [x] Mobile restore panel with confirmation dialog
-- [x] Snapshot pruning policy
+- [x] Cargo workspace with `core`, `mobile`, and `pc-host`
+- [x] CI/local build path for `cargo check` and `cargo test`
+- [x] Runtime persistence and approval continuation
+- [x] Persisted settings used by real turns
+
+## Phase 1 — Core tool parity ✅ / partial integration
+
+- [x] File ops, shell, git, web, GitHub, snapshots, `apply_patch`
+- [x] Capability and approval routing
+- [x] Post-edit diagnostics hooks
+- [ ] Integrate `ModelRouter` into real turn selection
+- [ ] Integrate `ContextManager` into real prompt lifecycle
+- [ ] Invoke `auto_commit_and_push` from the engine when enabled
+
+## Phase 2 — Snapshots & rollback 🔄
+
+- [x] Snapshot service
+- [x] Pre-tool snapshots
+- [x] Post-turn snapshots
+- [x] Restore UI and pruning
 - [ ] PC-gateway snapshot path for remote workspaces
-- [x] Post-turn auto-snapshot after successful file changes
 
-## Phase 3: PC gateway & execution ✅ (mostly)
-- [x] PC-host HTTP server with auth, path traversal protection
-- [x] Read/write/list/exec/git stream operations
-- [x] Command streaming via SSE (`/v1/gateway/exec/stream`)
-- [x] Policy presets: ReadOnly / Developer / Admin
-- [x] Multi-endpoint routing, health scoring, failover
-- [x] PC pairing flow: ZIP launcher, .env, PowerShell/sh launcher
-- [x] Mobile PC discovery (mDNS) and pairing panel
-- [x] Terminal sessions on PC-host (open/input/close)
-- [x] Terminal panel UI + native bridge events
+## Phase 3 — PC gateway & execution 🔄
+
+- [x] HTTP host, auth, security policy, path protection
+- [x] File/git/command operations
+- [x] Streaming commands
+- [x] Pairing ZIP, mDNS discovery, endpoint health/failover
+- [x] Pairing now persists the active PC workspace into runtime config
+- [x] Rust/TypeScript/Python diagnostics in PC-host
+- [x] Terminal sessions on PC-host
 - [ ] Terminal session persistence across app restarts
-- [ ] Dev-server preview lifecycle
+- [ ] Dev-server lifecycle
 - [ ] PC-host autostart/service installer
 
-## Phase 4: LSP & diagnostics ✅ (mostly)
-- [x] PC-host diagnostics for Rust (`cargo check --message-format=json`)
-- [x] Post-edit diagnostics hook for write/edit/apply_patch
-- [x] Diagnostics severity mapping and mobile display
-- [ ] TypeScript diagnostics (`tsc --noEmit`)
-- [ ] Python diagnostics (`pyright`/`ruff`)
+## Phase 4 — Mobile UI 🔄
 
-## Phase 5: Mobile UI 🔄 (in progress)
-- [x] Chat screen with streaming reasoning
-- [x] Cockpit layout (drawer + section panels)
-- [x] PC pairing panel
-- [x] Git panel (status/diff/branch/commit)
-- [x] Snapshots panel (restore dialog)
-- [x] Diagnostics panel (severity badges)
-- [x] Terminal panel (session tabs, output, input)
-- [x] Native bridge: document picker, PC discovery, terminal commands
-- [x] File tree explorer with expandable directories
-- [ ] Diff/patch viewer
-- [x] Approval card screen (real approval panel in cockpit)
-- [x] Onboarding screen (DeepSeek API key) with config save
-- [x] Settings screens (GitHub, DeepSeek, execution mode, thinking level)
-- [x] Bottom navigation tabs (Chat/Files/Terminal/Git/Settings)
+- [x] Chat, approvals, snapshots, diagnostics, settings, onboarding
+- [x] PC host pairing surface
+- [x] Files tree + preview
+- [x] Terminal panel
+- [x] Git panel surface
+- [ ] Wire Git panel buttons to real operations
+- [ ] Replace illustrative Files diff preview with real pending/project diffs
+- [ ] Make file browsing remote-aware when a PC workspace is active
 
-## Phase 6: Production polish (not started)
-- [x] DeepSeek API key onboarding + secure storage
-- [ ] GitHub OAuth flow
-- [x] Real button wiring for Create ZIP / Share ZIP / Check PC
-- [ ] Auto-commit/push with real GitHub repo
-- [ ] Background task manager
-- [ ] MCP/plugin host
-- [ ] Termux bridge
-- [ ] LSP: TypeScript + Python diagnostics
+## Phase 5 — Android & local execution 🔄
+
+- [x] Native bridge contracts for picker, discovery, terminal, share
+- [ ] Final Android host integration
+- [ ] Termux executor bridge
+- [ ] Android import/export completion
+
+## Phase 6 — Product completion
+
+- [ ] Diagnostics injected into the next model turn
+- [ ] Durable background task model and task manager UI
+- [ ] Runtime HTTP/SSE API
+- [ ] MCP/plugin/skills layer
+- [ ] Release packaging and troubleshooting docs

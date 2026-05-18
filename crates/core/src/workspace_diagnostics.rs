@@ -50,21 +50,33 @@ impl WorkspaceDiagnosticsReport {
         report
     }
 
-    pub fn unavailable(workspace: &Workspace, provider: impl Into<String>, message: impl Into<String>) -> Self {
+    pub fn unavailable(
+        workspace: &Workspace,
+        provider: impl Into<String>,
+        message: impl Into<String>,
+    ) -> Self {
         let mut report = Self::new(workspace, WorkspaceDiagnosticsStatus::Unavailable);
         report.provider = Some(provider.into());
         report.message = Some(message.into());
         report
     }
 
-    pub fn failed(workspace: &Workspace, provider: impl Into<String>, message: impl Into<String>) -> Self {
+    pub fn failed(
+        workspace: &Workspace,
+        provider: impl Into<String>,
+        message: impl Into<String>,
+    ) -> Self {
         let mut report = Self::new(workspace, WorkspaceDiagnosticsStatus::Failed);
         report.provider = Some(provider.into());
         report.message = Some(message.into());
         report
     }
 
-    pub fn completed(workspace: &Workspace, provider: impl Into<String>, diagnostics: Vec<PcDiagnostic>) -> Self {
+    pub fn completed(
+        workspace: &Workspace,
+        provider: impl Into<String>,
+        diagnostics: Vec<PcDiagnostic>,
+    ) -> Self {
         let mut report = Self::new(workspace, WorkspaceDiagnosticsStatus::Completed);
         report.provider = Some(provider.into());
         report.diagnostics = diagnostics;
@@ -74,7 +86,10 @@ impl WorkspaceDiagnosticsReport {
     pub fn summary(&self) -> String {
         match self.status {
             WorkspaceDiagnosticsStatus::Completed => summarize_diagnostics(&self.diagnostics),
-            _ => self.message.clone().unwrap_or_else(|| "Diagnostics were not produced.".to_string()),
+            _ => self
+                .message
+                .clone()
+                .unwrap_or_else(|| "Diagnostics were not produced.".to_string()),
         }
     }
 }
@@ -98,7 +113,10 @@ impl WorkspaceDiagnosticsService {
         self
     }
 
-    pub async fn run_post_edit_diagnostics(&self, path: Option<String>) -> WorkspaceDiagnosticsReport {
+    pub async fn run_post_edit_diagnostics(
+        &self,
+        path: Option<String>,
+    ) -> WorkspaceDiagnosticsReport {
         match self.workspace.executor {
             ExecutorKind::LocalAndroid | ExecutorKind::Termux => {
                 self.run_local_multi_diagnostics(path.as_deref()).await
@@ -116,38 +134,78 @@ impl WorkspaceDiagnosticsService {
 
     async fn run_local_multi_diagnostics(&self, path: Option<&str>) -> WorkspaceDiagnosticsReport {
         let mut all_diagnostics = Vec::new();
-        let mut message = String::new();
+        let reports = vec![
+            ("Rust", self.run_local_rust_diagnostics(path).await),
+            ("TS", self.run_local_typescript_diagnostics(path).await),
+            ("Python", self.run_local_python_diagnostics(path).await),
+        ];
 
-        let rust_report = self.run_local_rust_diagnostics(path).await;
-        match rust_report.status {
-            WorkspaceDiagnosticsStatus::Completed => all_diagnostics.extend(rust_report.diagnostics),
-            _ => { if let Some(msg) = rust_report.message { message.push_str(&format!("Rust: {}; ", msg)); } }
+        let mut failures = Vec::new();
+        let mut unavailable = Vec::new();
+        let mut not_applicable = Vec::new();
+
+        for (label, report) in reports {
+            match report.status {
+                WorkspaceDiagnosticsStatus::Completed => all_diagnostics.extend(report.diagnostics),
+                WorkspaceDiagnosticsStatus::Failed => failures.push(format!(
+                    "{}: {}",
+                    label,
+                    report.message.unwrap_or_else(|| "failed".to_string())
+                )),
+                WorkspaceDiagnosticsStatus::Unavailable => unavailable.push(format!(
+                    "{}: {}",
+                    label,
+                    report.message.unwrap_or_else(|| "unavailable".to_string())
+                )),
+                WorkspaceDiagnosticsStatus::NotApplicable => not_applicable.push(format!(
+                    "{}: {}",
+                    label,
+                    report
+                        .message
+                        .unwrap_or_else(|| "not applicable".to_string())
+                )),
+            }
         }
 
-        let ts_report = self.run_local_typescript_diagnostics(path).await;
-        match ts_report.status {
-            WorkspaceDiagnosticsStatus::Completed => all_diagnostics.extend(ts_report.diagnostics),
-            _ => { if let Some(msg) = ts_report.message { message.push_str(&format!("TS: {}; ", msg)); } }
-        }
-
-        let py_report = self.run_local_python_diagnostics(path).await;
-        match py_report.status {
-            WorkspaceDiagnosticsStatus::Completed => all_diagnostics.extend(py_report.diagnostics),
-            _ => { if let Some(msg) = py_report.message { message.push_str(&format!("Python: {}; ", msg)); } }
-        }
-
-        if all_diagnostics.is_empty() && message.is_empty() {
-            WorkspaceDiagnosticsReport::not_applicable(&self.workspace, "No diagnostics applicable.")
-        } else if all_diagnostics.is_empty() {
-            WorkspaceDiagnosticsReport::unavailable(&self.workspace, "multi-provider", message)
+        if !all_diagnostics.is_empty() {
+            WorkspaceDiagnosticsReport::completed(
+                &self.workspace,
+                "multi-provider",
+                all_diagnostics,
+            )
+        } else if !failures.is_empty() {
+            WorkspaceDiagnosticsReport::failed(
+                &self.workspace,
+                "multi-provider",
+                failures.join("; "),
+            )
+        } else if !unavailable.is_empty() {
+            WorkspaceDiagnosticsReport::unavailable(
+                &self.workspace,
+                "multi-provider",
+                unavailable.join("; "),
+            )
         } else {
-            WorkspaceDiagnosticsReport::completed(&self.workspace, "multi-provider", all_diagnostics)
+            WorkspaceDiagnosticsReport::not_applicable(
+                &self.workspace,
+                if not_applicable.is_empty() {
+                    "No diagnostics applicable.".to_string()
+                } else {
+                    not_applicable.join("; ")
+                },
+            )
         }
     }
 
-    async fn run_local_typescript_diagnostics(&self, _path: Option<&str>) -> WorkspaceDiagnosticsReport {
+    async fn run_local_typescript_diagnostics(
+        &self,
+        _path: Option<&str>,
+    ) -> WorkspaceDiagnosticsReport {
         if !self.workspace.root.join("tsconfig.json").exists() {
-            return WorkspaceDiagnosticsReport::not_applicable(&self.workspace, "No tsconfig.json found.");
+            return WorkspaceDiagnosticsReport::not_applicable(
+                &self.workspace,
+                "No tsconfig.json found.",
+            );
         }
         let run = Command::new("npx")
             .args(["tsc", "--noEmit", "--pretty", "false"])
@@ -155,8 +213,16 @@ impl WorkspaceDiagnosticsService {
             .output();
         let output = match timeout(Duration::from_secs(self.timeout_secs), run).await {
             Ok(Ok(o)) => o,
-            Ok(Err(e)) => return WorkspaceDiagnosticsReport::unavailable(&self.workspace, "tsc", e.to_string()),
-            Err(_) => return WorkspaceDiagnosticsReport::unavailable(&self.workspace, "tsc", "timed out"),
+            Ok(Err(e)) => {
+                return WorkspaceDiagnosticsReport::unavailable(
+                    &self.workspace,
+                    "tsc",
+                    e.to_string(),
+                )
+            }
+            Err(_) => {
+                return WorkspaceDiagnosticsReport::unavailable(&self.workspace, "tsc", "timed out")
+            }
         };
         let stderr = String::from_utf8_lossy(&output.stderr);
         let mut diagnostics = Vec::new();
@@ -168,12 +234,18 @@ impl WorkspaceDiagnosticsService {
         WorkspaceDiagnosticsReport::completed(&self.workspace, "tsc", diagnostics)
     }
 
-    async fn run_local_python_diagnostics(&self, _path: Option<&str>) -> WorkspaceDiagnosticsReport {
+    async fn run_local_python_diagnostics(
+        &self,
+        _path: Option<&str>,
+    ) -> WorkspaceDiagnosticsReport {
         if !self.workspace.root.join("pyproject.toml").exists()
             && !self.workspace.root.join("setup.py").exists()
             && !self.workspace.root.join("requirements.txt").exists()
         {
-            return WorkspaceDiagnosticsReport::not_applicable(&self.workspace, "No Python project config found.");
+            return WorkspaceDiagnosticsReport::not_applicable(
+                &self.workspace,
+                "No Python project config found.",
+            );
         }
         // Try ruff
         let run = Command::new("ruff")
@@ -214,7 +286,11 @@ impl WorkspaceDiagnosticsService {
             }
             return WorkspaceDiagnosticsReport::completed(&self.workspace, "pyright", diagnostics);
         }
-        WorkspaceDiagnosticsReport::unavailable(&self.workspace, "python", "neither ruff nor pyright available")
+        WorkspaceDiagnosticsReport::unavailable(
+            &self.workspace,
+            "python",
+            "neither ruff nor pyright available",
+        )
     }
 
     async fn run_local_rust_diagnostics(&self, path: Option<&str>) -> WorkspaceDiagnosticsReport {
@@ -286,7 +362,11 @@ impl WorkspaceDiagnosticsService {
             let Some(message) = message.message else {
                 continue;
             };
-            diagnostics.extend(cargo_message_to_diagnostics(&self.workspace, requested_path, message));
+            diagnostics.extend(cargo_message_to_diagnostics(
+                &self.workspace,
+                requested_path,
+                message,
+            ));
         }
 
         if diagnostics.is_empty() && !output.status.success() {
@@ -389,7 +469,9 @@ fn summarize_diagnostics(diagnostics: &[PcDiagnostic]) -> String {
         .count();
     let mut lines = vec![format!(
         "{} diagnostic(s): {} error(s), {} warning(s)",
-        diagnostics.len(), error_count, warning_count
+        diagnostics.len(),
+        error_count,
+        warning_count
     )];
     for item in diagnostics.iter().take(8) {
         lines.push(format!(
@@ -398,7 +480,10 @@ fn summarize_diagnostics(diagnostics: &[PcDiagnostic]) -> String {
         ));
     }
     if diagnostics.len() > 8 {
-        lines.push(format!("- ... {} more diagnostic(s)", diagnostics.len() - 8));
+        lines.push(format!(
+            "- ... {} more diagnostic(s)",
+            diagnostics.len() - 8
+        ));
     }
     lines.join("\n")
 }
@@ -422,23 +507,31 @@ fn parse_tsc_line_local(line: &str, workspace: &Workspace) -> Option<PcDiagnosti
     let relative = if let Ok(rel) = path.strip_prefix(&workspace.root) {
         rel.to_string_lossy().to_string()
     } else {
-        path.file_name().and_then(|n| n.to_str()).unwrap_or(raw_path).to_string()
+        path.file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or(raw_path)
+            .to_string()
     };
 
     let line_col = &trimmed[paren_open + 1..paren_close];
-    let (line_str, col_str) = line_col.split_once(',')
+    let (line_str, col_str) = line_col
+        .split_once(',')
         .map(|(l, c)| (l.trim(), c.trim()))
         .unwrap_or((line_col, "1"));
 
     let colon_after = trimmed[paren_close + 1..].find(':')?;
     let global_colon = paren_close + 1 + colon_after;
-    let severity = if trimmed[global_colon + 1..].trim_start().starts_with("error") {
+    let severity = if trimmed[global_colon + 1..]
+        .trim_start()
+        .starts_with("error")
+    {
         PcDiagnosticSeverity::Error
     } else {
         PcDiagnosticSeverity::Warning
     };
 
-    let msg_start = trimmed[global_colon + 1..].find(':')
+    let msg_start = trimmed[global_colon + 1..]
+        .find(':')
         .map(|pos| global_colon + 1 + pos + 1)
         .unwrap_or(global_colon + 1);
 
@@ -527,7 +620,10 @@ fn relative_path(file: &str, workspace_root: &Path) -> String {
     if let Ok(rel) = path.strip_prefix(workspace_root) {
         rel.to_string_lossy().to_string()
     } else {
-        path.file_name().and_then(|n| n.to_str()).unwrap_or(file).to_string()
+        path.file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or(file)
+            .to_string()
     }
 }
 

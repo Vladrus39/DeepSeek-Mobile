@@ -1,4 +1,4 @@
-use crate::settings_state::SettingsFormState;
+use crate::settings_state::{config_file_path, SettingsFormState};
 use deepseek_mobile_core::config::{ExecutionMode, ExternalAccessMode, ModelMode, ThinkingLevel};
 use dioxus::prelude::*;
 
@@ -316,11 +316,7 @@ fn SelectField(
 }
 
 #[component]
-fn ToggleField(
-    label: String,
-    checked: bool,
-    onchange: EventHandler<bool>,
-) -> Element {
+fn ToggleField(label: String, checked: bool, onchange: EventHandler<bool>) -> Element {
     rsx! {
         div {
             display: "flex",
@@ -398,13 +394,8 @@ fn external_access_key(mode: &ExternalAccessMode) -> String {
 
 fn save_config(config: &deepseek_mobile_core::config::Config) -> Result<(), String> {
     let path = config_file_path();
-    let json = serde_json::to_string_pretty(config).map_err(|e| format!("Serialization error: {e}"))?;
+    let json =
+        serde_json::to_string_pretty(config).map_err(|e| format!("Serialization error: {e}"))?;
     std::fs::write(&path, json).map_err(|e| format!("Could not write config file: {e}"))?;
     Ok(())
-}
-
-fn config_file_path() -> std::path::PathBuf {
-    let base = std::env::current_dir()
-        .unwrap_or_else(|_| std::path::PathBuf::from("."));
-    base.join(".deepseek-mobile").join("config.json")
 }

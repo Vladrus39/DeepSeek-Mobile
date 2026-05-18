@@ -60,7 +60,9 @@ pub fn auto_commit_and_push(
         .current_dir(workspace_root)
         .output()?;
 
-    let sha = String::from_utf8_lossy(&sha_output.stdout).trim().to_string();
+    let sha = String::from_utf8_lossy(&sha_output.stdout)
+        .trim()
+        .to_string();
 
     // Push
     let push = Command::new("git")
@@ -88,10 +90,7 @@ pub fn auto_commit_and_push(
 
 /// Generate a default commit message from the user's input.
 pub fn commit_message_from_input(user_input: &str) -> String {
-    let summary: String = user_input
-        .chars()
-        .take(200)
-        .collect();
+    let summary: String = user_input.chars().take(200).collect();
     format!("🤖 DeepSeek Mobile: {}", summary)
 }
 
@@ -102,9 +101,14 @@ mod tests {
     use std::path::PathBuf;
 
     fn temp_repo() -> (PathBuf, String) {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("system clock before unix epoch")
+            .as_nanos();
         let root = std::env::temp_dir().join(format!(
-            "deepseek_mobile_autocommit_test_{}",
-            std::process::id()
+            "deepseek_mobile_autocommit_test_{}_{}",
+            std::process::id(),
+            nanos,
         ));
         let _ = fs::remove_dir_all(&root);
         fs::create_dir_all(&root).unwrap();
@@ -131,17 +135,12 @@ mod tests {
     #[test]
     fn returns_none_when_no_changes() {
         let (root, branch) = temp_repo();
-        let result = auto_commit_and_push(
-            &root,
-            "owner/repo",
-            &branch,
-            "test commit",
-        );
+        let result = auto_commit_and_push(&root, "owner/repo", &branch, "test commit");
         // Push will fail (no remote), but should handle it
         match result {
-            Ok(None) => {} // expected: no changes
+            Ok(None) => {}    // expected: no changes
             Ok(Some(_)) => {} // possible if there's an index change
-            Err(_) => {} // push failure is OK
+            Err(_) => {}      // push failure is OK
         }
         let _ = fs::remove_dir_all(&root);
     }
@@ -150,12 +149,7 @@ mod tests {
     fn commits_when_changes_exist() {
         let (root, branch) = temp_repo();
         fs::write(root.join("test.txt"), "hello").unwrap();
-        let result = auto_commit_and_push(
-            &root,
-            "owner/repo",
-            &branch,
-            "test",
-        );
+        let result = auto_commit_and_push(&root, "owner/repo", &branch, "test");
         match result {
             Ok(Some(sha)) => assert!(!sha.is_empty()),
             Ok(None) => panic!("expected a commit, got none"),
@@ -170,7 +164,7 @@ mod tests {
     #[test]
     fn commit_message_truncates() {
         let msg = commit_message_from_input("A".repeat(500).as_str());
-        assert!(msg.len() <= 215); // prefix + 200 chars
+        assert!(msg.chars().count() <= "🤖 DeepSeek Mobile: ".chars().count() + 200);
         assert!(msg.starts_with("🤖 DeepSeek Mobile:"));
     }
 }

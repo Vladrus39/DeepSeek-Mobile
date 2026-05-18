@@ -1,10 +1,9 @@
+use crate::settings_state::config_file_path;
 use deepseek_mobile_core::config::Config;
 use dioxus::prelude::*;
 
 /// Full-screen onboarding panel shown on first launch when no API key is configured.
-pub fn onboarding_panel(
-    on_complete: EventHandler<String>,
-) -> Element {
+pub fn onboarding_panel(on_complete: EventHandler<String>) -> Element {
     let mut api_key_input = use_signal(String::new);
     let mut validation_error = use_signal(|| None::<String>);
 
@@ -146,10 +145,4 @@ pub fn onboarding_panel(
             }
         }
     }
-}
-
-fn config_file_path() -> std::path::PathBuf {
-    let base = std::env::current_dir()
-        .unwrap_or_else(|_| std::path::PathBuf::from("."));
-    base.join(".deepseek-mobile").join("config.json")
 }

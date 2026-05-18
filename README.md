@@ -1,29 +1,36 @@
 # DeepSeek-Mobile
 
-Полноценный **DeepSeek Coding Agent** для Android.
+Mobile-first **DeepSeek Coding Agent** для Android с опциональным PC-host для тяжёлых задач через локальную сеть.
 
-Работает локально на телефоне + DeepSeek API (V4-pro / Flash, 1M контекст).
-Опциональный PC-host для тяжёлых задач через локальную сеть.
+Проект уже содержит рабочее ядро агента, approval-flow, PC gateway, snapshots, Git/GitHub tools, diagnostics и мобильный cockpit UI. Это уже не макет, но ещё не финальная v1-сборка: часть экранов и интеграций существует, но не вся из них уже замкнута до production-ready end-to-end сценария.
 
-## Возможности
+## Что уже реально работает
 
-- Полноценный чат со streaming reasoning (текст + reasoning блоки)
-- Workspace Explorer с деревом файлов, навигацией по папкам, предпросмотром
-- Все инструменты оригинального TUI: файловые операции, git, shell, patch, snapshots
-- Режимы Plan / Agent / YOLO с настраиваемым approval
-- PC Gateway — управление компьютером с телефона (LAN, mDNS, pairing ZIP)
-- GitHub интеграция: токен, репозиторий, PR, issues, авто-коммиты
-- Терминальные сессии на Android / PC-host
-- Web-инструменты: fetch URL, поиск через DuckDuckGo (с approval)
-- Снэпшоты workspace с авто-восстановлением и rollback
-- Git UI: статус, diff, commit, push, pull, branch
-- Онбординг с настройкой API-ключа при первом запуске
-- Нижняя навигация: Chat / Files / Terminal / Git / Settings
+- Чат с live streaming и reasoning delta
+- Session/runtime persistence и continuation после approval
+- Файловые инструменты, `apply_patch`, shell/git/web/GitHub tools
+- Snapshots до destructive tools и после успешных turn’ов
+- PC gateway: pairing ZIP, mDNS discovery, failover по endpoint’ам, health/logs, auth token
+- Сохранение активного PC workspace после pairing и его использование в следующих turn’ах
+- Diagnostics после edits: Rust, TypeScript и Python для local/Termux/PC путей
+- Мобильные панели: chat, approvals, files, snapshots, diagnostics, PC host, terminal, git, settings
+- Онбординг и сохранение настроек DeepSeek/GitHub
+
+## Что ещё не доведено до конца
+
+- Финальная Android host integration для native bridge
+- Полноценный Termux executor bridge
+- Persistent terminal sessions между перезапусками
+- Inject diagnostics в следующий model turn
+- Remote snapshot path для PC workspace
+- Реальная wiring-логика Git panel и auto-commit/push в engine lifecycle
+- Замена демонстрационного diff preview в file panel на реальные project diffs
+- Durable background tasks, runtime API, MCP/plugins/skills
 
 ## Стек
 
-- **Core**: Rust (перенесён из DeepSeek-TUI)
-- **UI**: Dioxus 0.7 (native Android)
+- **Core**: Rust
+- **UI**: Dioxus 0.7
 - **PC-host**: HTTP + SSE сервер на Rust
 
 ## Быстрый старт
@@ -31,15 +38,24 @@
 ```bash
 git clone https://github.com/Vladrus39/DeepSeek-Mobile.git
 cd DeepSeek-Mobile
-# Для Android:
+
+# Android dev flow
 dx serve --platform android
-# Проверка сборки (Windows MSVC):
-cargo +stable-x86_64-pc-windows-msvc check --workspace
+
+# Проверка на Windows/MSVC
+cargo check --workspace --all-targets
+cargo test --workspace
 ```
 
-## Статус проекта
+## Текущий статус
 
-Проект в активной разработке. Основной функционал перенесён из DeepSeek-TUI.
-Сборка: `cargo check --workspace` — 0 errors. 87 mobile тестов проходят.
+- `cargo check --workspace --all-targets` — проходит
+- `cargo test --workspace` — проходит
+- Последний локальный прогон: 90 mobile tests, 114 core tests, 2 pc-host tests
 
-Подробнее: `docs/MASTER_PLAN.md`, `docs/ROADMAP.md`, `PROJECT_STATUS.md`.
+Подробности:
+
+- `docs/PROJECT_AUDIT.md`
+- `docs/MASTER_PLAN.md`
+- `docs/ROADMAP.md`
+- `PROJECT_STATUS.md`

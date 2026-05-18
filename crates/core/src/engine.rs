@@ -11,7 +11,7 @@ use crate::api_client::{Message, StreamDelta};
 use crate::approval::ReviewDecision;
 use crate::approval_card::{approval_cards_from_records, ApprovalCardView};
 use crate::approval_session::ApprovalSessionPolicy;
-use crate::config::Config;
+use crate::config::{Config, ExternalAccessMode};
 use crate::events::AgentEvent;
 use crate::pc_gateway_client::PcGatewayClient;
 use crate::runtime_store::{RuntimeThreadStore, TurnRecord};
@@ -53,6 +53,8 @@ pub struct MobileEngine {
     agent: DeepSeekAgent,
     registry: ToolRegistry,
     execution_mode: crate::config::ExecutionMode,
+    external_access: ExternalAccessMode,
+    github_token: Option<String>,
     runtime_store: Option<RuntimeThreadStore>,
     thread_id: String,
     workspace: Workspace,
@@ -68,10 +70,14 @@ pub struct MobileEngine {
 impl MobileEngine {
     pub fn new(config: Config) -> Self {
         let execution_mode = config.execution_mode.clone();
+        let external_access = config.external_access.clone();
+        let github_token = config.github_token.clone();
         Self {
             agent: DeepSeekAgent::new(config),
             registry: default_mobile_tool_registry(),
             execution_mode,
+            external_access,
+            github_token,
             runtime_store: None,
             thread_id: "mobile-default-thread".to_string(),
             workspace: Workspace::new(
@@ -177,7 +183,10 @@ impl MobileEngine {
         self.approval_session.grant_count()
     }
 
-    pub async fn run_turn_with_streaming(&mut self, user_input: String) -> Result<EngineTurnResult> {
+    pub async fn run_turn_with_streaming(
+        &mut self,
+        user_input: String,
+    ) -> Result<EngineTurnResult> {
         self.run_turn_internal(user_input, true).await
     }
 
@@ -244,7 +253,7 @@ impl MobileEngine {
         // Add assistant answer to session history
         self.session.push_message("assistant", &answer);
 
-        let context = ToolContext::new(self.workspace.clone());
+        let context = self.tool_context();
         let outcome = process_model_text_with_tools_and_session_and_pc_gateway(
             answer.clone(),
             &self.registry,
@@ -268,12 +277,17 @@ impl MobileEngine {
         }
 
         // Auto-create post-turn snapshot if enabled and tools were executed
-        if self.auto_snapshot && !outcome.executed.is_empty() && turn.status == TurnStatus::Completed {
-            let store_root = self.workspace.root.join(".deepseek-mobile").join("snapshots");
-            let service = crate::snapshots::WorkspaceSnapshotService::new(
-                self.workspace.clone(),
-                store_root,
-            );
+        if self.auto_snapshot
+            && !outcome.executed.is_empty()
+            && turn.status == TurnStatus::Completed
+        {
+            let store_root = self
+                .workspace
+                .root
+                .join(".deepseek-mobile")
+                .join("snapshots");
+            let service =
+                crate::snapshots::WorkspaceSnapshotService::new(self.workspace.clone(), store_root);
             match service.create_snapshot(format!(
                 "post-turn auto snapshot after {} tools",
                 outcome.executed.len()
@@ -414,7 +428,7 @@ impl MobileEngine {
             anyhow::bail!("runtime store is required to continue stored approval");
         };
         let pending_record = store.load_pending_approval(approval_id)?;
-        let context = ToolContext::new(self.workspace.clone());
+        let context = self.tool_context();
         let outcome = continue_pending_tool_approval_with_session_and_pc_gateway(
             pending_record.pending,
             decision.clone(),
@@ -459,11 +473,7 @@ impl MobileEngine {
     fn store_pending_approvals(&self, turn: &TurnContext, outcome: &ToolLoopOutcome) -> Result<()> {
         if let Some(store) = &self.runtime_store {
             for pending in outcome.pending_approvals.iter().cloned() {
-                store.save_pending_approval(
-                    self.thread_id.clone(),
-                    turn.id.clone(),
-                    pending,
-                )?;
+                store.save_pending_approval(self.thread_id.clone(), turn.id.clone(), pending)?;
             }
         }
         Ok(())
@@ -491,6 +501,12 @@ impl MobileEngine {
         events.push(event);
         Ok(())
     }
+
+    fn tool_context(&self) -> ToolContext {
+        ToolContext::new(self.workspace.clone())
+            .with_external_access(self.external_access.clone())
+            .with_github_token(self.github_token.clone())
+    }
 }
 
 #[cfg(test)]
@@ -513,7 +529,12 @@ mod tests {
             PcGatewayConfig::new("pc-1", "Laptop", "http://127.0.0.1:8787", "phone-1");
         gateway.allow_http_on_local_network = true;
         let connection = WorkspaceConnection::pc_gateway(
-            "pc", "Laptop", "w1", "Project", "/pc/project", gateway,
+            "pc",
+            "Laptop",
+            "w1",
+            "Project",
+            "/pc/project",
+            gateway,
         );
         let engine = MobileEngine::new(Config::default())
             .with_workspace_connection(&connection)
@@ -532,12 +553,8 @@ mod tests {
     #[test]
     fn engine_session_persists_messages() {
         let mut engine = MobileEngine::new(Config::default());
-        engine
-            .session_mut()
-            .push_message("user", "hello");
-        engine
-            .session_mut()
-            .push_message("assistant", "hi there");
+        engine.session_mut().push_message("user", "hello");
+        engine.session_mut().push_message("assistant", "hi there");
         assert_eq!(engine.session().messages.len(), 2);
     }
 }

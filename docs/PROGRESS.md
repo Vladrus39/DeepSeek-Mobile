@@ -1,45 +1,42 @@
-# DeepSeek-Mobile — Active Session Progress
+# DeepSeek-Mobile — active progress
 
-**Current session: 2026-05-18**
+**Current session:** 2026-05-18
 
-## Recent additions
+## Completed in the latest tranche
 
-- Web tools: `web_fetch` (URL fetch with DuckDuckGo) and `web_search` — `ApprovalRequirement::Suggest`, `Network` capability, wired into `default_mobile_tool_registry()`
-- Snapshot pruning: `WorkspaceSnapshotService::prune_old_snapshots(max_count, max_age_secs)`
-- Snapshot restore UI: confirmation dialog with file-count/deletion warning in `snapshots_panel.rs`
-- Terminal UI: `terminal_panel.rs` + `terminal_state.rs` — session tabs, output view, input field
-- Native bridge terminal commands: `OpenTerminal`/`TerminalInput`/`CloseTerminal` + events `TerminalOpened`/`TerminalOutput`/`TerminalClosed`/`TerminalFailed`
-- Terminal event routing: `use_effect` in `main.rs` routes native terminal events into terminal UI state
-- Full match arms in `native_event_router.rs` for all 4 terminal event variants
-- Build verified clean: `cargo check --workspace` — 0 errors
+- Persisted settings are now used by normal turns and approval continuations instead of `Config::default()`.
+- `ToolContext` now carries `external_access` and a saved GitHub token; GitHub tools prefer the persisted token over environment variables.
+- Fixed multi-provider diagnostics aggregation so `Completed`, `Failed`, `Unavailable`, and `NotApplicable` states stay truthful.
+- Stabilized `auto_commit` tests and fixed Unicode-safe commit-message length checking.
+- Closed the pairing/runtime gap:
+  - online discovery now promotes an active route;
+  - pairing creates a real `WorkspaceConnection`;
+  - “Open PC workspace” persists the selected route in `workspace_connections.json`;
+  - `MobileRuntimeConfig::default()` reloads the active connection on future turns.
+- Replaced the insecure empty default pairing token with a generated UUID token.
+
+## Verification
+
+- `cargo check --workspace --all-targets` — passed
+- `cargo test --workspace` — passed
+- Test totals after this tranche:
+  - mobile: 90
+  - core: 114
+  - pc-host: 2
 
 ## Current focus
 
-- Terminal panel wired through native bridge but still needs real PC gateway client integration on Android
-- GitHub settings screen, file tree, diff viewer remain as UI gaps
-- Web tools work locally but need approval UI integration for mobile
+The next real product gaps are no longer basic compile/runtime wiring. They are:
 
-## Next session priorities
+1. final Android host integration plus Termux bridge;
+2. real Git panel action wiring and auto-commit lifecycle integration;
+3. diagnostics injection into the next model turn;
+4. real diff surfaces for project files instead of preview scaffolding;
+5. terminal persistence and PC-workspace snapshot support.
 
-1. Wire terminal panel EventHandlers to real `PcGatewayClient` calls on Android
-2. Add file tree and diff viewer to mobile UI
-3. Wire Android UI buttons (Create ZIP, Share ZIP, Check PC connection)
-4. Add GitHub token settings screen
-5. Test auto-commit/push with real GitHub repo
+## Notes from the audit
 
-## Session 2026-05-18 (afternoon)
-
-### Completed
-- Onboarding panel: full-screen first-launch API key setup with validation and config save
-- Bottom navigation bar: 5-tab (Chat/Files/Terminal/Git/Settings) with approval badge
-- Real approval panel in cockpit section (placeholder replaced)
-- Share file bridge: `enqueue_share_file` for Android share intent
-- "Share pairing ZIP" button now triggers Android share via native bridge
-- File tree with expandable directories: click to navigate in/out, "Up" button, path display
-- Post-turn auto snapshot: auto-creates workspace snapshot after successful turns with tool execution
-- Removed unused `placeholder_panel` function (cleanup)
-
-### Build status
-- `cargo check --workspace` � 0 errors
-- 87 mobile tests � all pass
-- 4 pre-existing core test failures (env-dependent: auto_commit, workspace_diagnostics)
+- PC-host already contains Rust, TypeScript, and Python diagnostics implementations.
+- The Files panel is useful but still local-preview oriented; it is not yet a remote-aware workspace browser.
+- The Git UI is a surface, not yet a fully connected workflow.
+- `ModelRouter`, `ContextManager`, and `auto_commit_and_push` are available building blocks, not yet active orchestration features.

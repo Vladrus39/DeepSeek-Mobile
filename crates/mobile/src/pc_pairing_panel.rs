@@ -1,9 +1,14 @@
+use crate::mobile_runtime_config::activate_default_workspace_connection;
 use crate::native_bridge::NativeBridgeState;
 use crate::pc_pairing_manager::MobilePcPairingRequest;
 use crate::pc_pairing_state::{PcPairingUiState, PcPairingUiStatus, PcReconnectEffect};
 use dioxus::prelude::*;
+use uuid::Uuid;
 
-pub fn pc_pairing_panel(mut state: Signal<PcPairingUiState>, mut native_bridge: Signal<NativeBridgeState>) -> Element {
+pub fn pc_pairing_panel(
+    mut state: Signal<PcPairingUiState>,
+    mut native_bridge: Signal<NativeBridgeState>,
+) -> Element {
     let snapshot = state();
     let status_text = snapshot.status_text();
     let action_label = snapshot.primary_action_label();
@@ -240,7 +245,7 @@ pub fn pc_pairing_panel(mut state: Signal<PcPairingUiState>, mut native_bridge: 
                                     "My Phone".to_string(),
                                     "default".to_string(),
                                     ".".to_string(),
-                                    "".to_string(),
+                                    Uuid::new_v4().simple().to_string(),
                                 );
                                 let mut next = state();
                                 next.configure(request);
@@ -268,7 +273,27 @@ pub fn pc_pairing_panel(mut state: Signal<PcPairingUiState>, mut native_bridge: 
                                 bridge.enqueue_pc_gateway_discovery("pc-pairing-check".to_string());
                                 native_bridge.set(bridge);
                             }
-                            PcPairingUiStatus::Online | PcPairingUiStatus::Error(_) => {}
+                            PcPairingUiStatus::Online => {
+                                let mut next = state();
+                                match next.active_workspace_connection() {
+                                    Some(connection) => match activate_default_workspace_connection(connection) {
+                                        Ok(()) => {
+                                            next.mark_online();
+                                        }
+                                        Err(error) => {
+                                            next.set_error(format!("Failed to activate PC workspace: {}", error));
+                                        }
+                                    },
+                                    None => {
+                                        next.set_error(
+                                            "PC workspace cannot be activated until an online route is selected"
+                                                .to_string(),
+                                        );
+                                    }
+                                }
+                                state.set(next);
+                            }
+                            PcPairingUiStatus::Error(_) => {}
                         }
                     },
                     "{action_label}"
@@ -307,7 +332,9 @@ fn status_badge_text(status: &PcPairingUiStatus) -> &'static str {
 fn status_badge_color(status: &PcPairingUiStatus) -> &'static str {
     match status {
         PcPairingUiStatus::Online => "#059669",
-        PcPairingUiStatus::WaitingForPc | PcPairingUiStatus::ReadyToExport | PcPairingUiStatus::Exported => "#2563eb",
+        PcPairingUiStatus::WaitingForPc
+        | PcPairingUiStatus::ReadyToExport
+        | PcPairingUiStatus::Exported => "#2563eb",
         PcPairingUiStatus::Error(_) => "#dc2626",
         PcPairingUiStatus::Offline => "#7f1d1d",
         PcPairingUiStatus::NotConfigured => "#4b5563",
@@ -321,13 +348,25 @@ mod tests {
 
     #[test]
     fn status_badges_match_pairing_state() {
-        assert_eq!(status_badge_text(&PcPairingUiStatus::NotConfigured), "SETUP");
-        assert_eq!(status_badge_text(&PcPairingUiStatus::ReadyToExport), "READY");
+        assert_eq!(
+            status_badge_text(&PcPairingUiStatus::NotConfigured),
+            "SETUP"
+        );
+        assert_eq!(
+            status_badge_text(&PcPairingUiStatus::ReadyToExport),
+            "READY"
+        );
         assert_eq!(status_badge_text(&PcPairingUiStatus::Exported), "ZIP READY");
-        assert_eq!(status_badge_text(&PcPairingUiStatus::WaitingForPc), "WAITING");
+        assert_eq!(
+            status_badge_text(&PcPairingUiStatus::WaitingForPc),
+            "WAITING"
+        );
         assert_eq!(status_badge_text(&PcPairingUiStatus::Online), "ONLINE");
         assert_eq!(status_badge_text(&PcPairingUiStatus::Offline), "OFFLINE");
-        assert_eq!(status_badge_text(&PcPairingUiStatus::Error("x".to_string())), "ERROR");
+        assert_eq!(
+            status_badge_text(&PcPairingUiStatus::Error("x".to_string())),
+            "ERROR"
+        );
     }
 
     #[test]

@@ -6,10 +6,10 @@ mod attachment_ingestion;
 mod chat_attachment;
 mod cockpit_section_panel;
 mod diagnostics_panel;
-mod git_panel;
-mod git_state;
 mod diagnostics_state;
 mod document_picker;
+mod git_panel;
+mod git_state;
 mod mobile_approval_panel;
 mod mobile_drawer;
 mod mobile_engine_runner;
@@ -39,24 +39,24 @@ use agent_timeline::MobileTimelineState;
 use agent_timeline_panel::agent_timeline_panel;
 use chat_attachment::ChatComposerState;
 use cockpit_section_panel::cockpit_section_panel;
-use deepseek_mobile_core::{AgentEvent, ApprovalCardView, Config, ReviewDecision};
+use deepseek_mobile_core::{AgentEvent, ApprovalCardView, ReviewDecision};
 use diagnostics_state::DiagnosticsUiState;
-use git_state::GitUiState;
 use dioxus::prelude::*;
 use document_picker::{DocumentPickerRequest, DocumentPickerState};
+use git_state::GitUiState;
 use mobile_approval_panel::mobile_approval_panel;
 use mobile_drawer::{bottom_nav_bar, mobile_drawer, CockpitSection};
 use mobile_engine_runner::{
     continue_mobile_approval, load_default_mobile_approval_cards, run_mobile_turn_streaming,
 };
 use native_bridge::{NativeBridgeState, NativeMobileCommand, NativeMobileEvent};
+use onboarding_panel::onboarding_panel;
 use pc_pairing_state::PcPairingUiState;
 use project_files_state::ProjectFilesUiState;
 use saved_timeline_loader::load_default_saved_events;
-use settings_state::SettingsFormState;
+use settings_state::{load_saved_config, SettingsFormState};
 use snapshots_state::SnapshotsUiState;
 use terminal_state::TerminalUiState;
-use onboarding_panel::onboarding_panel;
 
 fn main() {
     dioxus::launch(app);
@@ -82,13 +82,10 @@ fn app() -> Element {
     let terminal_state = use_signal(TerminalUiState::default);
     let mut settings_state = use_signal(SettingsFormState::default);
     let mut onboarding_done = use_signal(|| {
-        let config_path = std::path::PathBuf::from(".deepseek-mobile").join("config.json");
-        if let Ok(json) = std::fs::read_to_string(&config_path) {
-            if let Ok(config) = serde_json::from_str::<Config>(&json) {
-                let key = config.api_key.trim();
-                if !key.is_empty() && key.starts_with("sk-") {
-                    return true;
-                }
+        if let Some(config) = load_saved_config() {
+            let key = config.api_key.trim();
+            if !key.is_empty() && key.starts_with("sk-") {
+                return true;
             }
         }
         false
@@ -100,7 +97,11 @@ fn app() -> Element {
     use_effect(move || {
         let event = terminal_event_bridge().last_event.clone();
         match event {
-            Some(NativeMobileEvent::TerminalOpened { session_id, title, cwd }) => {
+            Some(NativeMobileEvent::TerminalOpened {
+                session_id,
+                title,
+                cwd,
+            }) => {
                 let session = deepseek_mobile_core::PcTerminalSession {
                     id: session_id,
                     workspace_id: "default".to_string(),
@@ -119,7 +120,10 @@ fn app() -> Element {
                 let mut ts = terminal_event_state.write();
                 ts.append_output(&session_id, &chunk);
             }
-            Some(NativeMobileEvent::TerminalClosed { session_id, exit_code }) => {
+            Some(NativeMobileEvent::TerminalClosed {
+                session_id,
+                exit_code,
+            }) => {
                 let mut ts = terminal_event_state.write();
                 ts.close_session(&session_id, exit_code);
             }
@@ -249,9 +253,10 @@ fn app() -> Element {
                     {mobile_approval_panel(
                         &approval_cards(),
                         EventHandler::new(move |(approval_id, decision): (String, ReviewDecision)| {
+                            let config = settings_state().to_config();
                             is_loading.set(true);
                             spawn(async move {
-                                match continue_mobile_approval(Config::default(), approval_id.clone(), decision.clone()).await {
+                                match continue_mobile_approval(config, approval_id.clone(), decision.clone()).await {
                                     Ok(result) => {
                                         let mut next_timeline = timeline();
                                         push_agent_event(&mut next_timeline, &AgentEvent::Status(format!("Approval decision applied: {:?}", decision)));
@@ -299,9 +304,10 @@ fn app() -> Element {
                         EventHandler::new(move |(approval_id, decision): (String, ReviewDecision)| {
                             let approval_id = approval_id.clone();
                             let decision = decision.clone();
+                            let config = settings_state().to_config();
                             is_loading.set(true);
                             spawn(async move {
-                                match continue_mobile_approval(Config::default(), approval_id.clone(), decision.clone()).await {
+                                match continue_mobile_approval(config, approval_id.clone(), decision.clone()).await {
                                     Ok(result) => {
                                         let mut next_timeline = timeline();
                                         push_agent_event(&mut next_timeline, &AgentEvent::Status(format!("Approval decision applied: {:?}", decision)));
@@ -461,7 +467,7 @@ fn app() -> Element {
                         is_loading.set(true);
 
                         spawn(async move {
-                            let config = Config::default();
+                            let config = settings_state().to_config();
                             let event_timeline = timeline;
                             let event_snapshots = snapshots_state;
                             let event_diagnostics = diagnostics_state;

@@ -1,7 +1,8 @@
 use crate::pc_pairing_manager::{MobilePcPairingExport, MobilePcPairingRequest, PcPairingManager};
 use deepseek_mobile_core::{
-    PcGatewayDiscoveryCandidate, PcGatewayDiscoveryReport, PcGatewayDiscoveryStatus,
-    PcGatewayEndpointHealth,
+    PcGatewayConfig, PcGatewayDiscoveryCandidate, PcGatewayDiscoveryReport,
+    PcGatewayDiscoveryStatus, PcGatewayEndpointCandidate, PcGatewayEndpointHealth,
+    PcGatewayTransportMode, PcGatewayTrustLevel, WorkspaceConnection, WorkspaceConnectionStatus,
 };
 use std::path::{Path, PathBuf};
 
@@ -118,8 +119,20 @@ impl PcPairingUiState {
     }
 
     pub fn apply_discovery_report(&mut self, report: PcGatewayDiscoveryReport) {
-        let has_online = report.candidates.iter().any(|candidate| candidate.status == PcGatewayDiscoveryStatus::Online);
+        let has_online = report
+            .candidates
+            .iter()
+            .any(|candidate| candidate.status == PcGatewayDiscoveryStatus::Online);
         let has_candidates = !report.endpoint_candidates().is_empty();
+        if let Some(candidate) = report
+            .candidates
+            .iter()
+            .find(|candidate| candidate.status == PcGatewayDiscoveryStatus::Online)
+        {
+            let endpoint = endpoint_health_from_candidate(candidate);
+            self.active_endpoint = Some(endpoint.clone());
+            upsert_endpoint_health(&mut self.endpoint_health, endpoint);
+        }
         self.discovery_report = Some(report);
         if has_online {
             self.mark_online();
@@ -130,14 +143,57 @@ impl PcPairingUiState {
         }
     }
 
-    pub fn apply_endpoint_health(&mut self, active: Option<PcGatewayEndpointHealth>, all: Vec<PcGatewayEndpointHealth>) {
+    pub fn apply_endpoint_health(
+        &mut self,
+        active: Option<PcGatewayEndpointHealth>,
+        all: Vec<PcGatewayEndpointHealth>,
+    ) {
         self.active_endpoint = active;
         self.endpoint_health = all;
         if self.active_endpoint.is_some() {
             self.mark_online();
-        } else if self.endpoint_health.iter().any(|endpoint| endpoint.failure_count > 0) {
+        } else if self
+            .endpoint_health
+            .iter()
+            .any(|endpoint| endpoint.failure_count > 0)
+        {
             self.mark_offline();
         }
+    }
+
+    pub fn active_workspace_connection(&self) -> Option<WorkspaceConnection> {
+        let request = self.request.as_ref()?;
+        let active_endpoint = self.active_endpoint.as_ref()?;
+        let primary_candidate = self
+            .active_discovery_candidate()
+            .unwrap_or_else(|| inferred_endpoint_candidate(active_endpoint));
+
+        let mut gateway = PcGatewayConfig::new(
+            request.gateway_id.clone(),
+            request.gateway_label.clone(),
+            primary_candidate.base_url.clone(),
+            request.device_id.clone(),
+        );
+        gateway.auth_token =
+            (!request.auth_token.trim().is_empty()).then(|| request.auth_token.clone());
+        gateway.trust_level = PcGatewayTrustLevel::PairedCommandExecution;
+        gateway.transport_mode = primary_candidate.transport_mode.clone();
+        gateway.allow_http_on_local_network = primary_candidate.transport_mode.is_local_only();
+        if let Some(report) = self.discovery_report.as_ref() {
+            gateway.endpoint_candidates = report.endpoint_candidates();
+        }
+
+        Some(
+            WorkspaceConnection::pc_gateway(
+                format!("pc:{}:{}", request.gateway_id, request.workspace_id),
+                request.gateway_label.clone(),
+                request.workspace_id.clone(),
+                request.workspace_id.clone(),
+                request.workspace_root.clone(),
+                gateway,
+            )
+            .with_status(WorkspaceConnectionStatus::Online),
+        )
     }
 
     pub fn set_error(&mut self, message: impl Into<String>) {
@@ -186,7 +242,10 @@ impl PcPairingUiState {
                 endpoint.success_count,
                 endpoint.failure_count
             ),
-            None => "No active PC route yet. Run a connection check or execute a PC workspace request.".to_string(),
+            None => {
+                "No active PC route yet. Run a connection check or execute a PC workspace request."
+                    .to_string()
+            }
         }
     }
 
@@ -292,7 +351,10 @@ impl PcPairingUiState {
             let mins = (h.uptime_secs % 3600) / 60;
             lines.push(format!("Uptime: {}h {}m", hours, mins));
         }
-        lines.push(format!("Requests: {} ({} errors)", h.request_count, h.error_count));
+        lines.push(format!(
+            "Requests: {} ({} errors)",
+            h.request_count, h.error_count
+        ));
         Some(lines.join("\n"))
     }
 
@@ -319,7 +381,11 @@ impl PcPairingUiState {
                     let endpoint = PcGatewayEndpointHealth {
                         label: candidate.endpoint.label.clone(),
                         base_url: candidate.endpoint.base_url.clone(),
-                        success_count: if candidate.status == PcGatewayDiscoveryStatus::Online { 1 } else { 0 },
+                        success_count: if candidate.status == PcGatewayDiscoveryStatus::Online {
+                            1
+                        } else {
+                            0
+                        },
                         failure_count: 0,
                         last_latency_ms: candidate.latency_ms,
                         last_error: None,
@@ -333,17 +399,25 @@ impl PcPairingUiState {
                 None => PcReconnectEffect::None,
             },
             PcReconnectAction::ForgetBadRoutes => {
-                self.endpoint_health.retain(|endpoint| endpoint.last_error.is_none() && endpoint.is_healthy());
+                self.endpoint_health
+                    .retain(|endpoint| endpoint.last_error.is_none() && endpoint.is_healthy());
                 if let Some(report) = self.discovery_report.as_mut() {
-                    report.candidates.retain(|candidate| matches!(
-                        candidate.status,
-                        PcGatewayDiscoveryStatus::Found | PcGatewayDiscoveryStatus::Online
-                    ));
+                    report.candidates.retain(|candidate| {
+                        matches!(
+                            candidate.status,
+                            PcGatewayDiscoveryStatus::Found | PcGatewayDiscoveryStatus::Online
+                        )
+                    });
                 }
                 self.last_error = None;
                 if self.active_endpoint.is_some() {
                     self.mark_online();
-                } else if self.discovery_report.as_ref().map(|report| !report.endpoint_candidates().is_empty()).unwrap_or(false) {
+                } else if self
+                    .discovery_report
+                    .as_ref()
+                    .map(|report| !report.endpoint_candidates().is_empty())
+                    .unwrap_or(false)
+                {
                     self.mark_waiting_for_pc();
                 } else {
                     self.mark_offline();
@@ -366,14 +440,33 @@ impl PcPairingUiState {
             })
     }
 
+    fn active_discovery_candidate(&self) -> Option<PcGatewayEndpointCandidate> {
+        let active_base_url = self.active_endpoint.as_ref()?.base_url.as_str();
+        self.discovery_report
+            .as_ref()?
+            .candidates
+            .iter()
+            .find(|candidate| candidate.endpoint.base_url == active_base_url)
+            .map(|candidate| candidate.endpoint.clone())
+    }
+
     fn has_bad_routes(&self) -> bool {
-        self.endpoint_health.iter().any(|endpoint| endpoint.last_error.is_some() || !endpoint.is_healthy())
-            || self.discovery_report.as_ref().map(|report| {
-                report.candidates.iter().any(|candidate| matches!(
-                    candidate.status,
-                    PcGatewayDiscoveryStatus::Rejected | PcGatewayDiscoveryStatus::ProbeFailed
-                ))
-            }).unwrap_or(false)
+        self.endpoint_health
+            .iter()
+            .any(|endpoint| endpoint.last_error.is_some() || !endpoint.is_healthy())
+            || self
+                .discovery_report
+                .as_ref()
+                .map(|report| {
+                    report.candidates.iter().any(|candidate| {
+                        matches!(
+                            candidate.status,
+                            PcGatewayDiscoveryStatus::Rejected
+                                | PcGatewayDiscoveryStatus::ProbeFailed
+                        )
+                    })
+                })
+                .unwrap_or(false)
     }
 }
 
@@ -387,7 +480,12 @@ fn format_latency(latency_ms: Option<u128>) -> String {
 mod tests {
     use super::{PcPairingUiState, PcPairingUiStatus, PcReconnectAction, PcReconnectEffect};
     use crate::pc_pairing_manager::MobilePcPairingRequest;
-    use deepseek_mobile_core::{PcGatewayDiscoveryService, PcGatewayEndpointHealth, DEFAULT_PC_GATEWAY_PORT};
+    use deepseek_mobile_core::{
+        PcGatewayDiscoveryCandidate, PcGatewayDiscoveryReport, PcGatewayDiscoveryService,
+        PcGatewayDiscoverySource, PcGatewayDiscoveryStatus, PcGatewayEndpointCandidate,
+        PcGatewayEndpointHealth, PcGatewayTransportMode, WorkspaceBackendKind,
+        WorkspaceConnectionStatus, DEFAULT_PC_GATEWAY_PORT,
+    };
     use std::fs;
     use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -466,6 +564,40 @@ mod tests {
     }
 
     #[test]
+    fn online_discovery_promotes_active_route() {
+        let mut state = PcPairingUiState::default();
+        state.configure(sample_request());
+        state.apply_discovery_report(online_report());
+
+        assert_eq!(state.status, PcPairingUiStatus::Online);
+        assert_eq!(
+            state
+                .active_endpoint
+                .as_ref()
+                .map(|endpoint| endpoint.base_url.as_str()),
+            Some("http://192.168.1.10:8787")
+        );
+        assert_eq!(state.endpoint_health.len(), 1);
+    }
+
+    #[test]
+    fn active_route_builds_persistable_pc_workspace_connection() {
+        let mut state = PcPairingUiState::default();
+        state.configure(sample_request());
+        state.apply_discovery_report(online_report());
+
+        let connection = state.active_workspace_connection().unwrap();
+
+        assert_eq!(connection.backend, WorkspaceBackendKind::PcGateway);
+        assert_eq!(connection.status, WorkspaceConnectionStatus::Online);
+        assert_eq!(connection.workspace_id, "local");
+        let gateway = connection.pc_gateway.unwrap();
+        assert_eq!(gateway.base_url, "http://192.168.1.10:8787");
+        assert_eq!(gateway.auth_token.as_deref(), Some("pairing-token"));
+        assert_eq!(gateway.endpoint_candidates.len(), 1);
+    }
+
+    #[test]
     fn scan_again_returns_discovery_effect() {
         let mut state = PcPairingUiState::default();
         state.configure(sample_request());
@@ -497,7 +629,12 @@ mod tests {
             last_latency_ms: Some(500),
             last_error: Some("timeout".to_string()),
         });
-        assert!(state.reconnect_controls().iter().any(|control| control.action == PcReconnectAction::ForgetBadRoutes && control.enabled));
+        assert!(state
+            .reconnect_controls()
+            .iter()
+            .any(
+                |control| control.action == PcReconnectAction::ForgetBadRoutes && control.enabled
+            ));
         let _ = state.apply_reconnect_action(PcReconnectAction::ForgetBadRoutes);
         assert!(state.endpoint_health.is_empty());
     }
@@ -514,6 +651,24 @@ mod tests {
         )
     }
 
+    fn online_report() -> PcGatewayDiscoveryReport {
+        PcGatewayDiscoveryReport {
+            service_name: "test".to_string(),
+            candidates: vec![PcGatewayDiscoveryCandidate {
+                source: PcGatewayDiscoverySource::Mdns,
+                endpoint: PcGatewayEndpointCandidate::new(
+                    "mdns:laptop",
+                    "http://192.168.1.10:8787",
+                    PcGatewayTransportMode::LocalNetworkHttp,
+                ),
+                status: PcGatewayDiscoveryStatus::Online,
+                message: None,
+                latency_ms: Some(12),
+                health: None,
+            }],
+        }
+    }
+
     fn temp_dir() -> std::path::PathBuf {
         std::env::temp_dir().join(format!(
             "deepseek-mobile-pairing-state-test-{}-{}",
@@ -524,4 +679,48 @@ mod tests {
                 .as_nanos()
         ))
     }
+}
+
+fn endpoint_health_from_candidate(
+    candidate: &PcGatewayDiscoveryCandidate,
+) -> PcGatewayEndpointHealth {
+    PcGatewayEndpointHealth {
+        label: candidate.endpoint.label.clone(),
+        base_url: candidate.endpoint.base_url.clone(),
+        success_count: if candidate.status == PcGatewayDiscoveryStatus::Online {
+            1
+        } else {
+            0
+        },
+        failure_count: 0,
+        last_latency_ms: candidate.latency_ms,
+        last_error: None,
+    }
+}
+
+fn upsert_endpoint_health(
+    rows: &mut Vec<PcGatewayEndpointHealth>,
+    endpoint: PcGatewayEndpointHealth,
+) {
+    if let Some(existing) = rows
+        .iter_mut()
+        .find(|row| row.base_url == endpoint.base_url)
+    {
+        *existing = endpoint;
+    } else {
+        rows.insert(0, endpoint);
+    }
+}
+
+fn inferred_endpoint_candidate(endpoint: &PcGatewayEndpointHealth) -> PcGatewayEndpointCandidate {
+    let transport_mode = if endpoint.base_url.starts_with("https://") {
+        PcGatewayTransportMode::LocalNetworkHttps
+    } else {
+        PcGatewayTransportMode::LocalNetworkHttp
+    };
+    PcGatewayEndpointCandidate::new(
+        endpoint.label.clone(),
+        endpoint.base_url.clone(),
+        transport_mode,
+    )
 }

@@ -9,6 +9,11 @@ use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
+/// Unique identifier for a Termux command execution request.
+/// Used to correlate the result event sent from the Kotlin bridge
+/// back to the awaiting Rust caller.
+pub type TermuxRequestId = String;
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct CommandRequest {
     pub program: String,
@@ -43,6 +48,46 @@ pub trait Executor: Send + Sync {
     fn execute(&self, request: CommandRequest) -> Result<CommandOutput>;
 }
 
+// ── Termux execution bridge ──
+
+/// A Termux command execution request sent from Rust to the Android/Kotlin bridge.
+/// The native side runs `sh -c "<command>"` in the given working directory
+/// and sends back a `TermuxExecResult` event.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct TermuxExecRequest {
+    pub request_id: TermuxRequestId,
+    pub command: String,
+    pub working_dir: PathBuf,
+    pub timeout_secs: Option<u64>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct TermuxExecResult {
+    pub request_id: TermuxRequestId,
+    pub stdout: String,
+    pub stderr: String,
+    pub exit_code: Option<i32>,
+    pub timed_out: bool,
+    pub error: Option<String>,
+}
+
+impl TermuxExecResult {
+    pub fn into_command_output(self) -> CommandOutput {
+        CommandOutput {
+            status_code: self.exit_code,
+            stdout: self.stdout,
+            stderr: self.stderr,
+        }
+    }
+
+    /// True if the command ran to completion with exit code 0 and no bridge error.
+    pub fn is_ok(&self) -> bool {
+        self.error.is_none() && !self.timed_out && self.exit_code == Some(0)
+    }
+}
+
+// ── Disabled executor (fallback) ──
+
 #[derive(Default)]
 pub struct DisabledExecutor;
 
@@ -63,6 +108,8 @@ impl Executor for DisabledExecutor {
         })
     }
 }
+
+// ── PC gateway planned executor ──
 
 #[derive(Clone, Debug)]
 pub struct PcGatewayExecutorPlan {
