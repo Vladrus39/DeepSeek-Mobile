@@ -61,6 +61,8 @@ pub struct MobileEngine {
     event_observer: Option<Arc<dyn Fn(AgentEvent)>>,
     /// Active session with full conversation history
     session: Session,
+    /// Auto-create workspace snapshot after each successful turn with changes
+    auto_snapshot: bool,
 }
 
 impl MobileEngine {
@@ -82,6 +84,7 @@ impl MobileEngine {
             approval_session: ApprovalSessionPolicy::new(),
             event_observer: None,
             session: Session::new("default"),
+            auto_snapshot: true,
         }
     }
 
@@ -159,6 +162,15 @@ impl MobileEngine {
 
     pub fn supports_streaming(&self) -> bool {
         true
+    }
+
+    pub fn with_auto_snapshot(mut self, enabled: bool) -> Self {
+        self.auto_snapshot = enabled;
+        self
+    }
+
+    pub fn auto_snapshot_enabled(&self) -> bool {
+        self.auto_snapshot
     }
 
     pub fn approval_session_grant_count(&self) -> usize {
@@ -254,6 +266,37 @@ impl MobileEngine {
         } else {
             turn.complete();
         }
+
+        // Auto-create post-turn snapshot if enabled and tools were executed
+        if self.auto_snapshot && !outcome.executed.is_empty() && turn.status == TurnStatus::Completed {
+            let store_root = self.workspace.root.join(".deepseek-mobile").join("snapshots");
+            let service = crate::snapshots::WorkspaceSnapshotService::new(
+                self.workspace.clone(),
+                store_root,
+            );
+            match service.create_snapshot(format!(
+                "post-turn auto snapshot after {} tools",
+                outcome.executed.len()
+            )) {
+                Ok(snapshot) => {
+                    self.push_event(
+                        &mut events,
+                        AgentEvent::Status(format!(
+                            "Auto-snapshot created: {} files, {} bytes",
+                            snapshot.file_count, snapshot.total_bytes,
+                        )),
+                    )?;
+                }
+                Err(error) => {
+                    // Non-fatal: log but don't fail the turn
+                    self.push_event(
+                        &mut events,
+                        AgentEvent::Status(format!("Auto-snapshot skipped: {}", error)),
+                    )?;
+                }
+            }
+        }
+
         self.persist_turn(&turn)?;
         self.push_event(
             &mut events,
