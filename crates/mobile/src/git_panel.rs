@@ -1,8 +1,13 @@
-use crate::git_state::GitUiState;
+use crate::git_state::{GitPanelAction, GitUiState};
 use dioxus::prelude::*;
 
-pub fn git_panel(state: &GitUiState) -> Element {
+pub fn git_panel(
+    state: &GitUiState,
+    on_action: EventHandler<GitPanelAction>,
+    on_commit_message_change: EventHandler<String>,
+) -> Element {
     let dirty = state.is_dirty();
+    let can_commit = state.can_commit();
 
     rsx! {
         div {
@@ -37,6 +42,8 @@ pub fn git_panel(state: &GitUiState) -> Element {
                 title: "Status",
                 count: Some(state.changed_files),
                 action_label: "Refresh",
+                disabled: state.loading,
+                on_action: EventHandler::new(move |_| on_action.call(GitPanelAction::RefreshStatus)),
             }
             if !state.status_text.is_empty() {
                 div {
@@ -58,6 +65,8 @@ pub fn git_panel(state: &GitUiState) -> Element {
                 title: "Diff",
                 count: Some(state.diff_text.lines().count()),
                 action_label: "Refresh",
+                disabled: state.loading,
+                on_action: EventHandler::new(move |_| on_action.call(GitPanelAction::RefreshDiff)),
             }
             if !state.diff_text.is_empty() {
                 DiffBlock { text: state.diff_text.clone() }
@@ -68,6 +77,8 @@ pub fn git_panel(state: &GitUiState) -> Element {
                 title: "Branches",
                 count: Some(state.branch_list.lines().count()),
                 action_label: "List",
+                disabled: state.loading,
+                on_action: EventHandler::new(move |_| on_action.call(GitPanelAction::ListBranches)),
             }
             if !state.branch_list.is_empty() {
                 div {
@@ -89,13 +100,37 @@ pub fn git_panel(state: &GitUiState) -> Element {
                 title: "Commit",
                 subtitle: if dirty { "Ready to commit" } else { "No changes" },
                 action_label: if dirty { "Commit" } else { "---" },
+                disabled: !can_commit,
+                on_action: EventHandler::new(move |_| on_action.call(GitPanelAction::Commit)),
+            }
+            input {
+                background_color: "#0d1117",
+                color: "white",
+                border: "1px solid #30363d",
+                border_radius: "10px",
+                padding: "10px",
+                value: "{state.commit_message}",
+                placeholder: "Commit message",
+                oninput: move |event| on_commit_message_change.call(event.value()),
             }
 
             // Push / Pull
             div {
                 display: "flex", gap: "12px",
-                SectionCard { title: "Push", subtitle: "origin", action_label: "Push" }
-                SectionCard { title: "Pull", subtitle: "origin", action_label: "Pull" }
+                SectionCard {
+                    title: "Push",
+                    subtitle: state.remote_or_default(),
+                    action_label: "Push",
+                    disabled: state.loading,
+                    on_action: EventHandler::new(move |_| on_action.call(GitPanelAction::Push)),
+                }
+                SectionCard {
+                    title: "Pull",
+                    subtitle: state.remote_or_default(),
+                    action_label: "Pull",
+                    disabled: state.loading,
+                    on_action: EventHandler::new(move |_| on_action.call(GitPanelAction::Pull)),
+                }
             }
 
             // Error
@@ -123,7 +158,14 @@ pub fn git_panel(state: &GitUiState) -> Element {
 }
 
 #[component]
-fn SectionCard(title: String, subtitle: Option<String>, action_label: String, count: Option<usize>) -> Element {
+fn SectionCard(
+    title: String,
+    subtitle: Option<String>,
+    action_label: String,
+    count: Option<usize>,
+    disabled: bool,
+    on_action: EventHandler<()>,
+) -> Element {
     rsx! {
         div {
             background_color: "#0f172a",
@@ -153,13 +195,15 @@ fn SectionCard(title: String, subtitle: Option<String>, action_label: String, co
             }
 
             button {
-                background_color: if action_label == "---" { "#1f2937" } else { "#2563eb" },
+                background_color: if disabled || action_label == "---" { "#1f2937" } else { "#2563eb" },
                 border: "none",
                 border_radius: "10px",
                 padding: "6px 14px",
-                color: if action_label == "---" { "#6b7280" } else { "white" },
+                color: if disabled || action_label == "---" { "#6b7280" } else { "white" },
                 font_size: "13px",
                 font_weight: "500",
+                disabled,
+                onclick: move |_| on_action.call(()),
                 "{action_label}"
             }
         }

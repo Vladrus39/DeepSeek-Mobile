@@ -8,7 +8,9 @@ use crate::pc_pairing_state::PcPairingUiState;
 use crate::project_files_panel::project_files_panel;
 use crate::project_files_state::ProjectFilesUiState;
 use crate::git_panel::git_panel;
-use crate::git_state::GitUiState;
+use crate::git_state::{GitPanelAction, GitUiState};
+use crate::mobile_git_runner::{apply_git_action_result, run_mobile_git_action};
+use crate::mobile_runtime_config::MobileRuntimeConfig;
 use crate::settings_panel::settings_panel;
 use crate::settings_state::SettingsFormState;
 use crate::snapshots_panel::snapshots_panel;
@@ -26,7 +28,7 @@ pub fn cockpit_section_panel(
     project_files_state: Signal<ProjectFilesUiState>,
     snapshots_state: Signal<SnapshotsUiState>,
     diagnostics_state: Signal<DiagnosticsUiState>,
-    git_state: Signal<GitUiState>,
+    mut git_state: Signal<GitUiState>,
     mut terminal_state: Signal<TerminalUiState>,
     settings_state: Signal<SettingsFormState>,
     on_approval_decision: EventHandler<(String, ReviewDecision)>,
@@ -95,7 +97,29 @@ pub fn cockpit_section_panel(
                 }
             }
         },
-        CockpitSection::Git => git_panel(&git_state()),
+        CockpitSection::Git => git_panel(
+            &git_state(),
+            EventHandler::new(move |action: GitPanelAction| {
+                let runtime = MobileRuntimeConfig::default();
+                let current_state = git_state();
+                git_state.write().set_loading();
+                spawn(async move {
+                    match run_mobile_git_action(action, runtime, current_state).await {
+                        Ok(result) => {
+                            let mut state = git_state();
+                            apply_git_action_result(&mut state, result);
+                            git_state.set(state);
+                        }
+                        Err(error) => {
+                            git_state.write().set_error(error.to_string());
+                        }
+                    }
+                });
+            }),
+            EventHandler::new(move |message: String| {
+                git_state.write().set_commit_message(message);
+            }),
+        ),
         CockpitSection::Settings => settings_panel(settings_state),
     }
 }

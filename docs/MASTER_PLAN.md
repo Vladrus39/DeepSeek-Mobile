@@ -197,6 +197,9 @@ Checklist:
 - [x] Add Git UI panel: status, diff, branch, commit draft, pull/push approval.
 - [x] Add web/fetch/search tools only behind explicit network capability and approval policy.
 - [x] Add GitHub tool surface later, preferably PC-side or remote-safe.
+- [x] Wire ModelRouter into engine turn orchestration (model auto-selection per prompt).
+- [x] Wire ContextManager into prompt assembly (context budget fitting per model).
+- [x] Wire auto_commit_and_push into successful-turn engine lifecycle.
 
 Acceptance criteria:
 
@@ -357,7 +360,7 @@ Goal: turn the prototype into a usable product.
 Checklist:
 
 - [x] Cockpit dashboard: status, active workspace, executor, pending approvals, diagnostics, tasks.
-- [x] Git panel.
+- [x] Git panel with real status/diff/branch/commit/push/pull actions.
 - [x] Snapshot/rollback panel.
 - [x] Settings/profile screen.
 - [x] API key setup and secret storage plan.
@@ -380,7 +383,7 @@ Acceptance criteria:
 | File tools | Keep and adapt | Done for local/PC-safe file operations |
 | Apply patch | Keep mobile-safe operation batch first; add unified diff later | Partial: local + PC operation batches implemented |
 | Shell execution | Route to PC/Termux | Partial: PC-host active; Termux native request queue added, final Android callback/result continuation still pending |
-| Git tools | Keep with mobile UI | Partial: core/PC routing and panel surface exist; button workflow still pending |
+| Git tools | Keep with mobile UI | Partial: core/PC routing and panel actions exist; auto-commit lifecycle still pending |
 | Web/search/fetch | Keep with approval | Done in core with network capability and approval policy |
 | Runtime HTTP/SSE API | Keep later | Missing |
 | Durable task queue | Keep | Missing |
@@ -422,10 +425,17 @@ The next implementation sequence is fixed:
 19. [x] Add Termux executor bridge contract.
 20. [x] Wire Termux `exec_shell` into native request metadata and mobile bridge queue.
 21. [x] Add Git UI.
-22. [ ] Add background tasks.
-23. [ ] Add MCP/skills.
+22. [x] Wire Git panel actions to real local/PC-routed tool execution.
+23. [x] Close Termux callback/result-continuation end-to-end.
+24. [ ] Add background tasks.
+25. [ ] Add MCP/skills.
 
 ## 5. Implementation progress log
+- 2026-05-25 (Phase A wiring): Wired `ModelRouter` into engine turn orchestration (auto-selects Flash/Pro per prompt complexity and context size), wired `ContextManager` into prompt assembly (fits messages within the selected model's context budget), and wired `auto_commit_and_push` into the successful-turn engine lifecycle. Added `run_stream_with_messages_and_model` / `run_with_messages_and_model` to `DeepSeekAgent` for explicit model selection. Engine now stores `Config` directly for routing/context/auto-commit decisions. Verification: `cargo check --workspace --lib` green, `cargo test` green with 118 core / 102 mobile / 2 pc-host tests.
+
+- 2026-05-25 (Phase B — Termux callback/result-continuation closure): Closed the Termux end-to-end loop. Added `TurnStatus::WaitingForTermuxResult` variant, `TermuxExecutionPending` agent event, and `continue_termux_result` method on `MobileEngine`. When an `exec_shell` call is routed to Termux, the tool loop emits a `TermuxExecutionPending` event and the turn pauses with `WaitingForTermuxResult` status instead of completing. When the Android Termux bridge returns the real command output via `NativeMobileEvent::TermuxCommandCompleted`, the mobile UI triggers `continue_termux_result` which injects the real tool result into the session and re-queries the model so it can respond to the actual command output. Wire-up completed in `main.rs` via a new `use_effect` that watches for `TermuxCommandCompleted` and calls `continue_mobile_termux_result`. Verification: `cargo check --workspace --all-targets` green, `cargo test --workspace` passed with 102 mobile / 118 core / 2 pc-host tests.
+
+- 2026-05-25: Wired Git panel actions to the existing `git` tool route through `ToolExecutionCoordinator`, including local workspace and active PC gateway workspace routing for status/diff/branch/commit/push/pull. Verification: `cargo check --workspace --all-targets` and `cargo test --workspace` passed with 101 mobile / 117 core / 2 pc-host tests.
 - 2026-05-25: Fixed GitHub Actions Rust environment setup by installing Ubuntu native dependencies required by Dioxus/GTK/WebKit before workspace checks; root cause was missing `glib-2.0.pc` from `glib-sys` during CI.
 - 2026-05-25: Wired Termux-workspace `exec_shell` into the real tool route: core now emits structured pending `TermuxExecRequest` metadata, mobile extracts that metadata from tool-result events, queues `NativeMobileCommand::RunTermuxCommand`, and surfaces the queued native request in the timeline. Verification: `cargo check --workspace --all-targets` and `cargo test --workspace` passed with 97 mobile / 117 core / 2 pc-host tests.
 - 2026-05-25: Added session-level diagnostics context and next-turn diagnostics injection, normalized post-edit diagnostics metadata for UI/model consumers, added Rust mobile Termux bridge queue/callback routing, added Android `DeepSeekTermuxBridge` for Termux `RUN_COMMAND` intents/result bundles, updated Android bridge manifest permissions, and documented final Android host integration responsibilities. Verification: `cargo check --workspace --all-targets` and `cargo test --workspace` passed with 95 mobile / 116 core / 2 pc-host tests.
@@ -479,4 +489,3 @@ DeepSeek Mobile reaches v1 when all of the following are true:
 - Long-running tasks are durable.
 - Network/MCP/skills are controlled by explicit policy.
 - CI passes for core/mobile/pc-host.
-

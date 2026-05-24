@@ -2,6 +2,7 @@ use crate::mobile_runtime_config::MobileRuntimeConfig;
 use deepseek_mobile_core::{
     AgentEvent, ApprovalCardView, ApprovalSessionRuntimeStore, Config, MobileEngine, ReviewDecision,
     RuntimeThreadStore, Session, TokenUsage, TurnContext, TurnStatus, UserChatInput,
+    TermuxExecResult,
 };
 
 #[derive(Clone, Debug, PartialEq)]
@@ -167,6 +168,47 @@ pub async fn continue_mobile_approval_with_runtime(
         executed_count: result.executed.len(),
         session_grant_count: result.session_grants_created.len(),
         remaining_approval_cards,
+    })
+}
+
+/// Continue a turn that was paused waiting for a Termux command result.
+pub async fn continue_mobile_termux_result(
+    config: Config,
+    termux_result: TermuxExecResult,
+) -> anyhow::Result<MobileTurnUiResult> {
+    continue_mobile_termux_result_with_runtime(config, termux_result, MobileRuntimeConfig::default()).await
+}
+
+/// Continue a turn that was paused waiting for a Termux command result,
+/// using the provided runtime configuration.
+pub async fn continue_mobile_termux_result_with_runtime(
+    config: Config,
+    termux_result: TermuxExecResult,
+    runtime: MobileRuntimeConfig,
+) -> anyhow::Result<MobileTurnUiResult> {
+    let store = RuntimeThreadStore::open(runtime.runtime_store_root.clone())?;
+    let approval_session_store = ApprovalSessionRuntimeStore::new(runtime.runtime_store_root.clone());
+    let approval_session = approval_session_store.load(&runtime.thread_id)?;
+    let session_path = runtime.session_file_path();
+    let session = Session::load_or_new(&runtime.thread_id, &session_path)?;
+
+    let mut engine = build_engine(config, &runtime, store)?
+        .with_approval_session(approval_session)
+        .with_session(session);
+
+    let result = engine.continue_termux_result(termux_result).await?;
+    approval_session_store.save(runtime.thread_id.clone(), engine.approval_session())?;
+    engine.session().save_to_file(&session_path)?;
+
+    let approval_card_count = result.approval_cards.len();
+    Ok(MobileTurnUiResult {
+        events: result.events,
+        final_text: result.final_text,
+        approval_cards: result.approval_cards,
+        approval_card_count,
+        runtime_store_root: runtime.runtime_store_root_display(),
+        workspace_root: runtime.workspace_root_display(),
+        thread_id: runtime.thread_id,
     })
 }
 

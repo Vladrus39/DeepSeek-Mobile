@@ -52,6 +52,14 @@ pub struct ToolLoopOutcome {
     pub pending_approvals: Vec<PendingToolCallApproval>,
     pub approval_cards: Vec<ApprovalCardView>,
     pub session_grants_created: Vec<ApprovalSessionGrant>,
+    pub pending_termux_requests: Vec<TermuxPendingRequest>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct TermuxPendingRequest {
+    pub call_id: String,
+    pub tool_name: String,
+    pub request: crate::executor::TermuxExecRequest,
 }
 
 impl ToolLoopOutcome {
@@ -360,6 +368,7 @@ fn push_execution_result(
     call: &ToolCallRequest,
     result: Result<ToolResult>,
 ) {
+    // Emit ToolCallStarted first
     outcome
         .events
         .push(AgentEvent::ToolCallStarted(ToolCallEvent {
@@ -370,6 +379,35 @@ fn push_execution_result(
 
     match result {
         Ok(result) => {
+            // Check if this is a Termux-pending result (queued for native bridge execution)
+            let is_termux_pending = result
+                .metadata
+                .as_ref()
+                .and_then(|m| m.get("termux_execution_pending"))
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+
+            if is_termux_pending {
+                if let Some(request) = result
+                    .metadata
+                    .as_ref()
+                    .and_then(|m| m.get("termux_exec_request"))
+                    .and_then(|v| serde_json::from_value::<crate::executor::TermuxExecRequest>(v.clone()).ok())
+                {
+                    outcome.events.push(AgentEvent::TermuxExecutionPending {
+                        call_id: call.id.clone(),
+                        request: request.clone(),
+                    });
+                    outcome.pending_termux_requests.push(TermuxPendingRequest {
+                        call_id: call.id.clone(),
+                        tool_name: call.name.clone(),
+                        request,
+                    });
+                    // Still emit ToolCallFinished so timeline shows the pending state
+                }
+            }
+
+            // Always emit ToolCallFinished for the record
             outcome
                 .events
                 .push(AgentEvent::ToolCallFinished(ToolResultEvent {

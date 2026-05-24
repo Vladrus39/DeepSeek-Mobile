@@ -83,7 +83,7 @@ The main remaining work is no longer “port the basics from the TUI.” It is n
 
 | Area | Current reality | What remains |
 |---|---|---|
-| Git UI | Surface exists | Wire buttons to real status/diff/branch/commit/push/pull actions |
+| Git UI | Real status/diff/branch/commit/push/pull actions are wired through existing tool routes | Add auto-commit lifecycle integration |
 | Files diff UI | Tree and file preview are real | Replace illustrative diff preview with actual patch/project diff data |
 | Terminal | UI + host sessions exist | Persist sessions and finish Android runtime wiring |
 | Termux | Rust/Kotlin bridge contract plus core-to-mobile native request queue exists | Drain commands in the final Android host and feed callbacks back into final tool output |
@@ -105,7 +105,7 @@ The main remaining work is no longer “port the basics from the TUI.” It is n
 | File editing | Done |
 | Patch application | Done |
 | Shell execution | Done through PC-host; Termux now queues native requests but result continuation is still incomplete |
-| Git tooling | Core done; mobile workflow partial |
+| Git tooling | Core and mobile panel actions done; auto-commit lifecycle pending |
 | Web/GitHub tools | Done in core |
 | Diagnostics | Providers and model reinjection done |
 | Snapshots | Local done; remote pending |
@@ -117,7 +117,7 @@ The main remaining work is no longer “port the basics from the TUI.” It is n
 ## Recommended next execution order
 
 1. Finish final Android host integration and close Termux callback/result-continuation.
-2. Wire Git UI actions and engine auto-commit.
+2. Wire engine auto-commit.
 3. Replace fake diff preview with real pending/project diff data.
 4. Add remote snapshots and terminal persistence.
 5. Add durable tasks, runtime API, then extensibility.

@@ -15,7 +15,7 @@ Mobile-first **DeepSeek Coding Agent** для Android с опциональны�
 - Diagnostics после edits: Rust, TypeScript и Python для local/Termux/PC путей
 - Diagnostics metadata сохраняется в session и inject’ится в следующий model turn
 - Native Android bridge contracts: document picker, PC discovery, share/terminal events, Termux RUN_COMMAND adapter and `exec_shell` native request queue
-- Мобильные панели: chat, approvals, files, snapshots, diagnostics, PC host, terminal, git, settings
+- Мобильные панели: chat, approvals, files, snapshots, diagnostics, PC host, terminal, real Git actions, settings
 - Онбординг и сохранение настроек DeepSeek/GitHub
 
 ## Что ещё не доведено до конца
@@ -24,7 +24,7 @@ Mobile-first **DeepSeek Coding Agent** для Android с опциональны�
 - Финальный Termux result lifecycle: Android host drain → Termux callback → final `exec_shell` output back into the agent
 - Persistent terminal sessions между перезапусками
 - Remote snapshot path для PC workspace
-- Реальная wiring-логика Git panel и auto-commit/push в engine lifecycle
+- Auto-commit/push в engine lifecycle
 - Замена демонстрационного diff preview в file panel на реальные project diffs
 - Durable background tasks, runtime API, MCP/plugins/skills
 
@@ -52,7 +52,7 @@ cargo test --workspace
 
 - `cargo check --workspace --all-targets` — проходит
 - `cargo test --workspace` — проходит
-- Последний локальный прогон: 97 mobile tests, 117 core tests, 2 pc-host tests
+- Последний локальный прогон: 101 mobile tests, 117 core tests, 2 pc-host tests
 
 Подробности:
 

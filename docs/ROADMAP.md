@@ -14,9 +14,9 @@
 - [x] File ops, shell, git, web, GitHub, snapshots, `apply_patch`
 - [x] Capability and approval routing
 - [x] Post-edit diagnostics hooks
-- [ ] Integrate `ModelRouter` into real turn selection
-- [ ] Integrate `ContextManager` into real prompt lifecycle
-- [ ] Invoke `auto_commit_and_push` from the engine when enabled
+- [x] Integrate `ModelRouter` into real turn selection
+- [x] Integrate `ContextManager` into real prompt lifecycle
+- [x] Invoke `auto_commit_and_push` from the engine when enabled
 
 ## Phase 2 — Snapshots & rollback 🔄
 
@@ -46,7 +46,7 @@
 - [x] Files tree + preview
 - [x] Terminal panel
 - [x] Git panel surface
-- [ ] Wire Git panel buttons to real operations
+- [x] Wire Git panel buttons to real operations
 - [ ] Replace illustrative Files diff preview with real pending/project diffs
 - [ ] Make file browsing remote-aware when a PC workspace is active
 

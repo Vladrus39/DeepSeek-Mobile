@@ -18,6 +18,7 @@ pub enum RuntimeTurnStatus {
     Queued,
     Running,
     WaitingForApproval,
+    WaitingForTermuxResult,
     Completed,
     Failed,
     Cancelled,
@@ -29,6 +30,7 @@ impl From<&TurnStatus> for RuntimeTurnStatus {
             TurnStatus::Queued => RuntimeTurnStatus::Queued,
             TurnStatus::Running => RuntimeTurnStatus::Running,
             TurnStatus::WaitingForApproval => RuntimeTurnStatus::WaitingForApproval,
+            TurnStatus::WaitingForTermuxResult => RuntimeTurnStatus::WaitingForTermuxResult,
             TurnStatus::Completed => RuntimeTurnStatus::Completed,
             TurnStatus::Failed => RuntimeTurnStatus::Failed,
             TurnStatus::Cancelled => RuntimeTurnStatus::Cancelled,
@@ -123,6 +125,17 @@ pub struct PendingApprovalRecord {
     pub thread_id: String,
     pub turn_id: String,
     pub pending: PendingToolCallApproval,
+    pub created_at_unix: u64,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct PendingTermuxRecord {
+    pub request_id: String,
+    pub thread_id: String,
+    pub turn_id: String,
+    pub call_id: String,
+    pub tool_name: String,
+    pub request: crate::executor::TermuxExecRequest,
     pub created_at_unix: u64,
 }
 
@@ -264,6 +277,46 @@ impl RuntimeThreadStore {
 
     pub fn save_decision(&self, record: &ApprovalDecisionRecord) -> Result<()> {
         write_json(self.decision_path(&record.approval_id), record)
+    }
+
+    // ── Termux pending persistence ──
+
+    pub fn save_pending_termux(&self, record: &PendingTermuxRecord) -> Result<()> {
+        let dir = self.root.join("pending_termux");
+        fs::create_dir_all(&dir)?;
+        write_json(dir.join(format!("{}.json", safe_file_id(&record.request_id))), record)
+    }
+
+    pub fn load_pending_termux(&self, request_id: &str) -> Result<PendingTermuxRecord> {
+        read_json(self.root.join("pending_termux").join(format!("{}.json", safe_file_id(request_id))))
+    }
+
+    pub fn remove_pending_termux(&self, request_id: &str) -> Result<()> {
+        let path = self.root.join("pending_termux").join(format!("{}.json", safe_file_id(request_id)));
+        if path.exists() {
+            fs::remove_file(path)?;
+        }
+        Ok(())
+    }
+
+    pub fn list_pending_termux(&self) -> Result<Vec<PendingTermuxRecord>> {
+        read_json_dir(self.root.join("pending_termux"))
+    }
+
+    pub fn list_pending_termux_for_thread(&self, thread_id: &str) -> Result<Vec<PendingTermuxRecord>> {
+        Ok(self
+            .list_pending_termux()?
+            .into_iter()
+            .filter(|record| record.thread_id == thread_id)
+            .collect())
+    }
+
+    pub fn load_pending_termux_for_turn(&self, turn_id: &str) -> Result<Vec<PendingTermuxRecord>> {
+        Ok(self
+            .list_pending_termux()?
+            .into_iter()
+            .filter(|record| record.turn_id == turn_id)
+            .collect())
     }
 
     fn thread_path(&self, id: &str) -> PathBuf {

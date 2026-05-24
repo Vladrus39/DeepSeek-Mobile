@@ -17,6 +17,7 @@ pub enum TurnStatus {
     Queued,
     Running,
     WaitingForApproval,
+    WaitingForTermuxResult,
     Completed,
     Failed,
     Cancelled,
@@ -115,6 +116,11 @@ impl TurnContext {
 
     pub fn complete(&mut self) {
         self.status = TurnStatus::Completed;
+        self.touch();
+    }
+
+    pub fn wait_for_termux(&mut self) {
+        self.status = TurnStatus::WaitingForTermuxResult;
         self.touch();
     }
 

@@ -196,6 +196,17 @@ pub fn push_agent_event(timeline: &mut MobileTimelineState, event: &AgentEvent) 
                 workspace
             ),
         )),
+        AgentEvent::TermuxExecutionPending { call_id, .. } => {
+            Some(timeline.push(
+                MobileTimelineItemKind::Status,
+                MobileTimelineItemStatus::Running,
+                "Termux execution pending",
+                format!(
+                    "tool_call_id={} — waiting for Android Termux bridge to complete",
+                    call_id
+                ),
+            ))
+        }
         AgentEvent::Error(message) => {
             timeline.fail_live_assistant_message();
             Some(timeline.push(

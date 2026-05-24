@@ -7,8 +7,8 @@
 - `cargo check --workspace --all-targets` — green
 - `cargo test --workspace` — green
 - Tests:
-  - mobile: 97
-  - core: 117
+  - mobile: 102
+  - core: 118
   - pc-host: 2
 
 ## Core crate
@@ -30,11 +30,11 @@
 - Public Termux execution request/result contract
 - Termux-workspace `exec_shell` now emits native pending request metadata instead of a local placeholder
 
-### Present but not yet wired into the main lifecycle
+### Now wired into the engine lifecycle
 
-- `ModelRouter`
-- `ContextManager`
-- `auto_commit_and_push`
+- `ModelRouter` — auto-selects Flash/Pro per prompt complexity and context size
+- `ContextManager` — fits messages within the selected model's context budget
+- `auto_commit_and_push` — auto-commits + pushes after successful turns when enabled
 
 ## Mobile crate
 
@@ -48,14 +48,14 @@
 - Diagnostics
 - PC host pairing panel
 - Terminal panel
-- Git panel surface
+- Git panel with real status/diff/branch/commit/push/pull actions
 - Bottom navigation and cockpit layout
 
 ### Important wiring completed
 
 - Saved config drives turns and approval continuations.
 - Online PC discovery promotes an active route.
-- “Open PC workspace” persists a real `WorkspaceConnection`.
+- "Open PC workspace" persists a real `WorkspaceConnection`.
 - Future `MobileRuntimeConfig::default()` calls restore the saved active workspace.
 - New pairing requests use a generated token instead of an empty token.
 - Termux commands now have Rust bridge queue/callback correlation, timeline routing, and automatic queue extraction from pending tool-result metadata.
@@ -64,7 +64,6 @@
 ### Still partial
 
 - Files diff preview is illustrative, not yet bound to actual patch state.
-- Git panel actions are not yet connected to real runtime operations.
 - Native Android host integration is not complete.
 - Termux has bridge contracts and core-to-mobile request queuing, but not the final Android host drain/callback/result-continuation lifecycle.
 - Terminal persistence is not complete.
@@ -108,7 +107,6 @@
 ## Highest-priority gaps
 
 1. Final Android host + Termux callback/result-continuation lifecycle
-2. Real Git panel wiring and auto-commit lifecycle integration
-3. Real project diff surfaces and remote-aware file UI
-4. PC-workspace snapshots and terminal persistence
-5. Durable tasks, runtime API, MCP/plugins/skills
+2. Real project diff surfaces and remote-aware file UI
+3. PC-workspace snapshots and terminal persistence
+4. Durable tasks, runtime API, MCP/plugins/skills

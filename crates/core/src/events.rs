@@ -34,6 +34,10 @@ pub enum AgentEvent {
     ToolCallStarted(ToolCallEvent),
     ToolCallFinished(ToolResultEvent),
     ApprovalRequired(ApprovalRequest),
+    TermuxExecutionPending {
+        call_id: String,
+        request: crate::executor::TermuxExecRequest,
+    },
     PatchProposed(PatchProposal),
     SessionUpdated {
         messages: Vec<Message>,

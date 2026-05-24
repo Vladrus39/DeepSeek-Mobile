@@ -64,4 +64,23 @@ impl DeepSeekAgent {
     ) -> Result<mpsc::Receiver<StreamDelta>> {
         self.client.chat_stream(&self.config.model, messages).await
     }
+
+    /// Streaming chat with an explicit model override.
+    /// Used when the ModelRouter selects a model different from the default config.
+    pub async fn run_stream_with_messages_and_model(
+        &self,
+        model: &str,
+        messages: Vec<Message>,
+    ) -> Result<mpsc::Receiver<StreamDelta>> {
+        self.client.chat_stream(model, messages).await
+    }
+
+    /// Non-streaming chat with an explicit model override.
+    pub async fn run_with_messages_and_model(
+        &self,
+        model: &str,
+        messages: Vec<Message>,
+    ) -> Result<String> {
+        self.client.chat(model, messages).await
+    }
 }

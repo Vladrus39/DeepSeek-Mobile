@@ -13,6 +13,7 @@ mod git_state;
 mod mobile_approval_panel;
 mod mobile_drawer;
 mod mobile_engine_runner;
+mod mobile_git_runner;
 mod mobile_runtime_config;
 mod native_bridge;
 mod native_document_picker;
@@ -95,6 +96,51 @@ fn app() -> Element {
     // Route native bridge terminal events into terminal UI state
     let terminal_event_bridge = native_bridge;
     let mut terminal_event_state = terminal_state;
+
+    // Termux result continuation: when a Termux command completes, feed the real
+    // result back into the engine so the model can respond to the actual output.
+    let termux_continuation_bridge = native_bridge;
+    let termux_continuation_settings = settings_state;
+    let termux_continuation_timeline = timeline;
+    let termux_continuation_snapshots = snapshots_state;
+    let termux_continuation_diagnostics = diagnostics_state;
+    let termux_continuation_cards = approval_cards;
+    let mut termux_continuation_loading = is_loading;
+    use_effect(move || {
+        let event = termux_continuation_bridge().last_event.clone();
+        if let Some(NativeMobileEvent::TermuxCommandCompleted(result)) = event {
+            let config = termux_continuation_settings().to_config();
+            let mut event_timeline = termux_continuation_timeline;
+            let mut event_cards = termux_continuation_cards;
+            let mut loading_signal = termux_continuation_loading;
+            spawn(async move {
+                loading_signal.set(true);
+                match crate::mobile_engine_runner::continue_mobile_termux_result(config, result).await {
+                    Ok(result) => {
+                        let mut next_timeline = event_timeline();
+                        push_agent_event(&mut next_timeline, &AgentEvent::Status("Termux result injected — model continuing with real output".to_string()));
+                        for event in &result.events {
+                            push_agent_event(&mut next_timeline, event);
+                        }
+                        event_timeline.set(next_timeline);
+
+                        if let Some(final_text) = result.final_text.clone() {
+                            messages.push(("assistant".to_string(), final_text));
+                        }
+
+                        event_cards.set(result.approval_cards);
+                    }
+                    Err(error) => {
+                        let mut next_timeline = event_timeline();
+                        push_agent_event(&mut next_timeline, &AgentEvent::Error(format!("Termux continuation failed: {}", error)));
+                        event_timeline.set(next_timeline);
+                    }
+                }
+                loading_signal.set(false);
+            });
+        }
+    });
+
     use_effect(move || {
         let event = terminal_event_bridge().last_event.clone();
         match event {
