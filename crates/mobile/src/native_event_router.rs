@@ -82,6 +82,16 @@ pub fn route_native_mobile_event(
             let id = session_id.unwrap_or_else(|| "unknown".to_string());
             timeline.push_error(format!("Terminal {} failed: {}", id, message));
         }
+        NativeMobileEvent::TermuxCommandCompleted(result) => {
+            timeline.push_status(format!(
+                "Termux command {} completed (exit code: {})",
+                result.request_id,
+                result.exit_code.map(|code| code.to_string()).unwrap_or_else(|| "unknown".to_string())
+            ));
+        }
+        NativeMobileEvent::TermuxCommandFailed { request_id, message } => {
+            timeline.push_error(format!("Termux command {} failed: {}", request_id, message));
+        }
     }
 
     NativeEventRouteResult {
@@ -237,5 +247,29 @@ mod tests {
             },
         );
         assert!(result.timeline.items.iter().any(|i| i.body.contains("Terminal term-1 failed")));
+    }
+
+    #[test]
+    fn routes_termux_events_to_timeline() {
+        let result = route_native_mobile_event(
+            ChatComposerState::default(),
+            DocumentPickerState::default(),
+            NativeBridgeState::default(),
+            PcPairingUiState::default(),
+            MobileTimelineState::default(),
+            NativeMobileEvent::TermuxCommandCompleted(deepseek_mobile_core::TermuxExecResult {
+                request_id: "termux-1".to_string(),
+                stdout: "ok".to_string(),
+                stderr: String::new(),
+                exit_code: Some(0),
+                timed_out: false,
+                error: None,
+            }),
+        );
+        assert!(result
+            .timeline
+            .items
+            .iter()
+            .any(|item| item.body.contains("Termux command termux-1 completed")));
     }
 }

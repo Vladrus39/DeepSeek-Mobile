@@ -1,6 +1,7 @@
 # DeepSeek-Mobile project audit
 
-**Audit refreshed:** 2026-05-18  
+**Audit refreshed:** 2026-05-25
+
 **Reference project:** `Hmbown/DeepSeek-TUI`
 
 ## Executive summary
@@ -50,20 +51,28 @@ The main remaining work is no longer “port the basics from the TUI.” It is n
 - Chat timeline and approval cards
 - Onboarding/settings
 - Files, snapshots, diagnostics, terminal, PC host, and Git panels
-- Native bridge contracts for document picker, discovery, terminal, and sharing
+- Native bridge contracts for document picker, discovery, terminal, sharing, and Termux `RUN_COMMAND` execution
 
 ## Important improvements completed in the latest tranche
 
-1. **Persisted settings now matter at runtime.**  
+1. **Persisted settings now matter at runtime.**
+
    Before this, UI settings were saved but normal turns and approval continuations still rebuilt the engine with defaults.
 
-2. **Pairing now activates a real workspace.**  
+2. **Pairing now activates a real workspace.**
+
    Online discovery promotes an active route, the pairing screen can build a `WorkspaceConnection`, and “Open PC workspace” persists it. Future turns reload that connection through `MobileRuntimeConfig`.
 
-3. **Diagnostics reporting is more truthful.**  
-   Multi-provider local diagnostics no longer collapse unrelated states into a misleading empty/unavailable result.
+3. **Diagnostics reporting is more truthful and model-readable.**
 
-4. **Pairing no longer defaults to an empty auth token.**  
+   Multi-provider local diagnostics no longer collapse unrelated states into a misleading empty/unavailable result. Latest diagnostics are now stored in session state and injected into the next model turn.
+
+4. **Termux bridge contract moved from scaffold to native adapter.**
+
+   Rust mobile bridge state can now queue Termux commands and correlate callbacks, while the Android bridge module can build `RUN_COMMAND` intents and parse result bundles.
+
+5. **Pairing no longer defaults to an empty auth token.**
+
    New pairing requests use a generated token.
 
 ## Partial implementations that still need completion
@@ -73,9 +82,9 @@ The main remaining work is no longer “port the basics from the TUI.” It is n
 | Git UI | Surface exists | Wire buttons to real status/diff/branch/commit/push/pull actions |
 | Files diff UI | Tree and file preview are real | Replace illustrative diff preview with actual patch/project diff data |
 | Terminal | UI + host sessions exist | Persist sessions and finish Android runtime wiring |
-| Termux | Request/result contract scaffolding exists | Implement the native bridge and executor lifecycle |
-| Android bridge | Kotlin/Rust contracts exist | Final host integration and manual verification |
-| Diagnostics | Hooks and providers exist | Inject results into the next model turn |
+| Termux | Rust/Kotlin bridge contract exists | Close the executor lifecycle through the final Android host |
+| Android bridge | Kotlin/Rust contracts plus host integration notes exist | Final Dioxus Android host integration and manual verification |
+| Diagnostics | Hooks, providers, UI metadata and next-turn injection exist | Keep expanding provider coverage as needed |
 | Snapshots | Local path is integrated | Add PC-gateway snapshot path |
 | Model routing | `ModelRouter` exists | Use it in actual turn orchestration |
 | Context management | `ContextManager` exists | Use it in actual prompt assembly |
@@ -94,7 +103,7 @@ The main remaining work is no longer “port the basics from the TUI.” It is n
 | Shell execution | Done through PC-host; Termux still incomplete |
 | Git tooling | Core done; mobile workflow partial |
 | Web/GitHub tools | Done in core |
-| Diagnostics | Providers done; model reinjection still pending |
+| Diagnostics | Providers and model reinjection done |
 | Snapshots | Local done; remote pending |
 | Runtime API | Missing |
 | Durable tasks | Missing |
@@ -103,9 +112,9 @@ The main remaining work is no longer “port the basics from the TUI.” It is n
 
 ## Recommended next execution order
 
-1. Finish Android host integration and Termux bridge.
+1. Finish final Android host integration and close the Termux executor lifecycle.
 2. Wire Git UI actions and engine auto-commit.
-3. Feed diagnostics into the next turn and replace fake diff preview with real data.
+3. Replace fake diff preview with real pending/project diff data.
 4. Add remote snapshots and terminal persistence.
 5. Add durable tasks, runtime API, then extensibility.
 

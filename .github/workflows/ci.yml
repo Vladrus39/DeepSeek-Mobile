@@ -42,3 +42,7 @@ jobs:
           test -f android/bridge/src/main/kotlin/com/deepseek/mobile/bridge/DeepSeekDocumentPickerBridge.kt
           grep -q "ACTION_OPEN_DOCUMENT" android/bridge/src/main/kotlin/com/deepseek/mobile/bridge/DeepSeekDocumentPickerBridge.kt
           grep -q "copyUriToSandbox" android/bridge/src/main/kotlin/com/deepseek/mobile/bridge/DeepSeekDocumentPickerBridge.kt
+          test -f android/bridge/src/main/kotlin/com/deepseek/mobile/bridge/DeepSeekTermuxBridge.kt
+          grep -q "com.termux.RUN_COMMAND" android/bridge/src/main/kotlin/com/deepseek/mobile/bridge/DeepSeekTermuxBridge.kt
+          grep -q 'EXTRA_PLUGIN_RESULT_BUNDLE = "result"' android/bridge/src/main/kotlin/com/deepseek/mobile/bridge/DeepSeekTermuxBridge.kt
+          grep -q "com.termux.permission.RUN_COMMAND" android/bridge/src/main/AndroidManifest.xml

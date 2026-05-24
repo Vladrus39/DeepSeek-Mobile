@@ -408,9 +408,23 @@ async fn attach_local_post_edit_diagnostics(
     let service = WorkspaceDiagnosticsService::new(context.workspace.clone());
     let report = service.run_post_edit_diagnostics(path.clone()).await;
     let summary = report.summary();
+    let diagnostics = report.diagnostics.clone();
+    let provider = report.provider.clone();
+    let status = format!("{:?}", report.status);
+    let message = report.message.clone();
     let mut metadata = result.metadata.take().unwrap_or(json!({}));
     if let serde_json::Value::Object(ref mut map) = metadata {
         map.insert("diagnostics".to_string(), json!(report));
+        map.insert("post_edit_diagnostics".to_string(), json!(diagnostics));
+        map.insert("post_edit_diagnostics_summary".to_string(), json!(summary));
+        map.insert("post_edit_diagnostics_provider".to_string(), json!(provider));
+        map.insert("post_edit_diagnostics_status".to_string(), json!(status));
+        if let Some(path) = path.as_ref() {
+            map.insert("post_edit_diagnostics_path".to_string(), json!(path));
+        }
+        if let Some(message) = message {
+            map.insert("post_edit_diagnostics_message".to_string(), json!(message));
+        }
     }
     if !report.diagnostics.is_empty() {
         result.content.push_str("\n\n--- Diagnostics ---\n");
@@ -431,7 +445,14 @@ async fn attach_post_edit_diagnostics(
             let summary = summarize_diagnostics(&diags);
             let mut metadata = result.metadata.take().unwrap_or(json!({}));
             if let serde_json::Value::Object(ref mut map) = metadata {
-                map.insert("diagnostics".to_string(), json!(diags));
+                map.insert("diagnostics".to_string(), json!(diags.clone()));
+                map.insert("post_edit_diagnostics".to_string(), json!(diags.clone()));
+                map.insert("post_edit_diagnostics_summary".to_string(), json!(summary));
+                map.insert("post_edit_diagnostics_provider".to_string(), json!("pc-gateway"));
+                map.insert("post_edit_diagnostics_status".to_string(), json!("Completed"));
+                if let Some(path) = path.as_ref() {
+                    map.insert("post_edit_diagnostics_path".to_string(), json!(path));
+                }
             }
             if !diags.is_empty() {
                 result.content.push_str("\n\n--- Diagnostics ---\n");
@@ -446,6 +467,10 @@ async fn attach_post_edit_diagnostics(
             let mut metadata = result.metadata.take().unwrap_or(json!({}));
             if let serde_json::Value::Object(ref mut map) = metadata {
                 map.insert("diagnostics_error".to_string(), json!(error.to_string()));
+                map.insert("post_edit_diagnostics_error".to_string(), json!(error.to_string()));
+                if let Some(path) = path.as_ref() {
+                    map.insert("post_edit_diagnostics_path".to_string(), json!(path));
+                }
             }
             result.metadata = Some(metadata);
         }

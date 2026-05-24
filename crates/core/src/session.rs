@@ -5,14 +5,30 @@
 //! history survives process death.
 
 use crate::api_client::Message;
+use crate::pc_gateway::PcDiagnostic;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SessionDiagnosticsContext {
+    pub summary: String,
+    #[serde(default)]
+    pub diagnostics: Vec<PcDiagnostic>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub status: Option<String>,
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Session {
     pub id: String,
     pub title: String,
     pub messages: Vec<Message>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub latest_diagnostics: Option<SessionDiagnosticsContext>,
     pub created_at_unix: u64,
     pub updated_at_unix: u64,
 }
@@ -24,6 +40,7 @@ impl Session {
             id: id.into(),
             title: "New session".to_string(),
             messages: Vec::new(),
+            latest_diagnostics: None,
             created_at_unix: now,
             updated_at_unix: now,
         }
@@ -38,7 +55,15 @@ impl Session {
     }
 
     pub fn last_user_message(&self) -> Option<&Message> {
-        self.messages.iter().rev().find(|message| message.role == "user")
+        self.messages
+            .iter()
+            .rev()
+            .find(|message| message.role == "user")
+    }
+
+    pub fn set_latest_diagnostics(&mut self, diagnostics: SessionDiagnosticsContext) {
+        self.latest_diagnostics = Some(diagnostics);
+        self.updated_at_unix = current_unix_time();
     }
 
     /// Save session to a JSON file.
@@ -91,7 +116,8 @@ fn current_unix_time() -> u64 {
 
 #[cfg(test)]
 mod tests {
-    use super::Session;
+    use super::{Session, SessionDiagnosticsContext};
+    use crate::pc_gateway::{PcDiagnostic, PcDiagnosticSeverity};
     use std::path::PathBuf;
 
     fn test_session_path() -> PathBuf {
@@ -106,6 +132,20 @@ mod tests {
         let mut session = Session::new("test-roundtrip");
         session.push_message("user", "hello");
         session.push_message("assistant", "hi there");
+        session.set_latest_diagnostics(SessionDiagnosticsContext {
+            summary: "1 diagnostic(s): 1 error(s), 0 warning(s)".to_string(),
+            diagnostics: vec![PcDiagnostic {
+                path: "src/main.rs".to_string(),
+                line: 7,
+                column: 3,
+                severity: PcDiagnosticSeverity::Error,
+                message: "expected expression".to_string(),
+                source: Some("cargo check".to_string()),
+            }],
+            path: Some("src/main.rs".to_string()),
+            provider: Some("cargo check".to_string()),
+            status: Some("Completed".to_string()),
+        });
 
         session.save_to_file(&path).expect("save");
         let loaded = Session::load_from_file(&path).expect("load").expect("some");
@@ -116,6 +156,10 @@ mod tests {
         assert_eq!(loaded.messages[0].content, "hello");
         assert_eq!(loaded.messages[1].role, "assistant");
         assert_eq!(loaded.messages[1].content, "hi there");
+        assert_eq!(
+            loaded.latest_diagnostics.as_ref().unwrap().path.as_deref(),
+            Some("src/main.rs")
+        );
 
         let _ = std::fs::remove_file(&path);
     }

@@ -60,7 +60,7 @@ pub use engine::{
 pub use events::{AgentEvent, ApprovalRequest, PatchProposal, RiskLevel, ToolCallEvent, ToolResultEvent};
 pub use executor::{
     CommandOutput, CommandRequest, DisabledExecutor, Executor, PcGatewayExecutorPlan,
-    PcGatewayPlannedExecutor,
+    PcGatewayPlannedExecutor, TermuxExecRequest, TermuxExecResult,
 };
 pub use github::{GitHubBranch, GitHubClient, GitHubCommitResult, GitHubContentEntry, GitHubFileContent,
     GitHubIssue, GitHubPullRequest, GitHubRepo, GitHubRepoInfo};

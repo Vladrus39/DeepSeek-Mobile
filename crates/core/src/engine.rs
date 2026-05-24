@@ -15,7 +15,7 @@ use crate::config::{Config, ExternalAccessMode};
 use crate::events::AgentEvent;
 use crate::pc_gateway_client::PcGatewayClient;
 use crate::runtime_store::{RuntimeThreadStore, TurnRecord};
-use crate::session::Session;
+use crate::session::{Session, SessionDiagnosticsContext};
 use crate::tool_loop::{
     continue_pending_tool_approval_with_session_and_pc_gateway,
     process_model_text_with_tools_and_session_and_pc_gateway, ToolLoopExecutionRecord,
@@ -26,6 +26,7 @@ use crate::turn::{TurnContext, TurnStatus};
 use crate::workspace::{ExecutorKind, Workspace};
 use crate::workspace_connection::WorkspaceConnection;
 use anyhow::{anyhow, Result};
+use serde_json::Value;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -264,6 +265,7 @@ impl MobileEngine {
             self.execution_mode.clone(),
         )
         .await?;
+        self.capture_latest_diagnostics(&outcome.executed);
 
         self.store_pending_approvals(&turn, &outcome)?;
         for event in outcome.events.iter().cloned() {
@@ -411,6 +413,16 @@ impl MobileEngine {
                 .to_string(),
         }];
 
+        if let Some(diagnostics) = self.session.latest_diagnostics.as_ref() {
+            messages.push(Message {
+                role: "system".to_string(),
+                content: format!(
+                    "Latest post-edit diagnostics from the previous tool execution:\n{}",
+                    format_session_diagnostics_context(diagnostics)
+                ),
+            });
+        }
+
         // Append full session history (already includes the latest user message
         // since it was pushed before collect_model_answer is called)
         messages.extend(self.session.messages.clone());
@@ -424,7 +436,7 @@ impl MobileEngine {
         decision: ReviewDecision,
         mut turn: TurnContext,
     ) -> Result<EngineApprovalContinuationResult> {
-        let Some(store) = &self.runtime_store else {
+        let Some(store) = self.runtime_store.clone() else {
             anyhow::bail!("runtime store is required to continue stored approval");
         };
         let pending_record = store.load_pending_approval(approval_id)?;
@@ -439,6 +451,7 @@ impl MobileEngine {
             self.pc_gateway.as_ref(),
         )
         .await?;
+        self.capture_latest_diagnostics(&outcome.executed);
 
         store.save_decision(&crate::tool_loop::decision_record(
             pending_record.thread_id.clone(),
@@ -507,13 +520,86 @@ impl MobileEngine {
             .with_external_access(self.external_access.clone())
             .with_github_token(self.github_token.clone())
     }
+
+    fn capture_latest_diagnostics(&mut self, records: &[ToolLoopExecutionRecord]) {
+        let latest = records
+            .iter()
+            .rev()
+            .filter_map(|record| record.result.as_ref())
+            .filter_map(|result| result.metadata.as_ref())
+            .find_map(diagnostics_context_from_metadata);
+        if let Some(diagnostics) = latest {
+            self.session.set_latest_diagnostics(diagnostics);
+        }
+    }
+}
+
+fn diagnostics_context_from_metadata(metadata: &Value) -> Option<SessionDiagnosticsContext> {
+    let summary = metadata
+        .get("post_edit_diagnostics_summary")
+        .and_then(Value::as_str)?
+        .to_string();
+    Some(SessionDiagnosticsContext {
+        summary,
+        diagnostics: metadata
+            .get("post_edit_diagnostics")
+            .and_then(|value| serde_json::from_value(value.clone()).ok())
+            .unwrap_or_default(),
+        path: metadata
+            .get("post_edit_diagnostics_path")
+            .and_then(Value::as_str)
+            .map(str::to_string),
+        provider: metadata
+            .get("post_edit_diagnostics_provider")
+            .and_then(Value::as_str)
+            .map(str::to_string),
+        status: metadata
+            .get("post_edit_diagnostics_status")
+            .and_then(Value::as_str)
+            .map(str::to_string),
+    })
+}
+
+fn format_session_diagnostics_context(diagnostics: &SessionDiagnosticsContext) -> String {
+    let mut lines = vec![diagnostics.summary.clone()];
+    if let Some(provider) = diagnostics.provider.as_deref() {
+        lines.push(format!("provider: {}", provider));
+    }
+    if let Some(status) = diagnostics.status.as_deref() {
+        lines.push(format!("status: {}", status));
+    }
+    if let Some(path) = diagnostics.path.as_deref() {
+        lines.push(format!("path: {}", path));
+    }
+    for item in diagnostics.diagnostics.iter().take(8) {
+        lines.push(format!(
+            "- {}:{}:{} [{:?}] {}{}",
+            item.path,
+            item.line,
+            item.column,
+            item.severity,
+            item.message,
+            item.source
+                .as_deref()
+                .map(|source| format!(" ({})", source))
+                .unwrap_or_default()
+        ));
+    }
+    if diagnostics.diagnostics.len() > 8 {
+        lines.push(format!(
+            "- ... {} more diagnostic(s)",
+            diagnostics.diagnostics.len() - 8
+        ));
+    }
+    lines.join("\n")
 }
 
 #[cfg(test)]
 mod tests {
-    use super::MobileEngine;
+    use super::{diagnostics_context_from_metadata, MobileEngine};
     use crate::config::Config;
-    use crate::pc_gateway::PcGatewayConfig;
+    use crate::pc_gateway::{PcDiagnostic, PcDiagnosticSeverity, PcGatewayConfig};
+    use crate::session::SessionDiagnosticsContext;
     use crate::workspace::ExecutorKind;
     use crate::workspace_connection::WorkspaceConnection;
 
@@ -556,5 +642,59 @@ mod tests {
         engine.session_mut().push_message("user", "hello");
         engine.session_mut().push_message("assistant", "hi there");
         assert_eq!(engine.session().messages.len(), 2);
+    }
+
+    #[test]
+    fn engine_injects_latest_diagnostics_into_next_turn_context() {
+        let mut engine = MobileEngine::new(Config::default());
+        engine
+            .session_mut()
+            .set_latest_diagnostics(SessionDiagnosticsContext {
+                summary: "1 diagnostic(s): 1 error(s), 0 warning(s)".to_string(),
+                diagnostics: vec![PcDiagnostic {
+                    path: "src/main.rs".to_string(),
+                    line: 7,
+                    column: 3,
+                    severity: PcDiagnosticSeverity::Error,
+                    message: "expected expression".to_string(),
+                    source: Some("cargo check".to_string()),
+                }],
+                path: Some("src/main.rs".to_string()),
+                provider: Some("cargo check".to_string()),
+                status: Some("Completed".to_string()),
+            });
+        let messages = engine.build_messages_for_turn("fix it");
+        assert!(messages
+            .iter()
+            .any(|message| message.content.contains("Latest post-edit diagnostics")));
+        assert!(messages.iter().any(|message| message
+            .content
+            .contains("1 diagnostic(s): 1 error(s), 0 warning(s)")));
+        assert!(messages
+            .iter()
+            .any(|message| message.content.contains("expected expression")));
+    }
+
+    #[test]
+    fn metadata_becomes_session_diagnostics_context() {
+        let context = diagnostics_context_from_metadata(&serde_json::json!({
+            "post_edit_diagnostics_summary": "1 diagnostic(s): 1 error(s), 0 warning(s)",
+            "post_edit_diagnostics_path": "src/main.rs",
+            "post_edit_diagnostics_provider": "cargo check",
+            "post_edit_diagnostics_status": "Completed",
+            "post_edit_diagnostics": [{
+                "path": "src/main.rs",
+                "line": 7,
+                "column": 3,
+                "severity": "Error",
+                "message": "expected expression",
+                "source": "cargo check"
+            }]
+        }))
+        .unwrap();
+
+        assert_eq!(context.path.as_deref(), Some("src/main.rs"));
+        assert_eq!(context.provider.as_deref(), Some("cargo check"));
+        assert_eq!(context.diagnostics.len(), 1);
     }
 }

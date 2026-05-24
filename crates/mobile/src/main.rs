@@ -18,6 +18,7 @@ mod native_bridge;
 mod native_document_picker;
 mod native_event_router;
 mod native_pc_discovery;
+mod native_termux;
 mod onboarding_panel;
 mod pc_pairing_manager;
 mod pc_pairing_panel;

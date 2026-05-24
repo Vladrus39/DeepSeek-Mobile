@@ -2,6 +2,8 @@
 
 This document defines the native Android side of the DeepSeek Mobile document picker contract.
 
+See also: `docs/android_host_integration.md` for the wider host shell checklist covering picker, PC discovery, and Termux.
+
 The Rust mobile layer exposes a command/callback model:
 
 - command: `AndroidDocumentPickerCommand`

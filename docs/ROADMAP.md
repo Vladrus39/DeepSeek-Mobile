@@ -1,6 +1,6 @@
 # DeepSeek-Mobile — roadmap
 
-**Updated:** 2026-05-18
+**Updated:** 2026-05-25
 
 ## Phase 0 — Foundation ✅
 
@@ -54,12 +54,13 @@
 
 - [x] Native bridge contracts for picker, discovery, terminal, share
 - [ ] Final Android host integration
-- [ ] Termux executor bridge
+- [x] Termux RUN_COMMAND bridge contract
+- [ ] Termux executor lifecycle end-to-end
 - [ ] Android import/export completion
 
 ## Phase 6 — Product completion
 
-- [ ] Diagnostics injected into the next model turn
+- [x] Diagnostics injected into the next model turn
 - [ ] Durable background task model and task manager UI
 - [ ] Runtime HTTP/SSE API
 - [ ] MCP/plugin/skills layer

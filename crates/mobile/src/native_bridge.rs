@@ -1,7 +1,8 @@
 use crate::document_picker::{DocumentPickerRequest, PickedDocument};
 use crate::native_document_picker::{AndroidDocumentPickerCallback, AndroidDocumentPickerCommand};
 use crate::native_pc_discovery::{AndroidPcGatewayDiscoveryCallback, AndroidPcGatewayDiscoveryCommand};
-use deepseek_mobile_core::PcGatewayDiscoveryReport;
+use crate::native_termux::{AndroidTermuxCallback, AndroidTermuxCommand};
+use deepseek_mobile_core::{PcGatewayDiscoveryReport, TermuxExecRequest, TermuxExecResult};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum NativeMobileCommand {
@@ -12,6 +13,7 @@ pub enum NativeMobileCommand {
     OpenTerminal { workspace_id: String },
     TerminalInput { session_id: String, input: String },
     CloseTerminal { session_id: String },
+    RunTermuxCommand(TermuxExecRequest),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -29,6 +31,8 @@ pub enum NativeMobileEvent {
     TerminalOutput { session_id: String, chunk: String },
     TerminalClosed { session_id: String, exit_code: Option<i32> },
     TerminalFailed { session_id: Option<String>, message: String },
+    TermuxCommandCompleted(TermuxExecResult),
+    TermuxCommandFailed { request_id: String, message: String },
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -38,6 +42,7 @@ pub struct NativeBridgeState {
     pub last_error: Option<String>,
     pub active_document_picker_request_id: Option<String>,
     pub active_pc_discovery_request_id: Option<String>,
+    pub active_termux_request_ids: Vec<String>,
 }
 
 impl NativeBridgeState {
@@ -79,6 +84,10 @@ impl NativeBridgeState {
             path: path.into(),
             mime_type: Some("application/zip".to_string()),
         });
+    }
+
+    pub fn enqueue_termux_command(&mut self, request: TermuxExecRequest) {
+        self.enqueue(NativeMobileCommand::RunTermuxCommand(request));
     }
 
     pub fn pop_next_command(&mut self) -> Option<NativeMobileCommand> {
@@ -131,6 +140,21 @@ impl NativeBridgeState {
                 )
             })?;
         Some(self.pending_commands.remove(command_index))
+    }
+
+    pub fn pop_next_android_termux_command(&mut self) -> Option<AndroidTermuxCommand> {
+        let command_index = self
+            .pending_commands
+            .iter()
+            .position(|command| matches!(command, NativeMobileCommand::RunTermuxCommand(_)))?;
+        match self.pending_commands.remove(command_index) {
+            NativeMobileCommand::RunTermuxCommand(request) => {
+                let command = AndroidTermuxCommand::from_request(&request);
+                self.active_termux_request_ids.push(command.request_id.clone());
+                Some(command)
+            }
+            _ => None,
+        }
     }
 
     pub fn accept_android_document_picker_callback(
@@ -196,12 +220,40 @@ impl NativeBridgeState {
         event
     }
 
+    pub fn accept_android_termux_callback(
+        &mut self,
+        callback: AndroidTermuxCallback,
+    ) -> NativeMobileEvent {
+        let request_id = callback.request_id().to_string();
+        let is_active = self
+            .active_termux_request_ids
+            .iter()
+            .any(|active| active == &request_id);
+        let event = if is_active {
+            self.active_termux_request_ids.retain(|active| active != &request_id);
+            match callback {
+                AndroidTermuxCallback::Completed(result) => NativeMobileEvent::TermuxCommandCompleted(result),
+                AndroidTermuxCallback::Failed { request_id, message } => {
+                    NativeMobileEvent::TermuxCommandFailed { request_id, message }
+                }
+            }
+        } else {
+            NativeMobileEvent::TermuxCommandFailed {
+                request_id,
+                message: "stale Android Termux callback".to_string(),
+            }
+        };
+        self.accept_event(event.clone());
+        event
+    }
+
     pub fn accept_event(&mut self, event: NativeMobileEvent) {
         self.last_error = match &event {
             NativeMobileEvent::DocumentPickerFailed(message)
             | NativeMobileEvent::PcGatewayDiscoveryFailed(message)
             | NativeMobileEvent::ShareFailed(message)
-            | NativeMobileEvent::TerminalFailed { message, .. } => Some(message.clone()),
+            | NativeMobileEvent::TerminalFailed { message, .. }
+            | NativeMobileEvent::TermuxCommandFailed { message, .. } => Some(message.clone()),
             _ => None,
         };
         self.last_event = Some(event);
@@ -226,6 +278,9 @@ mod tests {
     use crate::document_picker::{DocumentPickerRequest, PickedDocument};
     use crate::native_document_picker::{AndroidDocumentPickerCallback, AndroidPickedDocumentPayload};
     use crate::native_pc_discovery::{AndroidPcGatewayDiscoveryCallback, AndroidPcGatewayMdnsRecordPayload};
+    use crate::native_termux::AndroidTermuxCallback;
+    use deepseek_mobile_core::{TermuxExecRequest, TermuxExecResult};
+    use std::path::PathBuf;
 
     #[test]
     fn bridge_queues_document_picker_command() {
@@ -375,5 +430,44 @@ mod tests {
             message: "timeout".to_string(),
         });
         assert_eq!(state.last_error.as_deref(), Some("timeout"));
+    }
+
+    #[test]
+    fn bridge_exposes_android_termux_commands_and_correlates_callbacks() {
+        let mut state = NativeBridgeState::default();
+        state.enqueue_termux_command(TermuxExecRequest {
+            request_id: "termux-1".to_string(),
+            command: "cargo test".to_string(),
+            working_dir: PathBuf::from("/data/data/com.termux/files/home/project"),
+            timeout_secs: Some(30),
+        });
+
+        let command = state.pop_next_android_termux_command().unwrap();
+        assert_eq!(command.request_id, "termux-1");
+        assert_eq!(state.active_termux_request_ids, vec!["termux-1".to_string()]);
+
+        let event = state.accept_android_termux_callback(AndroidTermuxCallback::Completed(
+            TermuxExecResult {
+                request_id: "termux-1".to_string(),
+                stdout: "ok".to_string(),
+                stderr: String::new(),
+                exit_code: Some(0),
+                timed_out: false,
+                error: None,
+            },
+        ));
+        assert!(matches!(event, NativeMobileEvent::TermuxCommandCompleted(_)));
+        assert!(state.active_termux_request_ids.is_empty());
+    }
+
+    #[test]
+    fn bridge_rejects_stale_android_termux_callback() {
+        let mut state = NativeBridgeState::default();
+        let event = state.accept_android_termux_callback(AndroidTermuxCallback::Failed {
+            request_id: "old".to_string(),
+            message: "failed".to_string(),
+        });
+        assert!(matches!(event, NativeMobileEvent::TermuxCommandFailed { .. }));
+        assert!(state.last_error.as_deref().unwrap().contains("stale"));
     }
 }

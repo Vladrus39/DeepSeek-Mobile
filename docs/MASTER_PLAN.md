@@ -155,7 +155,7 @@ Checklist:
 - [x] Verify `ToolExecutionCoordinator` is used by `tool_loop` for all tool calls.
 - [x] Fix approval-session grant persistence across turns.
 - [x] Add a lightweight system-map test for default tool registry names.
-- [ ] Add manual Android bridge verification notes until a final Android host exists.
+- [x] Add manual Android bridge verification notes until a final Android host exists.
 - [x] Make CI failure visible on every push and pull request.
 
 Acceptance criteria:
@@ -266,7 +266,7 @@ Checklist:
 - [x] Add PC post-edit diagnostics summary for `write_file`, `edit_file` and `apply_patch` results when a `PcGatewayClient` is attached.
 - [x] Add LocalAndroid/Termux post-edit Rust diagnostics through `WorkspaceDiagnosticsService`.
 - [x] Surface diagnostics in mobile UI.
-- [ ] Inject diagnostics into next model turn as context.
+- [x] Inject diagnostics into next model turn as context.
 
 Acceptance criteria:
 
@@ -281,12 +281,15 @@ Already done:
 - [x] Android document picker Kotlin bridge module.
 - [x] Attachment text/source ingestion through local sandbox path.
 - [x] Android NSD/mDNS PC-host discovery bridge and Rust callback route.
+- [x] Android/Termux `RUN_COMMAND` bridge contract and result parser.
+- [x] Manual Android host integration notes for picker, PC discovery and Termux bridge wiring.
 
 Remaining checklist:
 
-- [ ] Create final Android host integration instructions or module wiring.
+- [x] Create final Android host integration instructions or module wiring.
 - [ ] Add Dioxus/native callback adapter.
-- [ ] Add Termux command executor bridge.
+- [x] Add Termux command executor bridge contract.
+- [ ] Close Termux executor lifecycle through final Android host and tool output plumbing.
 - [ ] Add Termux workspace selector.
 - [ ] Add Android file import/export flow.
 - [ ] Add PDF/DOCX/OCR ingestion later behind safe limits.
@@ -358,12 +361,12 @@ Acceptance criteria:
 | Reasoning block streaming | Keep | Done: StreamDelta + ReasoningDelta in API client/engine |
 | File tools | Keep and adapt | Partial |
 | Apply patch | Keep mobile-safe operation batch first; add unified diff later | Partial: local + PC operation batches implemented |
-| Shell execution | Route to PC/Termux | Partial |
+| Shell execution | Route to PC/Termux | Partial: PC-host active; Termux bridge contract added, final Android lifecycle still pending |
 | Git tools | Keep with mobile UI | Partial |
 | Web/search/fetch | Keep with approval | Missing |
 | Runtime HTTP/SSE API | Keep later | Missing |
 | Durable task queue | Keep | Missing |
-| LSP diagnostics | Keep, PC-first plus local/Termux fallback | Partial: Rust cargo diagnostics and post-edit hooks implemented; TS/Python/UI/model-context still pending |
+| LSP diagnostics | Keep, PC-first plus local/Termux fallback | Partial: Rust/TypeScript/Python providers, UI metadata and next-turn model context implemented |
 | PC connectivity | Keep multi-transport, offline-first | Partial: endpoint candidates, client failover, route health scoring, Android NSD discovery, reconnect controls and UI status display implemented |
 | Snapshots/rollback | Keep, mobile-safe file-copy | Partial: core service, tools, local pre-tool hook |
 | OS sandbox | Replace/augment with executor policies | Missing |
@@ -398,14 +401,16 @@ The next implementation sequence is fixed:
 16. [x] Add snapshot/diagnostics UI panels.
 17. [x] Add pairing flow end-to-end from mobile UI.
 18. [x] Persist active PC workspace selection from pairing into runtime configuration.
-19. [ ] Add Termux executor bridge.
+19. [x] Add Termux executor bridge contract.
 20. [x] Add Git UI.
 21. [ ] Add background tasks.
 22. [ ] Add MCP/skills.
 
 ## 5. Implementation progress log
+- 2026-05-25: Added session-level diagnostics context and next-turn diagnostics injection, normalized post-edit diagnostics metadata for UI/model consumers, added Rust mobile Termux bridge queue/callback routing, added Android `DeepSeekTermuxBridge` for Termux `RUN_COMMAND` intents/result bundles, updated Android bridge manifest permissions, and documented final Android host integration responsibilities. Verification: `cargo check --workspace --all-targets` and `cargo test --workspace` passed with 95 mobile / 116 core / 2 pc-host tests.
 - 2026-05-18: Wired saved settings into real turns and approval continuations, propagated saved GitHub tokens into `ToolContext`, fixed multi-provider diagnostics aggregation, and stabilized auto-commit tests.
-- 2026-05-18: Closed the pairing/runtime gap: online discovery now promotes an active route, the mobile pairing panel builds a real `WorkspaceConnection`, "Open PC workspace" persists it via `WorkspaceConnectionStore`, and `MobileRuntimeConfig::default()` reloads it on future turns. New pairing requests now use generated tokens instead of an empty auth token.- 2026-05-17: Added `reasoning_content` support to DeepSeek V4 API client with `StreamDelta` enum (Text/Reasoning/Done); wired `ReasoningDelta` agent events through `MobileEngine.collect_model_answer`.
+- 2026-05-18: Closed the pairing/runtime gap: online discovery now promotes an active route, the mobile pairing panel builds a real `WorkspaceConnection`, "Open PC workspace" persists it via `WorkspaceConnectionStore`, and `MobileRuntimeConfig::default()` reloads it on future turns. New pairing requests now use generated tokens instead of an empty auth token.
+- 2026-05-17: Added `reasoning_content` support to DeepSeek V4 API client with `StreamDelta` enum (Text/Reasoning/Done); wired `ReasoningDelta` agent events through `MobileEngine.collect_model_answer`.
 - 2026-05-17: Integrated full session message history into `MobileEngine` via `build_messages_for_turn`; added JSON file persistence to `Session` (save_to_file/load_from_file/load_or_new); wired session save/load into `mobile_engine_runner`.
 - 2026-05-17: Extended PC-host git operations with `git_commit`, `git_push`, `git_pull`, `git_branch` handlers; added `GitCommit`, `GitPush`, `GitPull`, `GitBranch` to `PcGatewayRequest`.
 - 2026-05-17: Wired PC pairing panel buttons with real onclick handlers: configure → export ZIP → wait for PC → discovery; end-to-end pairing flow now actionable from mobile UI.

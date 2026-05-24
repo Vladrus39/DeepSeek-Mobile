@@ -1,14 +1,14 @@
 # DeepSeek-Mobile — core, mobile, and host status
 
-**Updated:** 2026-05-18
+**Updated:** 2026-05-25
 
 ## Verification
 
 - `cargo check --workspace --all-targets` — green
 - `cargo test --workspace` — green
 - Tests:
-  - mobile: 90
-  - core: 114
+  - mobile: 95
+  - core: 116
   - pc-host: 2
 
 ## Core crate
@@ -23,8 +23,11 @@
 - Saved settings passed into live tool context
 - GitHub tools consume persisted token when present
 - Local/Termux multi-provider diagnostics aggregation
+- Normalized post-edit diagnostics metadata for UI and model context
+- Latest diagnostics injection into the next model turn
 - Auto snapshot hooks
 - Workspace connection model + persistent store
+- Public Termux execution request/result contract
 
 ### Present but not yet wired into the main lifecycle
 
@@ -47,20 +50,37 @@
 - Git panel surface
 - Bottom navigation and cockpit layout
 
-### Important wiring completed today
+### Important wiring completed
 
-- Saved config now drives turns and approval continuations.
-- Online PC discovery now promotes an active route.
+- Saved config drives turns and approval continuations.
+- Online PC discovery promotes an active route.
 - “Open PC workspace” persists a real `WorkspaceConnection`.
 - Future `MobileRuntimeConfig::default()` calls restore the saved active workspace.
 - New pairing requests use a generated token instead of an empty token.
+- Termux commands now have Rust bridge queue/callback correlation and timeline routing.
+- Android host integration notes document the native bridge contract boundaries.
 
 ### Still partial
 
 - Files diff preview is illustrative, not yet bound to actual patch state.
 - Git panel actions are not yet connected to real runtime operations.
 - Native Android host integration is not complete.
+- Termux has bridge contracts, but not the full tool execution lifecycle through a final Android host.
 - Terminal persistence is not complete.
+
+## Android bridge module
+
+### Completed
+
+- Document picker bridge for `ACTION_OPEN_DOCUMENT` and sandbox copies.
+- PC gateway NSD/mDNS discovery bridge.
+- Termux `RUN_COMMAND` intent builder and result parser.
+- Manifest permissions for network discovery and Termux command execution.
+
+### Still planned
+
+- Final Dioxus Android host adapter that drains Rust commands and forwards Kotlin callbacks.
+- Manual emulator/device verification against the final host shell.
 
 ## PC-host crate
 
@@ -86,8 +106,8 @@
 
 ## Highest-priority gaps
 
-1. Final Android host + Termux bridge
-2. Diagnostics injection into next model turn
-3. Real Git panel wiring and auto-commit lifecycle integration
-4. PC-workspace snapshots and remote-aware file UI
+1. Final Android host + Termux executor lifecycle
+2. Real Git panel wiring and auto-commit lifecycle integration
+3. Real project diff surfaces and remote-aware file UI
+4. PC-workspace snapshots and terminal persistence
 5. Durable tasks, runtime API, MCP/plugins/skills
