@@ -6,7 +6,7 @@
 //! workspace, file/shell/git operations are sent to the PC; they are not executed
 //! on Android.
 
-use crate::executor::CommandRequest;
+use crate::executor::{CommandRequest, TermuxExecRequest};
 use crate::pc_gateway::{CommandStreamEvent, PcDiagnostic, PcGatewayResponse};
 use crate::pc_gateway_client::PcGatewayClient;
 use crate::tool_call::ToolCallRequest;
@@ -16,6 +16,8 @@ use crate::workspace_diagnostics::WorkspaceDiagnosticsService;
 use anyhow::{anyhow, Result};
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 use std::path::PathBuf;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -124,6 +126,9 @@ impl<'a> ToolExecutionCoordinator<'a> {
         }
 
         match self.route(call, context).target {
+            ToolExecutionTarget::Termux if call.name == "exec_shell" => {
+                self.execute_on_termux(call, context).await
+            }
             ToolExecutionTarget::LocalAndroid | ToolExecutionTarget::Termux => {
                 let mut result = self.registry.execute(&call.name, call.arguments.clone(), context)?;
                 if result.success && should_run_local_post_edit_diagnostics(call) {
@@ -142,6 +147,35 @@ impl<'a> ToolExecutionCoordinator<'a> {
                 call.name
             )),
         }
+    }
+
+    async fn execute_on_termux(&self, call: &ToolCallRequest, context: &ToolContext) -> Result<ToolResult> {
+        let command = required_str(&call.arguments, "command")?.trim();
+        if command.is_empty() {
+            return Err(anyhow!("empty command"));
+        }
+
+        let timeout_secs = optional_u64(&call.arguments, "timeout_secs");
+        let request = TermuxExecRequest::new(
+            termux_request_id(call, command, &context.workspace.root),
+            command,
+            context.workspace.root.clone(),
+        )
+        .with_timeout_secs(timeout_secs);
+        let request_id = request.request_id.clone();
+        let working_dir = request.working_dir.display().to_string();
+        Ok(ToolResult::success(format!(
+            "Termux shell execution queued for Android native bridge. request_id={} working_dir={} command={}",
+            request_id, working_dir, command
+        ))
+        .with_metadata(json!({
+            "executor": "termux",
+            "native_command": "RunTermuxCommand",
+            "termux_execution_pending": true,
+            "termux_execution_status": "pending_native_bridge",
+            "termux_request_id": request_id,
+            "termux_exec_request": request,
+        })))
     }
 
     async fn execute_on_pc_gateway(&self, call: &ToolCallRequest, context: &ToolContext) -> Result<ToolResult> {
@@ -626,6 +660,41 @@ fn optional_str<'a>(input: &'a Value, key: &str) -> Option<&'a str> {
     input.get(key).and_then(Value::as_str)
 }
 
+fn optional_u64(input: &Value, key: &str) -> Option<u64> {
+    input.get(key).and_then(Value::as_u64)
+}
+
+fn termux_request_id(call: &ToolCallRequest, command: &str, root: &PathBuf) -> String {
+    let raw = if call.id.trim().is_empty() {
+        let mut hasher = DefaultHasher::new();
+        call.name.hash(&mut hasher);
+        command.hash(&mut hasher);
+        root.hash(&mut hasher);
+        format!("{:016x}", hasher.finish())
+    } else {
+        call.id.clone()
+    };
+    let mut sanitized = raw
+        .chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() || ch == '-' || ch == '_' {
+                ch
+            } else {
+                '-'
+            }
+        })
+        .collect::<String>();
+    sanitized.truncate(96);
+    let sanitized = sanitized.trim_matches('-');
+    if sanitized.is_empty() {
+        "termux-command".to_string()
+    } else if sanitized.starts_with("termux-") {
+        sanitized.to_string()
+    } else {
+        format!("termux-{}", sanitized)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -712,5 +781,51 @@ mod tests {
         let result = gateway_response_to_tool_result(response).unwrap();
         assert!(!result.success);
         assert!(result.content.contains("msg"));
+    }
+
+    #[tokio::test]
+    async fn termux_exec_shell_returns_pending_native_request_metadata() {
+        let tool_call = ToolCallRequest {
+            id: "call-1".to_string(),
+            name: "exec_shell".to_string(),
+            arguments: json!({"command": "pwd", "timeout_secs": 7}),
+            source: ToolCallSource::Manual,
+        };
+        let workspace = crate::workspace::Workspace::new(
+            "w-termux",
+            "Termux",
+            PathBuf::from("/data/data/com.termux/files/home/project"),
+            ExecutorKind::Termux,
+        );
+        let context = ToolContext::new(workspace);
+        let registry = crate::tools::ToolRegistry::new();
+
+        let result = ToolExecutionCoordinator::new(&registry)
+            .execute(&tool_call, &context)
+            .await
+            .unwrap();
+
+        assert!(result.success);
+        assert!(result.content.contains("queued"));
+        let metadata = result.metadata.expect("termux metadata");
+        assert_eq!(
+            metadata
+                .get("termux_execution_pending")
+                .and_then(Value::as_bool),
+            Some(true)
+        );
+        assert_eq!(
+            metadata.get("termux_request_id").and_then(Value::as_str),
+            Some("termux-call-1")
+        );
+        let request: TermuxExecRequest =
+            serde_json::from_value(metadata.get("termux_exec_request").unwrap().clone()).unwrap();
+        assert_eq!(request.request_id, "termux-call-1");
+        assert_eq!(request.command, "pwd");
+        assert_eq!(request.timeout_secs, Some(7));
+        assert_eq!(
+            request.working_dir,
+            PathBuf::from("/data/data/com.termux/files/home/project")
+        );
     }
 }

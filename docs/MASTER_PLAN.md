@@ -1,7 +1,7 @@
 # DeepSeek Mobile master implementation plan
 
 Created: 2026-05-16
-Last updated: 2026-05-18
+Last updated: 2026-05-25
 
 This is the working plan for completing DeepSeek Mobile without losing any original DeepSeek TUI capability that matters for a phone-first coding agent.
 
@@ -83,6 +83,19 @@ PC execution
   -> PcGatewayResponse
   -> ToolResult
   -> AgentEvent timeline
+```
+
+```text
+Termux shell execution
+  -> approved exec_shell on a Termux workspace
+  -> ToolExecutionCoordinator emits termux_exec_request metadata
+  -> mobile AgentEvent handling extracts pending Termux metadata
+  -> NativeBridgeState queues NativeMobileCommand::RunTermuxCommand
+  -> Android host must drain pop_next_android_termux_command()
+  -> android/bridge DeepSeekTermuxBridge sends RUN_COMMAND intent
+  -> host maps PendingIntent result to AndroidTermuxCallback
+  -> NativeBridgeState rejects stale callbacks
+  -> remaining: feed accepted result back into final tool/model output
 ```
 
 ```text
@@ -282,6 +295,8 @@ Already done:
 - [x] Attachment text/source ingestion through local sandbox path.
 - [x] Android NSD/mDNS PC-host discovery bridge and Rust callback route.
 - [x] Android/Termux `RUN_COMMAND` bridge contract and result parser.
+- [x] Core `exec_shell` Termux route emits native pending request metadata.
+- [x] Mobile event handling extracts pending Termux metadata and queues `RunTermuxCommand`.
 - [x] Manual Android host integration notes for picker, PC discovery and Termux bridge wiring.
 
 Remaining checklist:
@@ -289,6 +304,7 @@ Remaining checklist:
 - [x] Create final Android host integration instructions or module wiring.
 - [ ] Add Dioxus/native callback adapter.
 - [x] Add Termux command executor bridge contract.
+- [x] Emit and queue Termux `exec_shell` native requests from the real tool route.
 - [ ] Close Termux executor lifecycle through final Android host and tool output plumbing.
 - [ ] Add Termux workspace selector.
 - [ ] Add Android file import/export flow.
@@ -359,16 +375,16 @@ Acceptance criteria:
 | CLI dispatcher | Not priority for phone app | Not ported |
 | OpenAI-compatible DeepSeek streaming | Keep | Done: SSE streaming with reasoning token support |
 | Reasoning block streaming | Keep | Done: StreamDelta + ReasoningDelta in API client/engine |
-| File tools | Keep and adapt | Partial |
+| File tools | Keep and adapt | Done for local/PC-safe file operations |
 | Apply patch | Keep mobile-safe operation batch first; add unified diff later | Partial: local + PC operation batches implemented |
-| Shell execution | Route to PC/Termux | Partial: PC-host active; Termux bridge contract added, final Android lifecycle still pending |
-| Git tools | Keep with mobile UI | Partial |
-| Web/search/fetch | Keep with approval | Missing |
+| Shell execution | Route to PC/Termux | Partial: PC-host active; Termux native request queue added, final Android callback/result continuation still pending |
+| Git tools | Keep with mobile UI | Partial: core/PC routing and panel surface exist; button workflow still pending |
+| Web/search/fetch | Keep with approval | Done in core with network capability and approval policy |
 | Runtime HTTP/SSE API | Keep later | Missing |
 | Durable task queue | Keep | Missing |
 | LSP diagnostics | Keep, PC-first plus local/Termux fallback | Partial: Rust/TypeScript/Python providers, UI metadata and next-turn model context implemented |
 | PC connectivity | Keep multi-transport, offline-first | Partial: endpoint candidates, client failover, route health scoring, Android NSD discovery, reconnect controls and UI status display implemented |
-| Snapshots/rollback | Keep, mobile-safe file-copy | Partial: core service, tools, local pre-tool hook |
+| Snapshots/rollback | Keep, mobile-safe file-copy | Partial: core service, tools, local hooks and UI exist; PC snapshot path pending |
 | OS sandbox | Replace/augment with executor policies | Missing |
 | MCP | Keep, PC-first | Missing |
 | Skills | Keep after core | Missing |
@@ -402,11 +418,13 @@ The next implementation sequence is fixed:
 17. [x] Add pairing flow end-to-end from mobile UI.
 18. [x] Persist active PC workspace selection from pairing into runtime configuration.
 19. [x] Add Termux executor bridge contract.
-20. [x] Add Git UI.
-21. [ ] Add background tasks.
-22. [ ] Add MCP/skills.
+20. [x] Wire Termux `exec_shell` into native request metadata and mobile bridge queue.
+21. [x] Add Git UI.
+22. [ ] Add background tasks.
+23. [ ] Add MCP/skills.
 
 ## 5. Implementation progress log
+- 2026-05-25: Wired Termux-workspace `exec_shell` into the real tool route: core now emits structured pending `TermuxExecRequest` metadata, mobile extracts that metadata from tool-result events, queues `NativeMobileCommand::RunTermuxCommand`, and surfaces the queued native request in the timeline. Verification: `cargo check --workspace --all-targets` and `cargo test --workspace` passed with 97 mobile / 117 core / 2 pc-host tests.
 - 2026-05-25: Added session-level diagnostics context and next-turn diagnostics injection, normalized post-edit diagnostics metadata for UI/model consumers, added Rust mobile Termux bridge queue/callback routing, added Android `DeepSeekTermuxBridge` for Termux `RUN_COMMAND` intents/result bundles, updated Android bridge manifest permissions, and documented final Android host integration responsibilities. Verification: `cargo check --workspace --all-targets` and `cargo test --workspace` passed with 95 mobile / 116 core / 2 pc-host tests.
 - 2026-05-18: Wired saved settings into real turns and approval continuations, propagated saved GitHub tokens into `ToolContext`, fixed multi-provider diagnostics aggregation, and stabilized auto-commit tests.
 - 2026-05-18: Closed the pairing/runtime gap: online discovery now promotes an active route, the mobile pairing panel builds a real `WorkspaceConnection`, "Open PC workspace" persists it via `WorkspaceConnectionStore`, and `MobileRuntimeConfig::default()` reloads it on future turns. New pairing requests now use generated tokens instead of an empty auth token.

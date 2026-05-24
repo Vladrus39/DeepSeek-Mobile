@@ -61,6 +61,26 @@ pub struct TermuxExecRequest {
     pub timeout_secs: Option<u64>,
 }
 
+impl TermuxExecRequest {
+    pub fn new(
+        request_id: impl Into<TermuxRequestId>,
+        command: impl Into<String>,
+        working_dir: impl Into<PathBuf>,
+    ) -> Self {
+        Self {
+            request_id: request_id.into(),
+            command: command.into(),
+            working_dir: working_dir.into(),
+            timeout_secs: None,
+        }
+    }
+
+    pub fn with_timeout_secs(mut self, timeout_secs: Option<u64>) -> Self {
+        self.timeout_secs = timeout_secs;
+        self
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct TermuxExecResult {
     pub request_id: TermuxRequestId,

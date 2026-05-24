@@ -15,21 +15,23 @@
 - Added Android `DeepSeekTermuxBridge.kt` for Termux `RUN_COMMAND` intents and result bundle parsing.
 - Updated Android bridge manifest with Termux permission and package visibility query.
 - Added Android host integration documentation covering picker, PC discovery and Termux bridge wiring.
+- Wired approved Termux-workspace `exec_shell` calls to emit structured native `TermuxExecRequest` metadata instead of the old shell placeholder.
+- Taught the mobile layer to extract pending Termux tool metadata, queue `NativeMobileCommand::RunTermuxCommand`, and surface the queued request in the timeline.
 
 ## Verification
 
 - `cargo check --workspace --all-targets` — passed
 - `cargo test --workspace` — passed
 - Test totals after this tranche:
-  - mobile: 95
-  - core: 116
+  - mobile: 97
+  - core: 117
   - pc-host: 2
 
 ## Current focus
 
 The remaining product gaps are now concentrated around end-to-end host/runtime integration rather than isolated contracts:
 
-1. final Android host integration plus Termux executor lifecycle closure;
+1. final Android host integration plus Termux callback/result-continuation closure;
 2. real Git panel action wiring and auto-commit lifecycle integration;
 3. real diff surfaces for project files instead of preview scaffolding;
 4. terminal persistence and PC-workspace snapshot support;

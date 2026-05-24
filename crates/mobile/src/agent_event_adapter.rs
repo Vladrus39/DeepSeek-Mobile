@@ -120,6 +120,26 @@ pub fn push_agent_event(timeline: &mut MobileTimelineState, event: &AgentEvent) 
                 );
             }
 
+            if let Some(request_id) = result
+                .metadata
+                .as_ref()
+                .filter(|metadata| {
+                    metadata
+                        .get("termux_execution_pending")
+                        .and_then(serde_json::Value::as_bool)
+                        == Some(true)
+                })
+                .and_then(|metadata| metadata.get("termux_request_id"))
+                .and_then(|value| value.as_str())
+            {
+                timeline.push(
+                    MobileTimelineItemKind::Status,
+                    MobileTimelineItemStatus::Running,
+                    "Termux native execution queued",
+                    format!("request_id={}", request_id),
+                );
+            }
+
             if let Some(summary) = result
                 .metadata
                 .as_ref()
@@ -306,6 +326,29 @@ mod tests {
         assert_eq!(timeline.items[0].title, "Safety snapshot");
         assert_eq!(timeline.items[1].title, "Post-edit diagnostics");
         assert_eq!(timeline.items[2].title, "Tool result: write_file");
+    }
+
+    #[test]
+    fn termux_pending_metadata_surfaces_native_queue_status() {
+        let mut timeline = MobileTimelineState::default();
+        push_agent_event(
+            &mut timeline,
+            &AgentEvent::ToolCallFinished(ToolResultEvent {
+                id: "tool-3".to_string(),
+                name: "exec_shell".to_string(),
+                success: true,
+                output: "queued".to_string(),
+                metadata: Some(serde_json::json!({
+                    "termux_execution_pending": true,
+                    "termux_request_id": "termux-tool-3"
+                })),
+            }),
+        );
+
+        assert_eq!(timeline.items.len(), 2);
+        assert_eq!(timeline.items[0].title, "Termux native execution queued");
+        assert!(timeline.items[0].body.contains("termux-tool-3"));
+        assert_eq!(timeline.items[1].title, "Tool result: exec_shell");
     }
 
     #[test]

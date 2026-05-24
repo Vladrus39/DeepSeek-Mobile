@@ -2,7 +2,7 @@ use crate::document_picker::{DocumentPickerRequest, PickedDocument};
 use crate::native_document_picker::{AndroidDocumentPickerCallback, AndroidDocumentPickerCommand};
 use crate::native_pc_discovery::{AndroidPcGatewayDiscoveryCallback, AndroidPcGatewayDiscoveryCommand};
 use crate::native_termux::{AndroidTermuxCallback, AndroidTermuxCommand};
-use deepseek_mobile_core::{PcGatewayDiscoveryReport, TermuxExecRequest, TermuxExecResult};
+use deepseek_mobile_core::{AgentEvent, PcGatewayDiscoveryReport, TermuxExecRequest, TermuxExecResult};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum NativeMobileCommand {
@@ -43,6 +43,21 @@ pub struct NativeBridgeState {
     pub active_document_picker_request_id: Option<String>,
     pub active_pc_discovery_request_id: Option<String>,
     pub active_termux_request_ids: Vec<String>,
+}
+
+pub fn termux_request_from_agent_event(event: &AgentEvent) -> Option<TermuxExecRequest> {
+    let AgentEvent::ToolCallFinished(result) = event else {
+        return None;
+    };
+    let metadata = result.metadata.as_ref()?;
+    if metadata
+        .get("termux_execution_pending")
+        .and_then(serde_json::Value::as_bool)
+        != Some(true)
+    {
+        return None;
+    }
+    serde_json::from_value(metadata.get("termux_exec_request")?.clone()).ok()
 }
 
 impl NativeBridgeState {
@@ -88,6 +103,14 @@ impl NativeBridgeState {
 
     pub fn enqueue_termux_command(&mut self, request: TermuxExecRequest) {
         self.enqueue(NativeMobileCommand::RunTermuxCommand(request));
+    }
+
+    pub fn enqueue_termux_command_from_agent_event(&mut self, event: &AgentEvent) -> bool {
+        let Some(request) = termux_request_from_agent_event(event) else {
+            return false;
+        };
+        self.enqueue_termux_command(request);
+        true
     }
 
     pub fn pop_next_command(&mut self) -> Option<NativeMobileCommand> {
@@ -270,16 +293,22 @@ impl NativeBridgeState {
     pub fn is_waiting_for_pc_discovery_callback(&self) -> bool {
         self.active_pc_discovery_request_id.is_some()
     }
+
+    pub fn is_waiting_for_termux_callback(&self) -> bool {
+        !self.active_termux_request_ids.is_empty()
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{NativeBridgeState, NativeMobileCommand, NativeMobileEvent};
+    use super::{
+        termux_request_from_agent_event, NativeBridgeState, NativeMobileCommand, NativeMobileEvent,
+    };
     use crate::document_picker::{DocumentPickerRequest, PickedDocument};
     use crate::native_document_picker::{AndroidDocumentPickerCallback, AndroidPickedDocumentPayload};
     use crate::native_pc_discovery::{AndroidPcGatewayDiscoveryCallback, AndroidPcGatewayMdnsRecordPayload};
     use crate::native_termux::AndroidTermuxCallback;
-    use deepseek_mobile_core::{TermuxExecRequest, TermuxExecResult};
+    use deepseek_mobile_core::{AgentEvent, TermuxExecRequest, TermuxExecResult, ToolResultEvent};
     use std::path::PathBuf;
 
     #[test]
@@ -445,6 +474,7 @@ mod tests {
         let command = state.pop_next_android_termux_command().unwrap();
         assert_eq!(command.request_id, "termux-1");
         assert_eq!(state.active_termux_request_ids, vec!["termux-1".to_string()]);
+        assert!(state.is_waiting_for_termux_callback());
 
         let event = state.accept_android_termux_callback(AndroidTermuxCallback::Completed(
             TermuxExecResult {
@@ -458,6 +488,7 @@ mod tests {
         ));
         assert!(matches!(event, NativeMobileEvent::TermuxCommandCompleted(_)));
         assert!(state.active_termux_request_ids.is_empty());
+        assert!(!state.is_waiting_for_termux_callback());
     }
 
     #[test]
@@ -469,5 +500,35 @@ mod tests {
         });
         assert!(matches!(event, NativeMobileEvent::TermuxCommandFailed { .. }));
         assert!(state.last_error.as_deref().unwrap().contains("stale"));
+    }
+
+    #[test]
+    fn bridge_extracts_termux_request_from_tool_result_metadata() {
+        let event = AgentEvent::ToolCallFinished(ToolResultEvent {
+            id: "tool-1".to_string(),
+            name: "exec_shell".to_string(),
+            success: true,
+            output: "queued".to_string(),
+            metadata: Some(serde_json::json!({
+                "termux_execution_pending": true,
+                "termux_exec_request": {
+                    "request_id": "termux-tool-1",
+                    "command": "pwd",
+                    "working_dir": "/data/data/com.termux/files/home/project",
+                    "timeout_secs": 5
+                }
+            })),
+        });
+
+        let request = termux_request_from_agent_event(&event).expect("termux request");
+        assert_eq!(request.request_id, "termux-tool-1");
+        assert_eq!(request.command, "pwd");
+
+        let mut state = NativeBridgeState::default();
+        assert!(state.enqueue_termux_command_from_agent_event(&event));
+        assert!(matches!(
+            state.pending_commands.first(),
+            Some(NativeMobileCommand::RunTermuxCommand(request)) if request.request_id == "termux-tool-1"
+        ));
     }
 }

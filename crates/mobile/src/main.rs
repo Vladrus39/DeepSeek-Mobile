@@ -263,15 +263,18 @@ fn app() -> Element {
                                         push_agent_event(&mut next_timeline, &AgentEvent::Status(format!("Approval decision applied: {:?}", decision)));
                                         let mut next_snapshots = snapshots_state();
                                         let mut next_diagnostics = diagnostics_state();
+                                        let mut next_native_bridge = native_bridge();
                                         for event in &result.events {
                                             push_agent_event(&mut next_timeline, event);
                                             next_snapshots.apply_agent_event(event);
                                             next_diagnostics.apply_agent_event(event);
+                                            next_native_bridge.enqueue_termux_command_from_agent_event(event);
                                         }
                                         push_agent_event(&mut next_timeline, &AgentEvent::Status(format!("Executed tools: {} | session grants: {}", result.executed_count, result.session_grant_count)));
                                         timeline.set(next_timeline);
                                         snapshots_state.set(next_snapshots);
                                         diagnostics_state.set(next_diagnostics);
+                                        native_bridge.set(next_native_bridge);
                                         approval_cards.set(result.remaining_approval_cards);
                                     }
                                     Err(error) => {
@@ -314,15 +317,18 @@ fn app() -> Element {
                                         push_agent_event(&mut next_timeline, &AgentEvent::Status(format!("Approval decision applied: {:?}", decision)));
                                         let mut next_snapshots = snapshots_state();
                                         let mut next_diagnostics = diagnostics_state();
+                                        let mut next_native_bridge = native_bridge();
                                         for event in &result.events {
                                             push_agent_event(&mut next_timeline, event);
                                             next_snapshots.apply_agent_event(event);
                                             next_diagnostics.apply_agent_event(event);
+                                            next_native_bridge.enqueue_termux_command_from_agent_event(event);
                                         }
                                         push_agent_event(&mut next_timeline, &AgentEvent::Status(format!("Executed tools: {} | session grants: {}", result.executed_count, result.session_grant_count)));
                                         timeline.set(next_timeline);
                                         snapshots_state.set(next_snapshots);
                                         diagnostics_state.set(next_diagnostics);
+                                        native_bridge.set(next_native_bridge);
                                         approval_cards.set(result.remaining_approval_cards);
                                     }
                                     Err(error) => {
@@ -338,7 +344,10 @@ fn app() -> Element {
                 }
             }
 
-            if picker().is_waiting_for_native_picker() || native_bridge().has_pending_commands() {
+            if picker().is_waiting_for_native_picker()
+                || native_bridge().has_pending_commands()
+                || native_bridge().is_waiting_for_termux_callback()
+            {
                 div {
                     margin_top: "8px",
                     background_color: "#1e3a8a",
@@ -472,6 +481,7 @@ fn app() -> Element {
                             let event_timeline = timeline;
                             let event_snapshots = snapshots_state;
                             let event_diagnostics = diagnostics_state;
+                            let event_native_bridge = native_bridge;
                             match run_mobile_turn_streaming(config, user_input, move |event| {
                                 let mut timeline_signal = event_timeline;
                                 let mut next_timeline = timeline_signal();
@@ -487,6 +497,12 @@ fn app() -> Element {
                                 let mut next_diagnostics = diagnostics_signal();
                                 next_diagnostics.apply_agent_event(&event);
                                 diagnostics_signal.set(next_diagnostics);
+
+                                let mut native_bridge_signal = event_native_bridge;
+                                let mut next_native_bridge = native_bridge_signal();
+                                if next_native_bridge.enqueue_termux_command_from_agent_event(&event) {
+                                    native_bridge_signal.set(next_native_bridge);
+                                }
                             }).await {
                                 Ok(result) => {
                                     if let Some(final_text) = result.final_text.clone() {

@@ -68,14 +68,15 @@ Reference: https://github.com/termux/termux-app/wiki/RUN_COMMAND-Intent
 
 Flow:
 
-1. Core creates a `TermuxExecRequest`.
-2. Rust mobile queues `NativeMobileCommand::RunTermuxCommand`.
+1. Core handles approved `exec_shell` on a Termux workspace in `ToolExecutionCoordinator` and emits tool-result metadata containing `termux_exec_request`.
+2. Rust mobile extracts that metadata with `NativeBridgeState::enqueue_termux_command_from_agent_event()` and queues `NativeMobileCommand::RunTermuxCommand`.
 3. Host converts it with `pop_next_android_termux_command()`.
 4. Host creates a unique one-shot `PendingIntent` carrying the Rust `request_id`.
 5. Android calls `DeepSeekTermuxBridge.run(command, pendingIntent)`.
 6. Android parses the result bundle with `DeepSeekTermuxBridge.parseResult(requestId, resultIntent)`.
 7. Host maps the payload to `AndroidTermuxCallback::Completed` or `AndroidTermuxCallback::Failed`.
 8. Rust rejects stale request ids and routes completion/failure into the mobile timeline.
+9. The remaining lifecycle work is to feed accepted completion back into the agent as the final `exec_shell` result, not only as a native timeline event.
 
 Important host requirements:
 
@@ -91,7 +92,7 @@ The repository now has the bridge contracts, but the final Android host still ne
 
 - Dioxus/native adapter that drains `NativeBridgeState` commands in the running Android app.
 - Android service or receiver for Termux pending-intent results.
-- Tool-loop plumbing that turns a Termux result into the final `ToolResult` for `exec_shell` on a Termux workspace.
+- Result-continuation plumbing that turns an accepted Termux callback into the final `ToolResult`/model-visible output for the original `exec_shell` call.
 - Device/emulator verification of picker, PC discovery and Termux flows against the final host shell.
 
 ## Manual verification checklist

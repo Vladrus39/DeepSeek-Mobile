@@ -23,7 +23,12 @@ impl ToolSpec for ShellTool {
         json!({
             "type": "object",
             "properties": {
-                "command": { "type": "string", "description": "Shell command to execute" }
+                "command": { "type": "string", "description": "Shell command to execute" },
+                "timeout_secs": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": "Optional command timeout in seconds for executors that support it"
+                }
             },
             "required": ["command"]
         })

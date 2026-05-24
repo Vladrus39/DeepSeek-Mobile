@@ -71,7 +71,11 @@ The main remaining work is no longer “port the basics from the TUI.” It is n
 
    Rust mobile bridge state can now queue Termux commands and correlate callbacks, while the Android bridge module can build `RUN_COMMAND` intents and parse result bundles.
 
-5. **Pairing no longer defaults to an empty auth token.**
+5. **Termux `exec_shell` now reaches the native command queue.**
+
+   Approved `exec_shell` calls on a Termux workspace now produce structured `TermuxExecRequest` metadata. The mobile layer extracts that metadata from tool-result events and queues `NativeMobileCommand::RunTermuxCommand` instead of returning the old shell placeholder.
+
+6. **Pairing no longer defaults to an empty auth token.**
 
    New pairing requests use a generated token.
 
@@ -82,7 +86,7 @@ The main remaining work is no longer “port the basics from the TUI.” It is n
 | Git UI | Surface exists | Wire buttons to real status/diff/branch/commit/push/pull actions |
 | Files diff UI | Tree and file preview are real | Replace illustrative diff preview with actual patch/project diff data |
 | Terminal | UI + host sessions exist | Persist sessions and finish Android runtime wiring |
-| Termux | Rust/Kotlin bridge contract exists | Close the executor lifecycle through the final Android host |
+| Termux | Rust/Kotlin bridge contract plus core-to-mobile native request queue exists | Drain commands in the final Android host and feed callbacks back into final tool output |
 | Android bridge | Kotlin/Rust contracts plus host integration notes exist | Final Dioxus Android host integration and manual verification |
 | Diagnostics | Hooks, providers, UI metadata and next-turn injection exist | Keep expanding provider coverage as needed |
 | Snapshots | Local path is integrated | Add PC-gateway snapshot path |
@@ -100,7 +104,7 @@ The main remaining work is no longer “port the basics from the TUI.” It is n
 | Approval workflow | Done |
 | File editing | Done |
 | Patch application | Done |
-| Shell execution | Done through PC-host; Termux still incomplete |
+| Shell execution | Done through PC-host; Termux now queues native requests but result continuation is still incomplete |
 | Git tooling | Core done; mobile workflow partial |
 | Web/GitHub tools | Done in core |
 | Diagnostics | Providers and model reinjection done |
@@ -112,7 +116,7 @@ The main remaining work is no longer “port the basics from the TUI.” It is n
 
 ## Recommended next execution order
 
-1. Finish final Android host integration and close the Termux executor lifecycle.
+1. Finish final Android host integration and close Termux callback/result-continuation.
 2. Wire Git UI actions and engine auto-commit.
 3. Replace fake diff preview with real pending/project diff data.
 4. Add remote snapshots and terminal persistence.

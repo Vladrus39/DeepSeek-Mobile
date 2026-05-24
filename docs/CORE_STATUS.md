@@ -7,8 +7,8 @@
 - `cargo check --workspace --all-targets` — green
 - `cargo test --workspace` — green
 - Tests:
-  - mobile: 95
-  - core: 116
+  - mobile: 97
+  - core: 117
   - pc-host: 2
 
 ## Core crate
@@ -28,6 +28,7 @@
 - Auto snapshot hooks
 - Workspace connection model + persistent store
 - Public Termux execution request/result contract
+- Termux-workspace `exec_shell` now emits native pending request metadata instead of a local placeholder
 
 ### Present but not yet wired into the main lifecycle
 
@@ -57,7 +58,7 @@
 - “Open PC workspace” persists a real `WorkspaceConnection`.
 - Future `MobileRuntimeConfig::default()` calls restore the saved active workspace.
 - New pairing requests use a generated token instead of an empty token.
-- Termux commands now have Rust bridge queue/callback correlation and timeline routing.
+- Termux commands now have Rust bridge queue/callback correlation, timeline routing, and automatic queue extraction from pending tool-result metadata.
 - Android host integration notes document the native bridge contract boundaries.
 
 ### Still partial
@@ -65,7 +66,7 @@
 - Files diff preview is illustrative, not yet bound to actual patch state.
 - Git panel actions are not yet connected to real runtime operations.
 - Native Android host integration is not complete.
-- Termux has bridge contracts, but not the full tool execution lifecycle through a final Android host.
+- Termux has bridge contracts and core-to-mobile request queuing, but not the final Android host drain/callback/result-continuation lifecycle.
 - Terminal persistence is not complete.
 
 ## Android bridge module
@@ -106,7 +107,7 @@
 
 ## Highest-priority gaps
 
-1. Final Android host + Termux executor lifecycle
+1. Final Android host + Termux callback/result-continuation lifecycle
 2. Real Git panel wiring and auto-commit lifecycle integration
 3. Real project diff surfaces and remote-aware file UI
 4. PC-workspace snapshots and terminal persistence

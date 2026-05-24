@@ -55,6 +55,7 @@
 - [x] Native bridge contracts for picker, discovery, terminal, share
 - [ ] Final Android host integration
 - [x] Termux RUN_COMMAND bridge contract
+- [x] Termux `exec_shell` native request metadata and mobile queue extraction
 - [ ] Termux executor lifecycle end-to-end
 - [ ] Android import/export completion
 
