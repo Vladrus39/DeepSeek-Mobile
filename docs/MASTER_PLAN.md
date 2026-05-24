@@ -427,11 +427,14 @@ The next implementation sequence is fixed:
 21. [x] Add Git UI.
 22. [x] Wire Git panel actions to real local/PC-routed tool execution.
 23. [x] Close Termux callback/result-continuation end-to-end.
-24. [ ] Add background tasks.
-25. [ ] Add MCP/skills.
+24. [x] Replace illustrative Files diff preview with real pending/project diffs.
+25. [ ] Add background tasks.
+26. [ ] Add MCP/skills.
 
 ## 5. Implementation progress log
 - 2026-05-25 (Phase A wiring): Wired `ModelRouter` into engine turn orchestration (auto-selects Flash/Pro per prompt complexity and context size), wired `ContextManager` into prompt assembly (fits messages within the selected model's context budget), and wired `auto_commit_and_push` into the successful-turn engine lifecycle. Added `run_stream_with_messages_and_model` / `run_with_messages_and_model` to `DeepSeekAgent` for explicit model selection. Engine now stores `Config` directly for routing/context/auto-commit decisions. Verification: `cargo check --workspace --lib` green, `cargo test` green with 118 core / 102 mobile / 2 pc-host tests.
+
+- 2026-05-25 (Phase C1 — real Files diff preview): Replaced the illustrative fake diff preview in the Files panel with real diffs computed from pending approval cards. For `write_file` cards, compares "before" content with "content". For `edit_file` cards, applies search/replace on current file content and diffs against original. The `project_files_panel` now accepts `approval_cards` and computes diffs reactively in `diff_preview_card`. When no pending change matches the selected file, shows "No pending changes" instead of a fake hook. Verification: `cargo check` green, 102 mobile / 118 core / 2 pc-host tests.
 
 - 2026-05-25 (Phase B — Termux callback/result-continuation closure): Closed the Termux end-to-end loop. Added `TurnStatus::WaitingForTermuxResult` variant, `TermuxExecutionPending` agent event, and `continue_termux_result` method on `MobileEngine`. When an `exec_shell` call is routed to Termux, the tool loop emits a `TermuxExecutionPending` event and the turn pauses with `WaitingForTermuxResult` status instead of completing. When the Android Termux bridge returns the real command output via `NativeMobileEvent::TermuxCommandCompleted`, the mobile UI triggers `continue_termux_result` which injects the real tool result into the session and re-queries the model so it can respond to the actual command output. Wire-up completed in `main.rs` via a new `use_effect` that watches for `TermuxCommandCompleted` and calls `continue_mobile_termux_result`. Verification: `cargo check --workspace --all-targets` green, `cargo test --workspace` passed with 102 mobile / 118 core / 2 pc-host tests.
 

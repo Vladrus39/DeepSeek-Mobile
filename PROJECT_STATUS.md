@@ -31,16 +31,15 @@ DeepSeek-Mobile is in active development but now has a coherent working core:
 ## Implemented but still partial
 
 - Git panel actions now run real status/diff/branch/commit/push/pull operations through the existing tool route; auto-commit/push is now part of the engine lifecycle after successful turns when enabled.
-- The Files panel has a real tree/preview, but its diff preview is still illustrative rather than bound to actual pending patches.
+- The Files panel diff preview now shows real diffs computed from pending approval cards (write_file/edit_file). When no pending change matches the selected file, it shows "No pending changes" instead of a fake hook.
 - Terminal sessions exist on PC-host and in UI state, but persistence and full Android runtime wiring are not complete.
 - `ModelRouter`, `ContextManager`, and `auto_commit_and_push` are now wired into the engine lifecycle.
 - Termux callback/result-continuation is now closed end-to-end: when the Android Termux bridge returns real command output, the engine injects it into the session and re-queries the model so it can respond to actual results. The Rust-side turn lifecycle handles `WaitingForTermuxResult` status and `continue_termux_result` continuation.
 
 ## Highest-value remaining work
 
-1. Replace illustrative Files diff preview with real pending/project diffs.
-2. Make file browsing remote-aware when PC workspace is active.
-3. Add PC-workspace snapshot support plus terminal persistence.
-4. Build durable background tasks, runtime API, then MCP/plugins/skills.
+1. Make file browsing remote-aware when PC workspace is active.
+2. Add PC-workspace snapshot support plus terminal persistence.
+3. Build durable background tasks, runtime API, then MCP/plugins/skills.
 
 See `docs/PROJECT_AUDIT.md` for the detailed audit and `docs/MASTER_PLAN.md` for the execution backlog.
