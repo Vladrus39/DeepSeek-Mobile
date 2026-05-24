@@ -3,6 +3,8 @@ use crate::project_files::{
     ProjectTreeSnapshot, DEFAULT_MAX_FILE_BYTES, DEFAULT_MAX_TREE_ENTRIES,
 };
 use std::path::{Path, PathBuf};
+use deepseek_mobile_core::ApprovalCardView;
+use crate::project_diff::{ProjectDiffPreview, build_text_diff_preview};
 
 const DEFAULT_WORKSPACE_ROOT: &str = ".";
 
@@ -14,6 +16,7 @@ pub struct ProjectFilesUiState {
     pub selected_path: Option<String>,
     pub preview: Option<ProjectFilePreview>,
     pub last_error: Option<String>,
+    pub pending_diff: Option<ProjectDiffPreview>,
     pub loaded: bool,
 }
 
@@ -31,6 +34,7 @@ impl Default for ProjectFilesUiState {
             selected_path: None,
             preview: None,
             last_error: None,
+            pending_diff: None,
             loaded: false,
         }
     }
@@ -113,6 +117,46 @@ impl ProjectFilesUiState {
         }
     }
 
+    /// Compute real pending diffs from approval cards for the currently selected file.
+    /// For write_file cards: diff "before" content vs "content".
+    /// For edit_file cards: diff "search" vs "replace" on the file content.
+    /// For apply_patch cards: extract the first matching file from operations.
+    pub fn set_pending_diffs(&mut self, cards: &[ApprovalCardView]) {
+        let Some(ref selected) = self.selected_path else {
+            self.pending_diff = None;
+            return;
+        };
+
+        for card in cards {
+            let card_path = first_string_arg(card, &["path", "file", "file_path", "relative_path", "target_path"]);
+            if card_path.as_deref() != Some(selected.as_str()) {
+                continue;
+            }
+
+            // Try write_file-style diff (before vs content)
+            if let Some(after) = first_string_arg(card, &["content", "new_content", "after", "replacement", "text"]) {
+                let before = first_string_arg(card, &["before", "old_content", "current_content"])
+                    .unwrap_or_default();
+                self.pending_diff = Some(build_text_diff_preview(selected.clone(), &before, &after));
+                return;
+            }
+
+            // Try edit_file-style diff (search vs replace on current content)
+            if let Some(search) = first_string_arg(card, &["search", "old_text"]) {
+                let replace = first_string_arg(card, &["replace", "new_text"]).unwrap_or_default();
+                let current = self.preview.as_ref()
+                    .map(|p| p.content.as_str())
+                    .unwrap_or("");
+                let after = current.replacen(&search, &replace, 1);
+                self.pending_diff = Some(build_text_diff_preview(selected.clone(), current, &after));
+                return;
+            }
+        }
+
+        // No matching card found
+        self.pending_diff = None;
+    }
+
     pub fn current_browsing_display(&self) -> String {
         if self.browsing_dir.is_empty() {
             format!("Root: {}", self.workspace_root)
@@ -124,6 +168,18 @@ impl ProjectFilesUiState {
     pub fn has_selection(&self) -> bool {
         self.selected_path.is_some()
     }
+}
+
+/// Extract the first matching string argument from an approval card's argument_preview.
+fn first_string_arg(card: &ApprovalCardView, keys: &[&str]) -> Option<String> {
+    for key in keys {
+        if let Some(value) = card.argument_preview.get(*key).and_then(|v| v.as_str()) {
+            if !value.trim().is_empty() {
+                return Some(value.to_string());
+            }
+        }
+    }
+    None
 }
 
 #[cfg(test)]

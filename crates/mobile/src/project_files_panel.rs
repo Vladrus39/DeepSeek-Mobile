@@ -1,12 +1,14 @@
 use crate::project_diff::{build_text_diff_preview, diff_line_color};
 use crate::project_files::{ProjectEntryKind, ProjectFilePreview, ProjectTreeSnapshot};
 use crate::project_files_state::ProjectFilesUiState;
+use deepseek_mobile_core::ApprovalCardView;
 use dioxus::prelude::*;
 
-pub fn project_files_panel(mut state: Signal<ProjectFilesUiState>) -> Element {
+pub fn project_files_panel(mut state: Signal<ProjectFilesUiState>, approval_cards: Vec<ApprovalCardView>) -> Element {
     if !state().loaded {
         let mut next = state();
         next.refresh();
+        next.set_pending_diffs(&approval_cards);
         state.set(next);
     }
 
@@ -40,7 +42,7 @@ pub fn project_files_panel(mut state: Signal<ProjectFilesUiState>) -> Element {
             }
             {tree_card(&snapshot, selected_path.as_deref(), state)}
             {file_preview_card(preview.as_ref())}
-            {diff_preview_card(preview.as_ref())}
+            {diff_preview_card(&state(), &approval_cards)}
         }
     }
 }
@@ -260,10 +262,26 @@ fn file_preview_card(preview: Option<&ProjectFilePreview>) -> Element {
     }
 }
 
-fn diff_preview_card(preview: Option<&ProjectFilePreview>) -> Element {
-    let diff = preview.map(|preview| {
-        let after = format!("{}\n// Proposed change preview hook\n", preview.content.trim_end());
-        build_text_diff_preview(preview.path.clone(), &preview.content, &after)
+fn diff_preview_card(state: &ProjectFilesUiState, approval_cards: &[ApprovalCardView]) -> Element {
+    // Compute diff reactively from approval cards for the selected file
+    let diff = state.selected_path.as_ref().and_then(|selected| {
+        for card in approval_cards {
+            let card_path = first_string_arg(card, &["path", "file", "file_path", "relative_path", "target_path"]);
+            if card_path.as_deref() != Some(selected.as_str()) {
+                continue;
+            }
+            if let Some(after) = first_string_arg(card, &["content", "new_content", "after", "replacement", "text"]) {
+                let before = first_string_arg(card, &["before", "old_content", "current_content"]).unwrap_or_default();
+                return Some(build_text_diff_preview(selected.clone(), &before, &after));
+            }
+            if let Some(search) = first_string_arg(card, &["search", "old_text"]) {
+                let replace = first_string_arg(card, &["replace", "new_text"]).unwrap_or_default();
+                let current = state.preview.as_ref().map(|p| p.content.as_str()).unwrap_or("");
+                let after = current.replacen(&search, &replace, 1);
+                return Some(build_text_diff_preview(selected.clone(), current, &after));
+            }
+        }
+        None
     });
 
     rsx! {
@@ -278,7 +296,9 @@ fn diff_preview_card(preview: Option<&ProjectFilePreview>) -> Element {
 
             div { font_size: "14px", font_weight: "bold", "Diff preview" }
             if let Some(diff) = diff {
-                div { color: "#9ca3af", font_size: "12px", "{diff.path} · +{diff.added_lines} / -{diff.removed_lines}" }
+                div { color: "#9ca3af", font_size: "12px",
+                    "{diff.path} · +{diff.added_lines} / -{diff.removed_lines}"
+                }
                 div {
                     background_color: "#0b1120",
                     border: "1px solid #1e293b",
@@ -299,10 +319,26 @@ fn diff_preview_card(preview: Option<&ProjectFilePreview>) -> Element {
                     }
                 }
             } else {
-                div { color: "#9ca3af", font_size: "12px", "AI patch diffs will be shown here before approval." }
+                if state.preview.is_some() {
+                    div { color: "#9ca3af", font_size: "12px", "No pending changes for this file." }
+                } else {
+                    div { color: "#9ca3af", font_size: "12px", "Select a file to see pending change diffs." }
+                }
             }
         }
     }
+}
+
+/// Extract the first matching string argument from an approval card's argument_preview.
+fn first_string_arg(card: &ApprovalCardView, keys: &[&str]) -> Option<String> {
+    for key in keys {
+        if let Some(value) = card.argument_preview.get(*key).and_then(|v| v.as_str()) {
+            if !value.trim().is_empty() {
+                return Some(value.to_string());
+            }
+        }
+    }
+    None
 }
 
 #[cfg(test)]
