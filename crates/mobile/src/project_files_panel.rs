@@ -1,15 +1,39 @@
 use crate::project_diff::{build_text_diff_preview, diff_line_color};
 use crate::project_files::{ProjectEntryKind, ProjectFilePreview, ProjectTreeSnapshot};
 use crate::project_files_state::ProjectFilesUiState;
-use deepseek_mobile_core::ApprovalCardView;
+use deepseek_mobile_core::{ApprovalCardView, PcGatewayClient};
 use dioxus::prelude::*;
 
-pub fn project_files_panel(mut state: Signal<ProjectFilesUiState>, approval_cards: Vec<ApprovalCardView>) -> Element {
+pub fn project_files_panel(
+    mut state: Signal<ProjectFilesUiState>,
+    approval_cards: Vec<ApprovalCardView>,
+    pc_gateway_client: Option<PcGatewayClient>,
+) -> Element {
+    let mut remote_refreshed = use_signal(|| false);
+    
     if !state().loaded {
-        let mut next = state();
-        next.refresh();
-        next.set_pending_diffs(&approval_cards);
-        state.set(next);
+        if let Some(ref pc_client) = pc_gateway_client {
+            if !remote_refreshed() {
+                remote_refreshed.set(true);
+                let client = pc_client.clone();
+                spawn({
+                    let mut st = state;
+                    async move {
+                        let mut s = st();
+                        let wid = s.workspace_root.clone();
+                        if s.refresh_via_pc(&client, &wid).await.is_err() {
+                            s.refresh(); // fallback to local
+                        }
+                        st.set(s);
+                    }
+                });
+            }
+        } else {
+            let mut next = state();
+            next.refresh();
+            next.set_pending_diffs(&approval_cards);
+            state.set(next);
+        }
     }
 
     let snapshot = state().snapshot.clone();

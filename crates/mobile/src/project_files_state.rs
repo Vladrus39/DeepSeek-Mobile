@@ -1,9 +1,10 @@
 use crate::project_files::{
-    choose_default_preview_file, read_project_file, scan_project_tree, ProjectFilePreview,
-    ProjectTreeSnapshot, DEFAULT_MAX_FILE_BYTES, DEFAULT_MAX_TREE_ENTRIES,
+    choose_default_preview_file, read_project_file, scan_project_tree, scan_pc_gateway_tree,
+    read_pc_gateway_file, ProjectFilePreview, ProjectTreeSnapshot, DEFAULT_MAX_FILE_BYTES,
+    DEFAULT_MAX_TREE_ENTRIES,
 };
 use std::path::{Path, PathBuf};
-use deepseek_mobile_core::ApprovalCardView;
+use deepseek_mobile_core::{ApprovalCardView, PcGatewayClient};
 use crate::project_diff::{ProjectDiffPreview, build_text_diff_preview};
 
 const DEFAULT_WORKSPACE_ROOT: &str = ".";
@@ -167,6 +168,54 @@ impl ProjectFilesUiState {
 
     pub fn has_selection(&self) -> bool {
         self.selected_path.is_some()
+    }
+}
+
+// ── PC gateway remote file operations ──
+
+impl ProjectFilesUiState {
+    /// Refresh the tree using the PC gateway client.
+    pub async fn refresh_via_pc(&mut self, client: &PcGatewayClient, workspace_id: &str) -> Result<(), anyhow::Error> {
+        self.loaded = true;
+        match scan_pc_gateway_tree(client, workspace_id, DEFAULT_MAX_TREE_ENTRIES).await {
+            Ok(snapshot) => {
+                let selected = self
+                    .selected_path
+                    .clone()
+                    .filter(|path| snapshot.entries.iter().any(|entry| entry.path == *path))
+                    .or_else(|| choose_default_preview_file(&snapshot));
+                self.snapshot = snapshot;
+                self.selected_path = selected.clone();
+                self.last_error = None;
+                self.preview = None;
+                if let Some(path) = selected {
+                    let _ = self.open_file_via_pc(client, &path, workspace_id).await;
+                }
+            }
+            Err(error) => {
+                self.last_error = Some(format!("PC gateway scan failed: {}", error));
+                self.preview = None;
+            }
+        }
+        Ok(())
+    }
+
+    /// Open a file using the PC gateway client.
+    pub async fn open_file_via_pc(&mut self, client: &PcGatewayClient, path: &str, workspace_id: &str) -> std::result::Result<(), String> {
+        match read_pc_gateway_file(client, workspace_id, path, DEFAULT_MAX_FILE_BYTES).await {
+            Ok(preview) => {
+                self.selected_path = Some(path.to_string());
+                self.preview = Some(preview);
+                self.last_error = None;
+                Ok(())
+            }
+            Err(error) => {
+                self.selected_path = Some(path.to_string());
+                self.preview = None;
+                self.last_error = Some(format!("PC gateway read failed: {}", path));
+                Err(error.to_string())
+            }
+        }
     }
 }
 

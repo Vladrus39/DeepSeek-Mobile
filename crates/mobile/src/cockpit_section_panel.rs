@@ -36,7 +36,12 @@ pub fn cockpit_section_panel(
     match section {
         CockpitSection::Chat => chat_empty_state(),
         CockpitSection::PcHost => pc_pairing_panel(pc_pairing_state, native_bridge),
-        CockpitSection::Files => project_files_panel(project_files_state, approval_cards()),
+        CockpitSection::Files => {
+            let pc_client = pc_pairing_state().active_workspace_connection()
+                .and_then(|conn| conn.pc_gateway.clone())
+                .map(|config| deepseek_mobile_core::PcGatewayClient::new(config));
+            project_files_panel(project_files_state, approval_cards(), pc_client)
+        }
         CockpitSection::Snapshots => snapshots_panel(snapshots_state),
         CockpitSection::Diagnostics => diagnostics_panel(&diagnostics_state()),
         CockpitSection::Terminal => terminal_panel(

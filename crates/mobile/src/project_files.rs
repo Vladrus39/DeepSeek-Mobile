@@ -102,6 +102,128 @@ pub fn read_project_file(
     })
 }
 
+/// Scan a remote PC gateway workspace directory tree.
+pub async fn scan_pc_gateway_tree(
+    client: &deepseek_mobile_core::PcGatewayClient,
+    workspace_id: &str,
+    max_entries: usize,
+) -> Result<ProjectTreeSnapshot> {
+    let response = client.list_dir(workspace_id, ".").await?;
+    let entries = match response {
+        deepseek_mobile_core::PcGatewayResponse::DirEntries(entries) => entries,
+        other => return Err(anyhow!("unexpected gateway response: {:?}", other)),
+    };
+
+    let mut tree_entries = Vec::new();
+    let mut truncated = false;
+
+    for entry in entries.iter().take(max_entries) {
+        if tree_entries.len() >= max_entries {
+            truncated = true;
+            break;
+        }
+        let name = std::path::Path::new(&entry.path)
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or(&entry.path)
+            .to_string();
+
+        if is_ignored_name(&name) {
+            continue;
+        }
+
+        if entry.is_dir {
+            // Recursively scan subdirectories
+            let sub_response = client.list_dir(workspace_id, &entry.path).await?;
+            if let deepseek_mobile_core::PcGatewayResponse::DirEntries(sub_entries) = sub_response {
+                for sub in sub_entries {
+                    if tree_entries.len() >= max_entries {
+                        truncated = true;
+                        break;
+                    }
+                    let sub_name = std::path::Path::new(&sub.path)
+                        .file_name()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or(&sub.path)
+                        .to_string();
+                    if is_ignored_name(&sub_name) {
+                        continue;
+                    }
+                    tree_entries.push(ProjectTreeEntry {
+                        path: sub.path.clone(),
+                        name: sub_name,
+                        kind: if sub.is_dir { ProjectEntryKind::Directory } else { ProjectEntryKind::File },
+                        depth: 1,
+                        size_bytes: None,
+                    });
+                }
+            }
+            tree_entries.push(ProjectTreeEntry {
+                path: entry.path.clone(),
+                name,
+                kind: ProjectEntryKind::Directory,
+                depth: 0,
+                size_bytes: None,
+            });
+        } else {
+            tree_entries.push(ProjectTreeEntry {
+                path: entry.path.clone(),
+                name,
+                kind: ProjectEntryKind::File,
+                depth: 0,
+                size_bytes: None,
+            });
+        }
+    }
+
+    Ok(ProjectTreeSnapshot {
+        root: workspace_id.to_string(),
+        entries: tree_entries,
+        truncated,
+    })
+}
+
+/// Read a file from a remote PC gateway workspace.
+pub async fn read_pc_gateway_file(
+    client: &deepseek_mobile_core::PcGatewayClient,
+    workspace_id: &str,
+    relative_path: &str,
+    max_bytes: u64,
+) -> Result<ProjectFilePreview> {
+    let response = client.read_file(workspace_id, relative_path).await?;
+    let content = match response {
+        deepseek_mobile_core::PcGatewayResponse::FileContent { content, .. } => content,
+        other => return Err(anyhow!("unexpected gateway response: {:?}", other)),
+    };
+
+    if content.len() as u64 > max_bytes {
+        return Err(anyhow!("file too large for mobile preview: {} > {} bytes", content.len(), max_bytes));
+    }
+
+    let line_count = content.lines().count();
+    let truncated = content.chars().count() > DEFAULT_MAX_FILE_CHARS;
+    let display_content = if truncated {
+        let mut out = content.chars().take(DEFAULT_MAX_FILE_CHARS).collect::<String>();
+        out.push_str("\n...[project file preview truncated]...");
+        out
+    } else {
+        content.clone()
+    };
+
+    Ok(ProjectFilePreview {
+        path: normalize_relative_path(std::path::Path::new(relative_path))?,
+        display_name: std::path::Path::new(relative_path)
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or("")
+            .to_string(),
+        content: display_content,
+        size_bytes: content.len() as u64,
+        line_count,
+        truncated,
+    })
+}
+
 pub fn choose_default_preview_file(snapshot: &ProjectTreeSnapshot) -> Option<String> {
     snapshot
         .entries
