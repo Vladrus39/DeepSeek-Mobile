@@ -134,6 +134,8 @@ cargo +stable-x86_64-pc-windows-msvc check --workspace --all-targets
 cargo +stable-x86_64-pc-windows-msvc test --workspace
 ```
 
+GitHub Actions runs on Ubuntu, so the Rust job must install the native Dioxus desktop/mobile dependency stack (`pkg-config`, GLib, GTK, WebKitGTK, appindicator and xdo development packages) before `cargo check --workspace --all-targets`.
+
 Operating rules:
 
 1. Develop from the desktop working copy on the PC.
@@ -424,6 +426,7 @@ The next implementation sequence is fixed:
 23. [ ] Add MCP/skills.
 
 ## 5. Implementation progress log
+- 2026-05-25: Fixed GitHub Actions Rust environment setup by installing Ubuntu native dependencies required by Dioxus/GTK/WebKit before workspace checks; root cause was missing `glib-2.0.pc` from `glib-sys` during CI.
 - 2026-05-25: Wired Termux-workspace `exec_shell` into the real tool route: core now emits structured pending `TermuxExecRequest` metadata, mobile extracts that metadata from tool-result events, queues `NativeMobileCommand::RunTermuxCommand`, and surfaces the queued native request in the timeline. Verification: `cargo check --workspace --all-targets` and `cargo test --workspace` passed with 97 mobile / 117 core / 2 pc-host tests.
 - 2026-05-25: Added session-level diagnostics context and next-turn diagnostics injection, normalized post-edit diagnostics metadata for UI/model consumers, added Rust mobile Termux bridge queue/callback routing, added Android `DeepSeekTermuxBridge` for Termux `RUN_COMMAND` intents/result bundles, updated Android bridge manifest permissions, and documented final Android host integration responsibilities. Verification: `cargo check --workspace --all-targets` and `cargo test --workspace` passed with 95 mobile / 116 core / 2 pc-host tests.
 - 2026-05-18: Wired saved settings into real turns and approval continuations, propagated saved GitHub tokens into `ToolContext`, fixed multi-provider diagnostics aggregation, and stabilized auto-commit tests.

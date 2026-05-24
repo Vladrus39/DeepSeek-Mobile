@@ -17,6 +17,7 @@
 - Added Android host integration documentation covering picker, PC discovery and Termux bridge wiring.
 - Wired approved Termux-workspace `exec_shell` calls to emit structured native `TermuxExecRequest` metadata instead of the old shell placeholder.
 - Taught the mobile layer to extract pending Termux tool metadata, queue `NativeMobileCommand::RunTermuxCommand`, and surface the queued request in the timeline.
+- Diagnosed the repeated GitHub Actions Rust failure as missing Ubuntu native dependencies for Dioxus/GTK/WebKit (`glib-2.0.pc`) and added the required apt install step to CI.
 
 ## Verification
 

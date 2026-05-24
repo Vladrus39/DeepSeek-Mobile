@@ -12,7 +12,8 @@ DeepSeek-Mobile is in active development but now has a coherent working core:
 - latest post-edit diagnostics are stored in the session and injected into the next model turn as model-readable context;
 - the Android bridge module now includes a Termux `RUN_COMMAND` adapter contract in addition to document picker and PC discovery adapters;
 - approved `exec_shell` calls in a Termux workspace now emit a structured native `TermuxExecRequest`, and the mobile layer queues that request into `NativeBridgeState`;
-- local verification is green: `cargo check --workspace --all-targets` and `cargo test --workspace`.
+- local verification is green: `cargo check --workspace --all-targets` and `cargo test --workspace`;
+- GitHub Actions Rust job now installs the Linux GTK/WebKit/pkg-config dependencies required by the Dioxus mobile crate before running workspace checks.
 
 ## Verified today
 
