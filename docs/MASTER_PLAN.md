@@ -326,8 +326,8 @@ Goal: port the useful headless/task features from original DeepSeek TUI.
 
 Checklist:
 
-- [ ] Add durable task records.
-- [ ] Add queue and task lifecycle: queued/running/completed/failed/canceled.
+- [x] Add durable task records.
+- [x] Add queue and task lifecycle: queued/running/completed/failed/canceled.
 - [ ] Add mobile task manager UI.
 - [ ] Reuse PC task detection.
 - [ ] Add artifacts and logs per task.
@@ -428,10 +428,14 @@ The next implementation sequence is fixed:
 22. [x] Wire Git panel actions to real local/PC-routed tool execution.
 23. [x] Close Termux callback/result-continuation end-to-end.
 24. [x] Replace illustrative Files diff preview with real pending/project diffs.
-25. [ ] Add background tasks.
-26. [ ] Add MCP/skills.
+25. [x] Add background tasks (PC-host process spawning + gateway RPC).
+26. [ ] Add durable task records + queue lifecycle (core/mobile side).
+27. [ ] Add mobile task manager UI.
+28. [ ] Add MCP/skills.
 
 ## 5. Implementation progress log
+- 2026-05-25 (Phase F1 — durable task record + queue lifecycle): Added `DurableTaskStatus` enum (Queued/Running/Completed/Failed/Canceled), `DurableTaskRecord` struct with lifecycle methods (`mark_running`, `mark_completed`, `mark_failed`, `mark_canceled`), and `DurableTaskManager` with single-file JSON persistence under `base_dir/tasks.json`. Manager supports `create`, `save`, `load`, `load_all`, `update_status`, `delete`, `count_by_status`, and `prune_terminal_tasks`. Registered `pub mod durable_task` in core lib, re-exported `DurableTaskManager`, `DurableTaskRecord`, `DurableTaskStatus`. Verification: 16/16 durable_task tests pass, `cargo check --workspace --all-targets` green.
+
 - 2026-05-25 (Phase E2 — background task infrastructure): Added `TaskHandle` with child-process tracking to PC host, implemented `run_task_handler` (spawns detected tasks as real processes), `stop_task_handler` (kills tracked child), and `list_tasks_handler` (returns running task info). Extended gateway protocol with `PcGatewayRequest::ListTasks`, `PcGatewayResponse::TaskList(Vec<PcRunningTaskInfo>)`, and `PcRunningTaskInfo` struct. Added `stop_task()` and `list_tasks()` to `PcGatewayClient`. Wired `detect_tasks`, `task_run`, `task_stop`, and `task_list` tool routing in `ToolExecutionCoordinator::execute_on_pc_gateway` with response handling for `TaskStarted`, `TaskStopped`, and `TaskList`. Verification: `cargo check` green, `cargo test` 102 mobile / 118 core / 2 pc-host.
 
 - 2026-05-25 (Phase E1 — PC-workspace snapshot routing): Added `snapshot_create`, `snapshot_list`, and `snapshot_restore` tool routing to `execute_on_pc_gateway` in `ToolExecutionCoordinator`. Extended `gateway_response_to_tool_result` with `SnapshotRecord`, `SnapshotList`, and `SnapshotRestoreReport` response handling. PC workspace snapshots now route through the existing gateway RPC instead of failing with "not yet mapped". Verification: `cargo check` green, `cargo test` 102 mobile / 118 core / 2 pc-host.

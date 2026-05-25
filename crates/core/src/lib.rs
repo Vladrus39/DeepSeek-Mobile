@@ -10,6 +10,7 @@ pub mod approval_session_runtime;
 pub mod chat_input;
 pub mod config;
 pub mod context;
+pub mod durable_task;
 pub mod engine;
 pub mod events;
 pub mod executor;
@@ -54,6 +55,7 @@ pub use context::{
     estimate_messages_tokens, estimate_text_tokens, CompressionStrategy, ContextBudget,
     ContextCompressionPlan, ContextManager,
 };
+pub use durable_task::{DurableTaskManager, DurableTaskRecord, DurableTaskStatus};
 pub use engine::{
     EngineApprovalContinuationResult, EnginePendingApprovalSnapshot, EngineTurnResult, MobileEngine,
 };
