@@ -17,6 +17,7 @@ fn execution_mode_to_approval_mode(mode: &crate::config::ExecutionMode) -> Appro
 use crate::approval_card::ApprovalCardView;
 use crate::approval_session::{ApprovalSessionGrant, ApprovalSessionPolicy};
 use crate::events::{AgentEvent, ToolCallEvent, ToolResultEvent};
+use crate::pc_gateway::{PcGatewayResponse};
 use crate::pc_gateway_client::PcGatewayClient;
 use crate::runtime_store::ApprovalDecisionRecord;
 use crate::snapshots::{WorkspaceSnapshotRecord, WorkspaceSnapshotService};
@@ -265,7 +266,7 @@ pub async fn execute_approved_call_with_pc_gateway(
         &call.name,
         call.arguments.clone(),
     ));
-    let pre_snapshot = create_pre_tool_snapshot_if_needed(context, call)?;
+    let pre_snapshot = create_pre_tool_snapshot_if_needed(context, call, pc_gateway).await?;
     let mut coordinator = ToolExecutionCoordinator::new(registry);
     if let Some(client) = pc_gateway {
         coordinator = coordinator.with_pc_gateway(client);
@@ -292,11 +293,30 @@ pub fn decision_record(
     }
 }
 
-fn create_pre_tool_snapshot_if_needed(
+async fn create_pre_tool_snapshot_if_needed(
     context: &ToolContext,
     call: &ToolCallRequest,
+    pc_gateway: Option<&crate::pc_gateway_client::PcGatewayClient>,
 ) -> Result<Option<WorkspaceSnapshotRecord>> {
-    if !should_create_pre_tool_snapshot(call) || !supports_local_snapshots(context) {
+    if !should_create_pre_tool_snapshot(call) {
+        return Ok(None);
+    }
+
+    // PC gateway snapshot path
+    if context.workspace.executor == ExecutorKind::PcGateway {
+        if let Some(client) = pc_gateway {
+            let reason = format!("pre-tool snapshot before {} ({})", call.name, call.id);
+            match client.create_snapshot(&context.workspace.id, &reason).await {
+                Ok(PcGatewayResponse::SnapshotRecord(record)) => return Ok(Some(record)),
+                Ok(other) => return Ok(None), // unexpected response, skip
+                Err(_) => return Ok(None), // gateway error, skip snapshot
+            }
+        }
+        return Ok(None);
+    }
+
+    // Local snapshot path
+    if !supports_local_snapshots(context) {
         return Ok(None);
     }
 

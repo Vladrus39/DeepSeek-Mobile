@@ -371,6 +371,32 @@ impl PcGatewayClient {
         .await
     }
 
+    // ── Snapshot operations ──
+
+    pub async fn create_snapshot(
+        &self,
+        workspace_id: impl Into<String>,
+        reason: impl Into<String>,
+    ) -> Result<PcGatewayResponse> {
+        self.send(PcGatewayRequest::SnapshotCreate {
+            workspace_id: workspace_id.into(),
+            reason: reason.into(),
+        })
+        .await
+    }
+
+    pub async fn restore_snapshot(
+        &self, workspace_id: impl Into<String>, snapshot_id: impl Into<String>,
+    ) -> Result<PcGatewayResponse> {
+        self.send(PcGatewayRequest::SnapshotRestore {
+            workspace_id: workspace_id.into(), snapshot_id: snapshot_id.into(),
+        }).await
+    }
+
+    pub async fn list_snapshots(&self, workspace_id: impl Into<String>) -> Result<PcGatewayResponse> {
+        self.send(PcGatewayRequest::SnapshotList { workspace_id: workspace_id.into() }).await
+    }
+
     pub async fn send(&self, request: PcGatewayRequest) -> Result<PcGatewayResponse> {
         let mut errors = Vec::new();
         for endpoint in self.endpoint_plan() {

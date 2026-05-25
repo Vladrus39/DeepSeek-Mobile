@@ -313,6 +313,13 @@ impl MobileEngine {
             && !outcome.executed.is_empty()
             && turn.status == TurnStatus::Completed
         {
+            // PC gateway snapshot path
+            if let Some(ref client) = self.pc_gateway {
+                let _ = client.create_snapshot(&self.workspace.id, &format!(
+                    "post-turn auto snapshot after {} tools",
+                    outcome.executed.len()
+                )).await;
+            } else {
             let store_root = self
                 .workspace
                 .root
@@ -341,6 +348,7 @@ impl MobileEngine {
                     )?;
                 }
             }
+            } // close pc_gateway else block
         }
 
         // --- Auto-commit/push ---

@@ -445,6 +445,13 @@ async fn handle_gateway_request(state: &PcHostState, request: PcGatewayRequest) 
         PcGatewayRequest::GitBranch { workspace_id } => {
             git_text(&state.config, &workspace_id, "branch", &["branch", "--list"]).await
         }
+        PcGatewayRequest::SnapshotCreate { workspace_id, reason } => {
+            snapshot_create(&state.config, &workspace_id, &reason).await
+        }
+        PcGatewayRequest::SnapshotRestore { workspace_id, snapshot_id } => {
+            snapshot_restore(&state.config, &workspace_id, &snapshot_id).await
+        }
+        PcGatewayRequest::SnapshotList { workspace_id } => snapshot_list(&state.config, &workspace_id).await,
         PcGatewayRequest::OpenTerminal { workspace_id, cwd, environment_id: _ } => {
             open_terminal(state, &workspace_id, cwd.as_deref()).await
         }
@@ -1234,6 +1241,49 @@ async fn logs_handler(
     Ok(Json(log_ring.snapshot()))
 }
 
+// ── Snapshot handlers ──
+
+async fn snapshot_create(config: &PcHostConfig, workspace_id: &str, reason: &str) -> Result<PcGatewayResponse> {
+    let workspace = deepseek_mobile_core::Workspace::new(
+        workspace_id, workspace_id, config.workspace_root.clone(),
+        deepseek_mobile_core::ExecutorKind::PcGateway,
+    );
+    let store_root = config.workspace_root.join(".deepseek-mobile").join("snapshots");
+    let service = deepseek_mobile_core::WorkspaceSnapshotService::new(workspace, store_root);
+    let reason = reason.to_string();
+    let record = tokio::task::spawn_blocking(move || service.create_snapshot(reason))
+        .await
+        .map_err(|e| anyhow::anyhow!("snapshot create blocked: {}", e))??;
+    Ok(PcGatewayResponse::SnapshotRecord(record))
+}
+
+async fn snapshot_restore(config: &PcHostConfig, workspace_id: &str, snapshot_id: &str) -> Result<PcGatewayResponse> {
+    let workspace = deepseek_mobile_core::Workspace::new(
+        workspace_id, workspace_id, config.workspace_root.clone(),
+        deepseek_mobile_core::ExecutorKind::PcGateway,
+    );
+    let store_root = config.workspace_root.join(".deepseek-mobile").join("snapshots");
+    let service = deepseek_mobile_core::WorkspaceSnapshotService::new(workspace, store_root);
+    let sid = snapshot_id.to_string();
+    let report = tokio::task::spawn_blocking(move || service.restore_snapshot(&sid))
+        .await
+        .map_err(|e| anyhow::anyhow!("snapshot restore blocked: {}", e))??;
+    Ok(PcGatewayResponse::SnapshotRestoreReport(report))
+}
+
+async fn snapshot_list(config: &PcHostConfig, workspace_id: &str) -> Result<PcGatewayResponse> {
+    let workspace = deepseek_mobile_core::Workspace::new(
+        workspace_id, workspace_id, config.workspace_root.clone(),
+        deepseek_mobile_core::ExecutorKind::PcGateway,
+    );
+    let store_root = config.workspace_root.join(".deepseek-mobile").join("snapshots");
+    let service = deepseek_mobile_core::WorkspaceSnapshotService::new(workspace, store_root);
+    let records = tokio::task::spawn_blocking(move || service.list_snapshots())
+        .await
+        .map_err(|e| anyhow::anyhow!("snapshot list blocked: {}", e))??;
+    Ok(PcGatewayResponse::SnapshotList(records))
+}
+
 fn request_operation_name(request: &PcGatewayRequest) -> String {
     match request {
         PcGatewayRequest::Health => "health".to_string(),
@@ -1260,6 +1310,9 @@ fn request_operation_name(request: &PcGatewayRequest) -> String {
         PcGatewayRequest::GitPush { .. } => "git_push".to_string(),
         PcGatewayRequest::GitPull { .. } => "git_pull".to_string(),
         PcGatewayRequest::GitBranch { .. } => "git_branch".to_string(),
+        PcGatewayRequest::SnapshotCreate { .. } => "snapshot_create".to_string(),
+        PcGatewayRequest::SnapshotRestore { .. } => "snapshot_restore".to_string(),
+        PcGatewayRequest::SnapshotList { .. } => "snapshot_list".to_string(),
     }
 }
 

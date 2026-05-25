@@ -14,6 +14,7 @@
 //! requirement.
 
 use crate::executor::{CommandOutput, CommandRequest};
+use crate::snapshots::{WorkspaceRestoreReport, WorkspaceSnapshotRecord};
 use serde::{Deserialize, Serialize};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -567,6 +568,9 @@ pub enum PcGatewayRequest {
     GitPush { workspace_id: String, remote: Option<String>, branch: Option<String> },
     GitPull { workspace_id: String, remote: Option<String>, branch: Option<String> },
     GitBranch { workspace_id: String },
+    SnapshotCreate { workspace_id: String, reason: String },
+    SnapshotRestore { workspace_id: String, snapshot_id: String },
+    SnapshotList { workspace_id: String },
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -598,6 +602,9 @@ pub enum PcGatewayResponse {
     Diagnostics(Vec<PcDiagnostic>),
     GitText { operation: String, output: String },
     Error(PcGatewayError),
+    SnapshotRecord(WorkspaceSnapshotRecord),
+    SnapshotList(Vec<WorkspaceSnapshotRecord>),
+    SnapshotRestoreReport(WorkspaceRestoreReport),
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
