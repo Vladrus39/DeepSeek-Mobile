@@ -55,6 +55,8 @@ The host shell must repeatedly drain pending native commands from `NativeBridgeS
 
 ## Termux command flow
 
+The Rust/mobile settings UI now persists and activates a Termux workspace connection from an absolute Termux path such as `/data/data/com.termux/files/home/project`. The final Android host still needs device/emulator verification that this working directory reaches Termux correctly.
+
 The Termux bridge follows the official Termux `RUN_COMMAND` intent contract:
 
 - action: `com.termux.RUN_COMMAND`
@@ -101,6 +103,6 @@ Before marking Android host integration complete:
 
 - Pick one text/source file through Android picker; confirm it is copied into app-private storage and appears in the outgoing prompt.
 - Discover a running PC host over mDNS; confirm the active route is visible and can be persisted as a workspace.
-- Run a safe Termux command such as `pwd`; confirm stdout, stderr, exit code, and request id correlation are returned.
+- Save a valid Termux workspace path in Settings, run a safe Termux command such as `pwd`, and confirm stdout, stderr, exit code, request id correlation and working directory are returned.
 - Send a stale picker/discovery/Termux callback; confirm Rust rejects it and records an error instead of mutating active state.
 - Restart the app; confirm persisted settings and active PC workspace still load.

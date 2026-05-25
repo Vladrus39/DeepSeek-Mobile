@@ -23,6 +23,7 @@ use crate::tasks_panel::tasks_panel;
 use crate::tasks_state::TasksUiState;
 use crate::terminal_panel::terminal_panel;
 use crate::terminal_state::TerminalUiState;
+use crate::termux_state::TermuxWorkspaceState;
 use deepseek_mobile_core::{ApprovalCardView, ReviewDecision};
 use dioxus::prelude::*;
 
@@ -40,6 +41,7 @@ pub fn cockpit_section_panel(
     skills_state: Signal<SkillsUiState>,
     tasks_state: Signal<TasksUiState>,
     settings_state: Signal<SettingsFormState>,
+    termux_state: Signal<TermuxWorkspaceState>,
     on_approval_decision: EventHandler<(String, ReviewDecision)>,
 ) -> Element {
     match section {
@@ -143,7 +145,7 @@ pub fn cockpit_section_panel(
         CockpitSection::Mcp => mcp_panel(mcp_state),
         CockpitSection::Skills => skills_panel(skills_state),
         CockpitSection::Tasks => tasks_panel(tasks_state),
-        CockpitSection::Settings => settings_panel(settings_state),
+        CockpitSection::Settings => settings_panel(settings_state, termux_state),
     }
 }
 

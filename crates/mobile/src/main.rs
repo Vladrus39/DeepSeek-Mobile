@@ -41,6 +41,7 @@ mod tasks_panel;
 mod tasks_state;
 mod terminal_panel;
 mod terminal_state;
+mod termux_state;
 
 use agent_event_adapter::push_agent_event;
 use agent_timeline::MobileTimelineState;
@@ -68,6 +69,7 @@ use skills_state::SkillsUiState;
 use snapshots_state::SnapshotsUiState;
 use tasks_state::TasksUiState;
 use terminal_state::TerminalUiState;
+use termux_state::TermuxWorkspaceState;
 
 fn main() {
     dioxus::launch(app);
@@ -79,6 +81,7 @@ fn build_chrome_summary(
     approvals: usize,
     native_bridge: &NativeBridgeState,
     files: &ProjectFilesUiState,
+    termux: &TermuxWorkspaceState,
     diagnostics: &DiagnosticsUiState,
     git: &GitUiState,
     tasks: &TasksUiState,
@@ -103,6 +106,11 @@ fn build_chrome_summary(
             (
                 request.workspace_id.clone(),
                 format!("PC target pending: {}", request.workspace_root),
+            )
+        } else if termux.is_valid() {
+            (
+                termux.display_label(),
+                format!("Termux: {}", termux.workspace_path.trim()),
             )
         } else {
             (
@@ -178,6 +186,7 @@ fn app() -> Element {
     let git_state = use_signal(GitUiState::default);
     let mut terminal_state = use_signal(TerminalUiState::default);
     let mut settings_state = use_signal(SettingsFormState::default);
+    let termux_state = use_signal(TermuxWorkspaceState::default);
     let mcp_state = use_signal(McpUiState::default);
     let skills_state = use_signal(SkillsUiState::default);
     let mut onboarding_done = use_signal(|| {
@@ -365,6 +374,7 @@ fn app() -> Element {
         approval_cards().len(),
         &native_bridge(),
         &project_files_state(),
+        &termux_state(),
         &diagnostics_state(),
         &git_state(),
         &tasks_state(),
@@ -561,6 +571,7 @@ fn app() -> Element {
                         skills_state,
                         tasks_state,
                         settings_state,
+                        termux_state,
                         EventHandler::new(move |(approval_id, decision): (String, ReviewDecision)| {
                             let approval_id = approval_id.clone();
                             let decision = decision.clone();

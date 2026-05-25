@@ -4,6 +4,16 @@
 
 ## Completed in the latest tranche
 
+- Audited the user's latest local/GitHub work after `artifacts-log-capture-runtime-API` and kept it instead of redoing it.
+- Completed the Termux workspace selector slice:
+  - Settings now validates and saves an absolute Termux path;
+  - saving activates a persisted Termux `WorkspaceConnection` for future turns;
+  - invalid saved Termux configs are revalidated on load instead of being trusted.
+- Hardened the new core workspace import/export helper:
+  - ZIP import rejects `..`, absolute paths, Windows drive prefixes and backslash traversal;
+  - ZIP export emits portable `/` entry names and excludes `.deepseek-mobile` metadata;
+  - missing workspace roots now fail clearly before export.
+- Refreshed local docs to show that durable task artifacts/logs and PC-host runtime task HTTP endpoints are now implemented, while SSE/live task reconciliation and Android import/export UI remain open.
 - Audited the local `main` after four new local commits (`PhaseD2` → `PhaseG`) and confirmed the working tree was clean before continuing.
 - Verified the new local state before edits: `cargo check` and `cargo test` were green.
 - Added unified-diff compatibility to `apply_patch` while preserving the existing operation-batch API.
@@ -35,9 +45,11 @@
   - `deepseek-mobile-core tools::patch::tests`
   - `deepseek-mobile-core tool_execution::tests::remote_patch_operation_deserializes_normalized_unified_diff`
   - `deepseek-mobile terminal_state::tests`
-- Full workspace test target after this tranche:
-  - mobile: 109
-  - core: 153
+  - `deepseek-mobile termux_state::tests`
+  - `deepseek-mobile-core workspace_io::tests`
+- Full workspace test after this tranche:
+  - mobile: 120
+  - core: 166
   - pc-host: 2
 
 ## Current focus
@@ -45,9 +57,9 @@
 The remaining product gaps are concentrated around production integration and release readiness:
 
 1. final Dioxus Android host adapter and device/emulator verification;
-2. Termux workspace selector and Android import/export completion;
-3. runtime HTTP/SSE API over the stable runtime/task model;
-4. durable task artifacts/logs and PC-running-task reconciliation;
+2. Android import/export UI completion over the new core ZIP helpers;
+3. runtime SSE/live event streaming over the stable runtime/task model;
+4. PC-running-task reconciliation beyond task log capture;
 5. dev-server lifecycle, PC-host service/autostart and release/troubleshooting docs.
 
 ## Notes from the audit

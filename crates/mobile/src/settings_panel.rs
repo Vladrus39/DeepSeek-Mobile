@@ -1,8 +1,12 @@
 use crate::settings_state::{config_file_path, SettingsFormState};
+use crate::termux_state::TermuxWorkspaceState;
 use deepseek_mobile_core::config::{ExecutionMode, ExternalAccessMode, ModelMode, ThinkingLevel};
 use dioxus::prelude::*;
 
-pub fn settings_panel(mut state: Signal<SettingsFormState>) -> Element {
+pub fn settings_panel(
+    mut state: Signal<SettingsFormState>,
+    mut termux_state: Signal<TermuxWorkspaceState>,
+) -> Element {
     let s = state();
 
     rsx! {
@@ -166,6 +170,75 @@ pub fn settings_panel(mut state: Signal<SettingsFormState>) -> Element {
                     next.auto_commit_push = v;
                     state.set(next);
                 },
+            }
+
+            // ── Termux workspace ──
+            SectionCard { title: "Termux Workspace" }
+
+            {
+                let tws = termux_state.read();
+                let tws_path = tws.workspace_path.clone();
+                let tws_label = tws.label.clone();
+                let tws_err = tws.validation_error.clone();
+                let tws_saved = tws.saved;
+                let tws_is_valid = tws.is_valid();
+
+                rsx! {
+                    LabeledField {
+                        label: "Workspace path",
+                        help: "Absolute path in Termux, e.g. /data/data/com.termux/files/home/project",
+                        value: tws_path.clone(),
+                        password: false,
+                        oninput: move |v: String| {
+                            termux_state.write().set_path(v);
+                        },
+                    }
+                    LabeledField {
+                        label: "Label (optional)",
+                        help: "Human-readable name for this workspace",
+                        value: tws_label.clone(),
+                        password: false,
+                        oninput: move |v: String| {
+                            termux_state.write().set_label(v);
+                        },
+                    }
+
+                    if let Some(ref err) = tws_err {
+                        div {
+                            background_color: "#7f1d1d",
+                            border: "1px solid #dc2626",
+                            border_radius: "8px",
+                            padding: "6px 10px",
+                            font_size: "12px",
+                            color: "#fca5a5",
+                            "{err}"
+                        }
+                    }
+
+                    if tws_saved {
+                        div {
+                            font_size: "11px",
+                            color: "#6b7280",
+                            "Termux config saved."
+                        }
+                    }
+
+                    button {
+                        background_color: if tws_is_valid { "#059669" } else { "#374151" },
+                        color: "white",
+                        border: if tws_is_valid { "1px solid #10b981" } else { "1px solid #4b5563" },
+                        border_radius: "8px",
+                        padding: "6px 12px",
+                        font_size: "13px",
+                        font_weight: "bold",
+                        margin_top: "4px",
+                        disabled: !tws_is_valid,
+                        onclick: move |_| {
+                            termux_state.write().save();
+                        },
+                        if tws_is_valid { "Save and activate Termux workspace" } else { "Enter Termux workspace path" }
+                    }
+                }
             }
 
             // ── Toast ──

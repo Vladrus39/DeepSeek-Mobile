@@ -316,8 +316,8 @@ Remaining checklist:
 - [x] Emit and queue Termux `exec_shell` native requests from the real tool route.
 - [x] Close Rust/mobile Termux result continuation through final tool/model output plumbing.
 - [ ] Verify final Android host drain/callback flow on device/emulator.
-- [ ] Add Termux workspace selector.
-- [ ] Add Android file import/export flow.
+- [x] Add Termux workspace selector.
+- [ ] Add Android file import/export UI flow over core ZIP helpers.
 - [ ] Add PDF/DOCX/OCR ingestion later behind safe limits.
 
 Acceptance criteria:
@@ -335,8 +335,9 @@ Checklist:
 - [x] Add queue and task lifecycle: queued/running/completed/failed/canceled.
 - [x] Add mobile task manager UI.
 - [x] Reuse PC task detection.
-- [ ] Add artifacts and logs per task.
-- [ ] Add HTTP/SSE runtime API only after core task model is stable.
+- [x] Add artifacts and logs per task.
+- [x] Add HTTP task list/log runtime API.
+- [ ] Add SSE/live runtime event streaming after core task model is stable.
 
 Acceptance criteria:
 
@@ -395,8 +396,8 @@ Acceptance criteria:
 | Shell execution | Route to PC/Termux | Partial: PC-host active and Rust/mobile Termux continuation done; final Android host verification pending |
 | Git tools | Keep with mobile UI | Done: core/PC routing, panel actions and auto-commit lifecycle are wired |
 | Web/search/fetch | Keep with approval | Done in core with network capability and approval policy |
-| Runtime HTTP/SSE API | Keep later | Missing |
-| Durable task queue | Keep | Partial: records, lifecycle, PC task RPC and mobile UI done; artifacts/logs pending |
+| Runtime HTTP/SSE API | Keep later | Partial: task list/log HTTP endpoints done; SSE/live events pending |
+| Durable task queue | Keep | Partial: records, lifecycle, PC task RPC, artifacts/logs and mobile UI done; live reconciliation pending |
 | LSP diagnostics | Keep, PC-first plus local/Termux fallback | Partial: Rust/TypeScript/Python providers, UI metadata and next-turn model context implemented |
 | PC connectivity | Keep multi-transport, offline-first | Partial: endpoint candidates, failover, health, discovery, reconnect controls, persisted active route and remote-aware Files are implemented |
 | Snapshots/rollback | Keep, mobile-safe file-copy | Done for local and PC-gateway snapshot create/list/restore paths |
@@ -443,8 +444,13 @@ The next implementation sequence is fixed:
 27. [x] Add mobile task manager UI.
 28. [x] Add MCP/skills.
 29. [x] Add `apply_patch` unified-diff compatibility.
+30. [x] Add durable task artifacts/log capture and PC-host runtime task HTTP endpoints.
+31. [x] Add Termux workspace selector with runtime activation.
+32. [x] Add core ZIP workspace import/export helpers.
 
 ## 5. Implementation progress log
+- 2026-05-25 (Phase I — Termux workspace activation + workspace IO hardening): Audited the user's `artifacts-log-capture-runtime-API` work and kept the durable task artifact/log + PC-host runtime task HTTP API instead of duplicating it. Added a Settings Termux workspace selector that validates absolute Termux paths, persists `termux_workspace.json`, activates a Termux `WorkspaceConnection`, and revalidates saved configs on load. Added `workspace_io` core ZIP import/export helpers with path traversal hardening, Windows/absolute path rejection, portable ZIP names, missing-root errors and `.deepseek-mobile` metadata exclusion. Verification: `cargo +stable-x86_64-pc-windows-msvc check --workspace --all-targets` green; `cargo +stable-x86_64-pc-windows-msvc test --workspace` passed with 120 mobile / 166 core / 2 pc-host tests.
+
 - 2026-05-25 (Phase H — apply_patch unified diff + docs/runtime hardening): Added unified-diff compatibility to `apply_patch` while preserving operation batches; PC-gateway apply_patch now normalizes unified diffs into the same safe operation model before remote execution. Hardened active-PC Files browsing to use the real `WorkspaceConnection.workspace_id`, fixed one-shot terminal UI-state restore and save-directory creation, sorted skills discovery for deterministic Linux CI duplicate-name handling, cleaned fresh warnings in touched code, and refreshed README/status/roadmap/audit docs after auditing the local PhaseD2–PhaseG commits. Verification: targeted patch/terminal tests green; full workspace verification target is 108 mobile / 152 core / 2 pc-host.
 
 - 2026-05-25 (Phase G — MCP and skills complete): Added `SkillManifest`/`SkillRegistry` frontmatter parser with multi-path discovery, `McpClientRegistry`/`McpServerConfig`/`McpTransport` with JSON persistence, `SkillsUiState`/`skills_panel` and `McpUiState`/`mcp_panel` Dioxus UI components, `CockpitSection::Mcp` and `CockpitSection::Skills` in drawer/navbar, full wiring through `main.rs` → `cockpit_section_panel`. All P7 checklist items closed: local skills format, bundled discovery paths, plugin host model, MCP client registry (stdio + http-sse), MCP UI, Skills UI. Verification: `cargo check` green, `cargo test --workspace` 134 core / 102 mobile / 2 pc-host (14 new tests: 7 skills + 7 mcp).

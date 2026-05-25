@@ -36,6 +36,7 @@ pub mod workspace_connection;
 pub mod workspace_connection_store;
 pub mod workspace_diagnostics;
 pub mod workspace_files;
+pub mod workspace_io;
 
 pub use agent::DeepSeekAgent;
 pub use api_client::{DeepSeekClient, Message, StreamDelta};

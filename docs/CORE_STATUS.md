@@ -7,8 +7,8 @@
 - `cargo +stable-x86_64-pc-windows-msvc check --workspace --all-targets` — green
 - `cargo +stable-x86_64-pc-windows-msvc test --workspace` — green
 - Tests:
-  - mobile: 109
-  - core: 153
+  - mobile: 120
+  - core: 166
   - pc-host: 2
 
 ## Core crate
@@ -28,7 +28,9 @@
 - Latest diagnostics injection into the next model turn
 - Auto snapshot hooks, including PC-gateway snapshot RPC routing
 - Workspace connection model + persistent store
-- Durable task records and JSON-backed lifecycle manager
+- Durable task records, JSON-backed lifecycle manager, artifacts and logs
+- Runtime task HTTP endpoints in PC-host for task list and task log retrieval
+- Core ZIP workspace import/export helpers with archive path hardening
 - MCP server config registry and local skills manifest registry
 - Public Termux execution request/result contract
 - Termux-workspace `exec_shell` emits native pending request metadata instead of a local placeholder
@@ -58,6 +60,7 @@
 - MCP panel
 - Skills panel
 - Bottom navigation and cockpit layout
+- Termux workspace selector in Settings
 
 ### Important wiring completed
 
@@ -67,13 +70,14 @@
 - Future `MobileRuntimeConfig::default()` calls restore the saved active workspace.
 - New pairing requests use a generated token instead of an empty token.
 - Termux commands have Rust bridge queue/callback correlation, timeline routing, automatic queue extraction from pending tool-result metadata, and model continuation after callback result.
+- Saving the Termux workspace selector activates a persisted Termux runtime connection for future turns.
 - Android host integration notes document the native bridge contract boundaries.
 
 ### Still partial
 
 - Native Android host integration is not complete/verified.
 - Terminal UI history persists, but live terminal process resurrection after app restart is not claimed.
-- Durable task UI is backed by local records; artifacts/logs and live PC-running-task reconciliation remain.
+- Durable task UI is backed by local records/artifacts/logs; live PC-running-task reconciliation remains.
 
 ## Android bridge module
 
@@ -88,7 +92,7 @@
 
 - Final Dioxus Android host adapter that drains Rust commands and forwards Kotlin callbacks.
 - Manual emulator/device verification against the final host shell.
-- Android import/export completion beyond chat attachment ingestion.
+- Android import/export UI completion beyond chat attachment ingestion; core ZIP helpers are already present.
 
 ## PC-host crate
 
@@ -112,12 +116,12 @@
 
 - Dev-server preview lifecycle
 - Autostart/service installer
-- Durable task artifact/log capture
+- PC-running-task reconciliation and richer runtime live updates
 
 ## Highest-priority gaps
 
 1. Final Android host adapter + emulator/device verification
-2. Termux workspace selector and Android import/export completion
-3. Runtime HTTP/SSE API
-4. Durable task artifacts/logs + PC-running-task synchronization
+2. Android import/export UI completion
+3. Runtime SSE/live event streaming
+4. PC-running-task synchronization/reconciliation
 5. Release packaging and troubleshooting docs

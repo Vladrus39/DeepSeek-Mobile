@@ -9,7 +9,7 @@ This document defines how DeepSeek-Mobile should work across Android, Termux, a 
 The Android app is the primary user interface and orchestration layer. Execution backends are selectable per workspace:
 
 1. **Phone app local workspace** — app-private files, attachments, approvals, snapshots and model orchestration.
-2. **Phone + Termux workspace** — Android-local command execution through Termux after approval.
+2. **Phone + Termux workspace** — Android-local command execution through a saved Termux workspace after approval.
 3. **Phone + PC Host workspace** — the phone controls the agent while the PC executes file, shell, git, diagnostics, terminal and task operations inside the granted project.
 4. **Remote runtime later** — same idea as PC Host, but over a remote runtime when explicitly configured.
 
@@ -20,7 +20,7 @@ The PC is not required for the app to launch or chat. The PC is required for the
 | Mode | What works | Main limits | Best use |
 |---|---|---|---|
 | Android app only | Chat, attachments, app-private workspace files, approvals, snapshots, patching, model planning | No normal local shell executor; git/build/test depends on binaries being available in the app environment, which should not be assumed | Review, planning, small file edits, attachment-based work |
-| Android + Termux | Local Android coding with approved shell commands, git/build/test if installed in Termux | User must install/configure Termux packages; Android permissions and external app settings must be correct | Phone-only coding for small/medium repos |
+| Android + Termux | Local Android coding with a saved Termux workspace, approved shell commands, git/build/test if installed in Termux | User must install/configure Termux packages; Android permissions and external app settings must be correct; final host verification is still pending | Phone-only coding for small/medium repos |
 | Android + PC Host | Full workstation execution from phone UI: files, git, tests, builds, diagnostics, terminal, long tasks | Requires paired PC host running and reachable over LAN/direct/tunnel | Main recommended pro workflow |
 | Android + existing DeepSeek-TUI | Optional config/skills compatibility only | Do not drive the TUI UI or depend on its internals | Migration/interoperability, not core runtime |
 
@@ -164,23 +164,25 @@ Implemented:
 - PC file/git/shell/diagnostics/snapshot/task routing.
 - Mobile files/git/tasks/MCP/skills panels.
 - Termux request queue and model continuation after callback.
+- Termux workspace selector in Settings with persistent runtime activation.
+- Durable task artifacts/log capture and PC-host runtime task HTTP endpoints.
+- Core ZIP workspace import/export helpers.
 
 Still needed:
 
 - final Dioxus Android host adapter;
 - device/emulator verification of bridge callbacks;
-- Termux workspace selector;
-- Android project import/export flow;
+- Android project import/export UI flow;
 - PC Host release package that includes or installs the host binary;
 - optional PC service/autostart installer;
-- runtime HTTP/SSE API;
-- durable task artifacts/log capture and live PC-running-task synchronization.
+- runtime SSE/live event streaming;
+- live PC-running-task synchronization/reconciliation.
 
 ## Recommended next implementation order
 
 1. Update Android host integration docs to reflect that Rust/mobile Termux continuation is already done, leaving final host adapter/device verification.
 2. Add PC Host bootstrap/release plan: bundled binary first, PATH fallback second, explicit install third.
 3. Implement final Dioxus/native host adapter contract.
-4. Add Termux workspace selector.
-5. Add Android project import/export.
-6. Add runtime HTTP/SSE API only after the host/runtime boundaries are stable.
+4. Add Android project import/export UI over the core ZIP helpers.
+5. Add runtime SSE/live event streaming only after the host/runtime boundaries are stable.
+6. Add PC-running-task reconciliation and release packaging.

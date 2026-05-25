@@ -62,8 +62,8 @@
 - [x] Rust/mobile Termux result continuation back into the model
 - [ ] Final Dioxus Android host adapter
 - [ ] Device/emulator verification of host bridge callbacks
-- [ ] Termux workspace selector
-- [ ] Android import/export completion
+- [x] Termux workspace selector
+- [ ] Android import/export UI completion
 
 ## Phase 6 — Product completion 🔄
 
@@ -72,8 +72,10 @@
 - [x] MCP/skills config and UI layer
 - [x] PC pairing launchers prefer bundled `deepseek-pc-host` and fall back to PATH
 - [x] Mobile cockpit chrome: live API/PC/workspace status and dynamic nav badges
-- [ ] Durable task artifacts/logs and PC-running-task synchronization
-- [ ] Runtime HTTP/SSE API
+- [x] Durable task artifacts/logs
+- [x] Runtime HTTP task API
+- [ ] Runtime SSE/live event streaming
+- [ ] PC-running-task synchronization/reconciliation
 - [ ] PC-host release package includes matching host binary / explicit installer
 - [ ] Real Android visual verification through Dioxus CLI and device/emulator
 - [ ] Release packaging and troubleshooting docs

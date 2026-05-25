@@ -6,7 +6,7 @@
 
 The mobile UI is no longer a rough mock. It contains the main cockpit surfaces required for the coding agent:
 
-- onboarding and settings;
+- onboarding and settings, including Termux workspace activation;
 - chat timeline and approval cards;
 - Files, Snapshots, Diagnostics, PC Host, Terminal, Git, Tasks, MCP and Skills panels;
 - native bridge status banners for Android callbacks;
@@ -15,7 +15,7 @@ The mobile UI is no longer a rough mock. It contains the main cockpit surfaces r
 The latest UI pass tightened the global chrome so the app no longer shows misleading static status:
 
 - top status chips show API and PC state;
-- the active workspace/project is visible in the main header and drawer;
+- the active workspace/project is visible in the main header and drawer, including a saved Termux workspace when no PC workspace is active;
 - drawer and bottom navigation badges are driven by live state: PC, approvals, diagnostics, dirty Git files, running tasks and native-callback waiting;
 - bottom navigation is horizontally scrollable instead of squeezing nine actions into a fixed phone width;
 - the old invalid `space_around` CSS value was removed.
@@ -57,7 +57,7 @@ Current local blocker for visual device verification:
 2. Add Android Rust targets required by the Dioxus Android build.
 3. Run `dx serve --platform android` against an emulator or device.
 4. Verify these flows manually:
-   - onboarding and settings save;
+   - onboarding, settings save and Termux workspace activation;
    - chat send and streaming timeline;
    - approval card review;
    - Files panel local and active-PC browsing;
