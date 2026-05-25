@@ -19,6 +19,7 @@
   - parent directories are created before saving;
   - restored sessions are intentionally marked closed after restart;
   - truncation markers now report the real number of dropped output lines.
+- Fixed Linux CI-only nondeterminism in skills discovery by sorting discovered `SKILL.md` paths before duplicate-name resolution.
 - Cleaned fresh warning/noise in touched code (`tool_loop`, Files panel/state, task panel CSS values, `main.rs` unused bindings).
 - Updated local documentation to reflect what was already completed while I was away: PC snapshots, remote-aware Files, durable tasks, task UI, MCP/skills registry/UI, terminal UI-state persistence, and Termux continuation.
 

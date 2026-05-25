@@ -184,6 +184,7 @@ fn walk_skill_dirs(root: &Path) -> Result<Vec<PathBuf>> {
             }
         }
     }
+    results.sort();
     Ok(results)
 }
 
