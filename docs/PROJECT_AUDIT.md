@@ -6,14 +6,14 @@
 
 ## Executive summary
 
-DeepSeek-Mobile has moved beyond a prototype. The project now has a real mobile-first runtime, a functioning PC gateway, approvals, snapshots, diagnostics, persisted settings, and a mostly complete tool layer.
+DeepSeek-Mobile has moved beyond a prototype. The project now has a real mobile-first runtime, functioning PC gateway, approvals, snapshots, diagnostics, persisted settings, Git/GitHub tooling, durable task records, task UI, MCP/skills registry surfaces, and a mostly complete cockpit UI.
 
-The main remaining work is no longer “port the basics from the TUI.” It is now about **closing integration gaps**:
+The main remaining work is no longer “port the basics from the TUI.” It is now about **production closure**:
 
-- make native Android and Termux execution fully real;
-- connect already-written subsystems to the main lifecycle;
-- replace a few visual placeholders with real runtime-backed behavior;
-- add durable orchestration features that still do not exist.
+- verify and harden the final Android host adapter;
+- finish Android/Termux workspace selection and import/export flows;
+- expose the runtime/task model through a controlled API;
+- add release packaging and troubleshooting material.
 
 ## What is solidly implemented
 
@@ -25,14 +25,16 @@ The main remaining work is no longer “port the basics from the TUI.” It is n
 - Workspace boundaries and tool capability gating
 - Saved mobile settings applied to real turns and approval continuations
 - GitHub token propagation from saved settings into the tool context
+- Model routing and context fitting wired into turn orchestration
 
 ### Tools and editing
 
 - File read/write/edit/delete/copy/move/list
-- `apply_patch`
+- `apply_patch` operation batches and unified-diff input
 - Shell, git, web, GitHub tools
 - Snapshot create/list/restore
 - Pre-tool and post-turn snapshot hooks
+- Auto-commit/push lifecycle when enabled
 
 ### PC execution path
 
@@ -44,57 +46,53 @@ The main remaining work is no longer “port the basics from the TUI.” It is n
 - Git operations
 - Terminal sessions
 - Host logs and health
+- PC snapshot RPC routing
+- Background task start/stop/list RPC routing
 - Rust / TypeScript / Python diagnostics
 
 ### Mobile surfaces
 
 - Chat timeline and approval cards
 - Onboarding/settings
-- Files, snapshots, diagnostics, terminal, PC host, and Git panels
+- Files with real tree/preview, real pending diffs, and active-PC-aware browsing
+- Snapshots, diagnostics, terminal, PC host, Git, tasks, MCP, and Skills panels
 - Native bridge contracts for document picker, discovery, terminal, sharing, and Termux `RUN_COMMAND` execution
+- Termux result continuation from callback output back into the model turn
 
 ## Important improvements completed in the latest tranche
 
-1. **Persisted settings now matter at runtime.**
+1. **Later-phase local commits were audited before continuing.**
 
-   Before this, UI settings were saved but normal turns and approval continuations still rebuilt the engine with defaults.
+   The local branch already contained durable tasks, task UI, PC snapshot routing, remote-aware Files, MCP/skills UI and terminal persistence work. The audit avoided duplicating those features.
 
-2. **Pairing now activates a real workspace.**
+2. **`apply_patch` now accepts unified diffs.**
 
-   Online discovery promotes an active route, the pairing screen can build a `WorkspaceConnection`, and “Open PC workspace” persists it. Future turns reload that connection through `MobileRuntimeConfig`.
+   The tool still uses the safe operation model internally, but callers can now provide standard unified diff text through `unified_diff` or `patch`. PC-gateway routing normalizes the same input before remote execution.
 
-3. **Diagnostics reporting is more truthful and model-readable.**
+3. **PC-aware Files routing was hardened.**
 
-   Multi-provider local diagnostics no longer collapse unrelated states into a misleading empty/unavailable result. Latest diagnostics are now stored in session state and injected into the next model turn.
+   The Files panel now passes the active `WorkspaceConnection.workspace_id` into PC-gateway file reads/lists instead of accidentally using the display root as the workspace id.
 
-4. **Termux bridge contract moved from scaffold to native adapter.**
+4. **Terminal UI-state persistence was made safer.**
 
-   Rust mobile bridge state can now queue Termux commands and correlate callbacks, while the Android bridge module can build `RUN_COMMAND` intents and parse result bundles.
+   Saved terminal sessions load only once, save directories are created, restored sessions come back closed, and output truncation reports the real dropped-line count.
 
-5. **Termux `exec_shell` now reaches the native command queue.**
+5. **Documentation was brought back in sync.**
 
-   Approved `exec_shell` calls on a Termux workspace now produce structured `TermuxExecRequest` metadata. The mobile layer extracts that metadata from tool-result events and queues `NativeMobileCommand::RunTermuxCommand` instead of returning the old shell placeholder.
-
-6. **Pairing no longer defaults to an empty auth token.**
-
-   New pairing requests use a generated token.
+   README, project status, roadmap, core status, progress log and master plan now reflect the completed PC snapshots, tasks, MCP/skills, Termux continuation, remote Files and unified-diff work.
 
 ## Partial implementations that still need completion
 
 | Area | Current reality | What remains |
 |---|---|---|
-| Git UI | Real status/diff/branch/commit/push/pull actions are wired through existing tool routes | Add auto-commit lifecycle integration |
-| Files diff UI | Tree and file preview are real | Replace illustrative diff preview with actual patch/project diff data |
-| Terminal | UI + host sessions exist | Persist sessions and finish Android runtime wiring |
-| Termux | Rust/Kotlin bridge contract plus core-to-mobile native request queue exists | Drain commands in the final Android host and feed callbacks back into final tool output |
-| Android bridge | Kotlin/Rust contracts plus host integration notes exist | Final Dioxus Android host integration and manual verification |
-| Diagnostics | Hooks, providers, UI metadata and next-turn injection exist | Keep expanding provider coverage as needed |
-| Snapshots | Local path is integrated | Add PC-gateway snapshot path |
-| Model routing | `ModelRouter` exists | Use it in actual turn orchestration |
-| Context management | `ContextManager` exists | Use it in actual prompt assembly |
-| Auto-commit | Helper exists | Invoke it from successful-turn lifecycle when enabled |
-| Background tasks | Some host task detection exists | Add durable task records, queue, UI, and artifacts |
-| Extensibility | Not yet present | Add runtime API, MCP, plugins, skills |
+| Android host | Rust/Kotlin bridge contracts and integration notes exist | Final Dioxus host adapter and emulator/device verification |
+| Termux | Native request queue, callback correlation and model continuation exist | Termux workspace selector and final host verification |
+| Android files | Chat attachment ingestion exists | Project import/export flow |
+| Terminal | PC-host sessions and persisted mobile UI history exist | Live terminal process resurrection is not claimed; service-level behavior can be improved later |
+| Durable tasks | Core records, queue lifecycle, PC task RPCs and mobile UI exist | Artifacts/log capture and live PC-running-task synchronization |
+| MCP/skills | Registry/config/UI/context surfaces exist | Actual external MCP tool execution must be added carefully behind approval/workspace boundaries |
+| Runtime API | Internal runtime/task model exists | Public HTTP/SSE API still missing |
+| Packaging | Development flow works | Android release notes, PC-host binary/service notes and troubleshooting docs |
 
 ## Comparison with DeepSeek-TUI
 
@@ -103,25 +101,25 @@ The main remaining work is no longer “port the basics from the TUI.” It is n
 | Streaming | Done |
 | Approval workflow | Done |
 | File editing | Done |
-| Patch application | Done |
-| Shell execution | Done through PC-host; Termux now queues native requests but result continuation is still incomplete |
-| Git tooling | Core and mobile panel actions done; auto-commit lifecycle pending |
+| Patch application | Done, including unified diff compatibility |
+| Shell execution | PC-host done; Termux Rust/mobile continuation done; final Android host verification pending |
+| Git tooling | Core, PC routing, mobile panel actions and auto-commit lifecycle done |
 | Web/GitHub tools | Done in core |
 | Diagnostics | Providers and model reinjection done |
-| Snapshots | Local done; remote pending |
+| Snapshots | Local and PC-gateway paths done |
 | Runtime API | Missing |
-| Durable tasks | Missing |
-| MCP/skills/plugins | Missing |
-| Android-native execution | Partial |
+| Durable tasks | Partial: records/queue/UI/RPC done; artifacts/logs pending |
+| MCP/skills/plugins | Partial: registry/config/UI/context surfaces done; external tool execution pending |
+| Android-native execution | Partial: contracts done, final host adapter pending |
 
 ## Recommended next execution order
 
-1. Finish final Android host integration and close Termux callback/result-continuation.
-2. Wire engine auto-commit.
-3. Replace fake diff preview with real pending/project diff data.
-4. Add remote snapshots and terminal persistence.
-5. Add durable tasks, runtime API, then extensibility.
+1. Final Dioxus Android host adapter and emulator/device verification.
+2. Termux workspace selector plus Android project import/export.
+3. Runtime HTTP/SSE API over existing runtime/task state.
+4. Durable task artifacts/log capture and live PC-running-task reconciliation.
+5. Dev-server lifecycle, PC-host service/autostart and release/troubleshooting docs.
 
 ## Audit conclusion
 
-The project is now in a good place architecturally. The risk is no longer lack of capability; it is **capability drift** — features that exist in code but are not yet fully connected end-to-end. The right strategy is to keep finishing vertical slices, not start broad new subsystems before the current ones are truly closed.
+The project is architecturally coherent. The main risk is now **capability drift**: implemented subsystems can become misleading if docs/UI claim more than the runtime really verifies. The right strategy is to keep closing vertical slices with tests, documentation and GitHub synchronization at each stable checkpoint.

@@ -80,6 +80,7 @@ fn app() -> Element {
     let mut timeline = use_signal(MobileTimelineState::default);
     let mut approval_cards = use_signal(Vec::<ApprovalCardView>::new);
     let mut did_load_saved_runtime = use_signal(|| false);
+    let mut did_load_terminal_state = use_signal(|| false);
     let mut picker = use_signal(DocumentPickerState::default);
     let mut native_bridge = use_signal(NativeBridgeState::default);
     let mut is_loading = use_signal(|| false);
@@ -88,12 +89,12 @@ fn app() -> Element {
     let pc_pairing_state = use_signal(PcPairingUiState::default);
     let project_files_state = use_signal(ProjectFilesUiState::default);
     let mut snapshots_state = use_signal(SnapshotsUiState::default);
-    let mut tasks_state = use_signal(TasksUiState::default);
+    let tasks_state = use_signal(TasksUiState::default);
     let mut diagnostics_state = use_signal(DiagnosticsUiState::default);
     let git_state = use_signal(GitUiState::default);
     let mut terminal_state = use_signal(TerminalUiState::default);
     let mut settings_state = use_signal(SettingsFormState::default);
-    let mut mcp_state = use_signal(McpUiState::default);
+    let mcp_state = use_signal(McpUiState::default);
     let skills_state = use_signal(SkillsUiState::default);
     let mut onboarding_done = use_signal(|| {
         if let Some(config) = load_saved_config() {
@@ -114,10 +115,8 @@ fn app() -> Element {
     let termux_continuation_bridge = native_bridge;
     let termux_continuation_settings = settings_state;
     let termux_continuation_timeline = timeline;
-    let termux_continuation_snapshots = snapshots_state;
-    let termux_continuation_diagnostics = diagnostics_state;
     let termux_continuation_cards = approval_cards;
-    let mut termux_continuation_loading = is_loading;
+    let termux_continuation_loading = is_loading;
     use_effect(move || {
         let event = termux_continuation_bridge().last_event.clone();
         if let Some(NativeMobileEvent::TermuxCommandCompleted(result)) = event {
@@ -241,11 +240,14 @@ fn app() -> Element {
         }
     }
 
-    // Load saved terminal sessions
-    let terminal_persistence_path = std::path::PathBuf::from(".deepseek-mobile").join("terminal_state.json");
-    if terminal_persistence_path.exists() {
-        if let Ok(saved_terminal) = TerminalUiState::load_from_file(&terminal_persistence_path) {
-            terminal_state.set(saved_terminal);
+    if !did_load_terminal_state() {
+        did_load_terminal_state.set(true);
+        let terminal_persistence_path =
+            std::path::PathBuf::from(".deepseek-mobile").join("terminal_state.json");
+        if terminal_persistence_path.exists() {
+            if let Ok(saved_terminal) = TerminalUiState::load_from_file(&terminal_persistence_path) {
+                terminal_state.set(saved_terminal);
+            }
         }
     }
 

@@ -97,11 +97,16 @@ impl TerminalUiState {
         let mut compact = self.clone();
         for session in &mut compact.sessions {
             if session.output.len() > MAX_OUTPUT_LINES {
+                let truncated = session.output.len() - MAX_OUTPUT_LINES;
                 let keep = session.output.split_off(session.output.len() - MAX_OUTPUT_LINES);
-                // Insert a marker at the start
                 session.output = keep;
-                session.output.insert(0, format!("...[{} lines truncated]...", session.output.len().saturating_sub(MAX_OUTPUT_LINES + 1)));
+                session
+                    .output
+                    .insert(0, format!("...[{} lines truncated]...", truncated));
             }
+        }
+        if let Some(parent) = path.as_ref().parent() {
+            std::fs::create_dir_all(parent)?;
         }
         let json = serde_json::to_string_pretty(&compact)?;
         std::fs::write(path.as_ref(), json)?;
@@ -165,5 +170,29 @@ mod tests {
 
         state.select_session("term-a");
         assert_eq!(state.selected_session_id.as_deref(), Some("term-a"));
+    }
+
+    #[test]
+    fn persistence_marks_sessions_closed_after_restart() {
+        let path = std::env::temp_dir().join(format!(
+            "deepseek-terminal-state-{}-{}.json",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+
+        let mut state = TerminalUiState::default();
+        state.add_session(test_session("term-a"));
+        state.append_output("term-a", "hello");
+        state.save_to_file(&path).unwrap();
+
+        let loaded = TerminalUiState::load_from_file(&path).unwrap();
+        assert_eq!(loaded.sessions.len(), 1);
+        assert!(!loaded.sessions[0].is_open);
+        assert!(loaded.selected_session_id.is_none());
+
+        let _ = std::fs::remove_file(path);
     }
 }

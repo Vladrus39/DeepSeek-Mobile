@@ -4,43 +4,56 @@ use crate::project_files_state::{FileBrowserBackend, ProjectFilesUiState};
 use deepseek_mobile_core::{ApprovalCardView, PcGatewayClient};
 use dioxus::prelude::*;
 
+#[derive(Clone)]
+pub struct PcFileBrowserConnection {
+    pub client: PcGatewayClient,
+    pub workspace_id: String,
+    pub workspace_root: String,
+}
+
 pub fn project_files_panel(
     mut state: Signal<ProjectFilesUiState>,
     approval_cards: Vec<ApprovalCardView>,
-    pc_gateway_client: Option<PcGatewayClient>,
+    pc_gateway_connection: Option<PcFileBrowserConnection>,
 ) -> Element {
-    let mut remote_refreshed = use_signal(|| false);
-    let mut nav_version = use_signal(|| 0u64);
+    let needs_backend_switch = pc_gateway_connection.is_some() != state().is_pc_backend();
 
-    // Trigger a refresh when loaded becomes false (navigation happened).
-    if !state().loaded {
-        let nav_ver = *nav_version.peek();
-        if let Some(ref pc_client) = pc_gateway_client {
-            if state().is_pc_backend() || !*remote_refreshed.peek() {
-                let client = pc_client.clone();
-                let wid = state().workspace_root.clone();
-                let mut st = state;
-                spawn(async move {
-                    let mut s = st();
-                    if s.refresh_via_pc(&client, &wid).await {
-                        // success
-                    } else {
-                        s.set_backend(FileBrowserBackend::Local);
-                        s.refresh();
-                    }
-                    st.set(s);
-                });
-            }
+    // Trigger a refresh when the panel is first opened, navigation happened, or
+    // the active backend changed between local and PC gateway.
+    if !state().loaded || needs_backend_switch {
+        if let Some(pc_connection) = pc_gateway_connection.clone() {
+            let mut pending = state();
+            pending.workspace_root = pc_connection.workspace_root.clone();
+            pending.set_backend(FileBrowserBackend::PcGateway {
+                workspace_id: pc_connection.workspace_id.clone(),
+            });
+            pending.loaded = true;
+            state.set(pending);
+
+            let mut st = state;
+            let approval_cards_for_refresh = approval_cards.clone();
+            spawn(async move {
+                let mut s = st();
+                if !s
+                    .refresh_via_pc(&pc_connection.client, &pc_connection.workspace_id)
+                    .await
+                {
+                    s.workspace_root = ".".to_string();
+                    s.set_backend(FileBrowserBackend::Local);
+                    s.refresh();
+                }
+                s.set_pending_diffs(&approval_cards_for_refresh);
+                st.set(s);
+            });
         } else {
             // No PC client available – revert to local backend.
             let mut next = state();
+            next.workspace_root = ".".to_string();
             next.set_backend(FileBrowserBackend::Local);
             next.refresh();
             next.set_pending_diffs(&approval_cards);
             state.set(next);
         }
-        // Mark refreshed so we don't re-spawn on every render.
-        remote_refreshed.set(true);
     }
 
     let snapshot = state().snapshot.clone();
@@ -72,7 +85,7 @@ pub fn project_files_panel(
                     "{error}"
                 }
             }
-            {tree_card(&snapshot, selected_path.as_deref(), state, pc_gateway_client.clone())}
+            {tree_card(&snapshot, selected_path.as_deref(), state, pc_gateway_connection.clone())}
             {file_preview_card(preview.as_ref())}
             {diff_preview_card(&state(), &approval_cards)}
         }
@@ -162,10 +175,9 @@ fn tree_card(
     snapshot: &ProjectTreeSnapshot,
     selected_path: Option<&str>,
     mut state: Signal<ProjectFilesUiState>,
-    pc_gateway_client: Option<PcGatewayClient>,
+    pc_gateway_connection: Option<PcFileBrowserConnection>,
 ) -> Element {
     let browsing_dir = state().browsing_dir.clone();
-    let is_pc = state().is_pc_backend();
 
     rsx! {
         div {
@@ -221,17 +233,16 @@ fn tree_card(
                             onclick: {
                                 let path = entry.path.clone();
                                 let is_pc = state().is_pc_backend();
-                                let pc_client = pc_gateway_client.clone();
-                                let wid = state().workspace_root.clone();
+                                let pc_connection = pc_gateway_connection.clone();
                                 move |_| {
                                     let mut next = state();
                                     if is_pc {
-                                        if let Some(ref client) = pc_client {
+                                        if let Some(ref pc) = pc_connection {
                                             spawn({
                                                 let mut s = state;
-                                                let c = client.clone();
+                                                let c = pc.client.clone();
                                                 let p = path.clone();
-                                                let w = wid.clone();
+                                                let w = pc.workspace_id.clone();
                                                 async move {
                                                     let mut st = s();
                                                     let _ = st.open_file_via_pc(&c, &p, &w).await;
@@ -272,7 +283,6 @@ fn tree_card(
                             onclick: {
                                 let path = entry.path.clone();
                                 let browsing = state().browsing_dir.clone();
-                                let is_pc = state().is_pc_backend();
                                 let target = if browsing.is_empty() {
                                     path.clone()
                                 } else {

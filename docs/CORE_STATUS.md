@@ -4,11 +4,11 @@
 
 ## Verification
 
-- `cargo check --workspace --all-targets` — green
-- `cargo test --workspace` — green
+- `cargo +stable-x86_64-pc-windows-msvc check --workspace --all-targets` — green
+- `cargo +stable-x86_64-pc-windows-msvc test --workspace` — green
 - Tests:
-  - mobile: 102
-  - core: 118
+  - mobile: 108
+  - core: 152
   - pc-host: 2
 
 ## Core crate
@@ -19,22 +19,26 @@
 - Session persistence, runtime store, approval continuation
 - Tool registry and approval routing
 - File, patch, shell, git, web, GitHub, snapshot tools
+- `apply_patch` supports exact operations and standard unified diffs
 - Workspace boundary model and PC gateway client
 - Saved settings passed into live tool context
 - GitHub tools consume persisted token when present
 - Local/Termux multi-provider diagnostics aggregation
 - Normalized post-edit diagnostics metadata for UI and model context
 - Latest diagnostics injection into the next model turn
-- Auto snapshot hooks
+- Auto snapshot hooks, including PC-gateway snapshot RPC routing
 - Workspace connection model + persistent store
+- Durable task records and JSON-backed lifecycle manager
+- MCP server config registry and local skills manifest registry
 - Public Termux execution request/result contract
-- Termux-workspace `exec_shell` now emits native pending request metadata instead of a local placeholder
+- Termux-workspace `exec_shell` emits native pending request metadata instead of a local placeholder
 
-### Now wired into the engine lifecycle
+### Wired into the engine lifecycle
 
 - `ModelRouter` — auto-selects Flash/Pro per prompt complexity and context size
 - `ContextManager` — fits messages within the selected model's context budget
 - `auto_commit_and_push` — auto-commits + pushes after successful turns when enabled
+- `continue_termux_result` — resumes a paused turn after Android/Termux callback output arrives
 
 ## Mobile crate
 
@@ -43,12 +47,16 @@
 - Chat/timeline
 - Approval cards
 - Onboarding/settings
-- Files tree + preview
+- Files tree + preview with real pending diffs
+- Remote-aware file browsing when an active PC workspace is selected
 - Snapshots
 - Diagnostics
 - PC host pairing panel
-- Terminal panel
+- Terminal panel with persisted UI-state history
 - Git panel with real status/diff/branch/commit/push/pull actions
+- Durable task manager panel
+- MCP panel
+- Skills panel
 - Bottom navigation and cockpit layout
 
 ### Important wiring completed
@@ -58,15 +66,14 @@
 - "Open PC workspace" persists a real `WorkspaceConnection`.
 - Future `MobileRuntimeConfig::default()` calls restore the saved active workspace.
 - New pairing requests use a generated token instead of an empty token.
-- Termux commands now have Rust bridge queue/callback correlation, timeline routing, and automatic queue extraction from pending tool-result metadata.
+- Termux commands have Rust bridge queue/callback correlation, timeline routing, automatic queue extraction from pending tool-result metadata, and model continuation after callback result.
 - Android host integration notes document the native bridge contract boundaries.
 
 ### Still partial
 
-- Files diff preview is illustrative, not yet bound to actual patch state.
-- Native Android host integration is not complete.
-- Termux has bridge contracts and core-to-mobile request queuing, but not the final Android host drain/callback/result-continuation lifecycle.
-- Terminal persistence is not complete.
+- Native Android host integration is not complete/verified.
+- Terminal UI history persists, but live terminal process resurrection after app restart is not claimed.
+- Durable task UI is backed by local records; artifacts/logs and live PC-running-task reconciliation remain.
 
 ## Android bridge module
 
@@ -81,6 +88,7 @@
 
 - Final Dioxus Android host adapter that drains Rust commands and forwards Kotlin callbacks.
 - Manual emulator/device verification against the final host shell.
+- Android import/export completion beyond chat attachment ingestion.
 
 ## PC-host crate
 
@@ -93,6 +101,8 @@
 - Git operations
 - Logs and health details
 - Terminal sessions
+- Snapshot create/list/restore RPC path
+- Background task start/stop/list RPC path
 - Diagnostics:
   - Rust via `cargo check`
   - TypeScript via `tsc`
@@ -102,11 +112,12 @@
 
 - Dev-server preview lifecycle
 - Autostart/service installer
-- Persistent terminal restoration
+- Durable task artifact/log capture
 
 ## Highest-priority gaps
 
-1. Final Android host + Termux callback/result-continuation lifecycle
-2. Real project diff surfaces and remote-aware file UI
-3. PC-workspace snapshots and terminal persistence
-4. Durable tasks, runtime API, MCP/plugins/skills
+1. Final Android host adapter + emulator/device verification
+2. Termux workspace selector and Android import/export completion
+3. Runtime HTTP/SSE API
+4. Durable task artifacts/logs + PC-running-task synchronization
+5. Release packaging and troubleshooting docs

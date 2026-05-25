@@ -78,7 +78,7 @@ pub fn tasks_panel(mut state: Signal<TasksUiState>) -> Element {
                 // Header row: label + status badge
                 div {
                     display: "flex",
-                    justify_content: "space_between",
+                    justify_content: "space-between",
                     align_items: "center",
 
                     div {
@@ -120,7 +120,7 @@ pub fn tasks_panel(mut state: Signal<TasksUiState>) -> Element {
                 if can_cancel {
                     div {
                         display: "flex",
-                        justify_content: "flex_end",
+                        justify_content: "flex-end",
                         margin_top: "4px",
                         button {
                             background_color: "#374151",
@@ -155,7 +155,7 @@ pub fn tasks_panel(mut state: Signal<TasksUiState>) -> Element {
             // Header
             div {
                 display: "flex",
-                justify_content: "space_between",
+                justify_content: "space-between",
                 align_items: "center",
 
                 div { font_size: "20px", font_weight: "bold", "Tasks ({tasks.len()})" }

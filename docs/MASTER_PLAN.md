@@ -95,7 +95,9 @@ Termux shell execution
   -> android/bridge DeepSeekTermuxBridge sends RUN_COMMAND intent
   -> host maps PendingIntent result to AndroidTermuxCallback
   -> NativeBridgeState rejects stale callbacks
-  -> remaining: feed accepted result back into final tool/model output
+  -> NativeMobileEvent::TermuxCommandCompleted triggers continue_termux_result
+  -> model receives real command output and continues the paused turn
+  -> remaining: final Dioxus Android host adapter + device verification
 ```
 
 ```text
@@ -188,7 +190,7 @@ Checklist:
 
 - [x] Add `apply_patch` as a first-class tool.
 - [x] Map operation-based `apply_patch` to PC gateway execution.
-- [ ] Add optional unified-diff parser compatibility for `apply_patch`.
+- [x] Add optional unified-diff parser compatibility for `apply_patch`.
 - [x] Add `delete_file` as a first-class local tool with approval.
 - [x] Add `DeleteFile` support to PC gateway client/host.
 - [x] Add `move_file` / `copy_file` with approval when writing.
@@ -219,7 +221,7 @@ Already done:
 Remaining checklist:
 
 - [x] Auto-create pre-tool snapshot before approved local write/shell/git operations.
-- [ ] Add PC-gateway snapshot path for remote workspaces.
+- [x] Add PC-gateway snapshot path for remote workspaces.
 - [x] Auto-create post-turn snapshot after successful turns with file changes.
 - [x] Emit snapshot events to the mobile timeline.
 - [x] Add mobile restore panel.
@@ -262,7 +264,7 @@ Remaining checklist:
 - [x] Add PC-host logs and health detail.
 - [x] Add command allow/deny policy presets.
 - [x] Add long-running command streaming instead of only completed output.
-- [ ] Add terminal session persistence.
+- [x] Add terminal session persistence.
 - [x] Add diagnostics implementation for TypeScript and Python.
 
 Acceptance criteria:
@@ -307,10 +309,11 @@ Already done:
 Remaining checklist:
 
 - [x] Create final Android host integration instructions or module wiring.
-- [ ] Add Dioxus/native callback adapter.
+- [ ] Add final Dioxus/native callback adapter.
 - [x] Add Termux command executor bridge contract.
 - [x] Emit and queue Termux `exec_shell` native requests from the real tool route.
-- [ ] Close Termux executor lifecycle through final Android host and tool output plumbing.
+- [x] Close Rust/mobile Termux result continuation through final tool/model output plumbing.
+- [ ] Verify final Android host drain/callback flow on device/emulator.
 - [ ] Add Termux workspace selector.
 - [ ] Add Android file import/export flow.
 - [ ] Add PDF/DOCX/OCR ingestion later behind safe limits.
@@ -328,8 +331,8 @@ Checklist:
 
 - [x] Add durable task records.
 - [x] Add queue and task lifecycle: queued/running/completed/failed/canceled.
-- [ ] Add mobile task manager UI.
-- [ ] Reuse PC task detection.
+- [x] Add mobile task manager UI.
+- [x] Reuse PC task detection.
 - [ ] Add artifacts and logs per task.
 - [ ] Add HTTP/SSE runtime API only after core task model is stable.
 
@@ -382,18 +385,18 @@ Acceptance criteria:
 | OpenAI-compatible DeepSeek streaming | Keep | Done: SSE streaming with reasoning token support |
 | Reasoning block streaming | Keep | Done: StreamDelta + ReasoningDelta in API client/engine |
 | File tools | Keep and adapt | Done for local/PC-safe file operations |
-| Apply patch | Keep mobile-safe operation batch first; add unified diff later | Partial: local + PC operation batches implemented |
-| Shell execution | Route to PC/Termux | Partial: PC-host active; Termux native request queue added, final Android callback/result continuation still pending |
-| Git tools | Keep with mobile UI | Partial: core/PC routing and panel actions exist; auto-commit lifecycle still pending |
+| Apply patch | Keep mobile-safe operation batch first; accept unified diff too | Done: local + PC operation batches and unified diff normalization |
+| Shell execution | Route to PC/Termux | Partial: PC-host active and Rust/mobile Termux continuation done; final Android host verification pending |
+| Git tools | Keep with mobile UI | Done: core/PC routing, panel actions and auto-commit lifecycle are wired |
 | Web/search/fetch | Keep with approval | Done in core with network capability and approval policy |
 | Runtime HTTP/SSE API | Keep later | Missing |
-| Durable task queue | Keep | Missing |
+| Durable task queue | Keep | Partial: records, lifecycle, PC task RPC and mobile UI done; artifacts/logs pending |
 | LSP diagnostics | Keep, PC-first plus local/Termux fallback | Partial: Rust/TypeScript/Python providers, UI metadata and next-turn model context implemented |
-| PC connectivity | Keep multi-transport, offline-first | Partial: endpoint candidates, client failover, route health scoring, Android NSD discovery, reconnect controls and UI status display implemented |
-| Snapshots/rollback | Keep, mobile-safe file-copy | Partial: core service, tools, local hooks and UI exist; PC snapshot path pending |
+| PC connectivity | Keep multi-transport, offline-first | Partial: endpoint candidates, failover, health, discovery, reconnect controls, persisted active route and remote-aware Files are implemented |
+| Snapshots/rollback | Keep, mobile-safe file-copy | Done for local and PC-gateway snapshot create/list/restore paths |
 | OS sandbox | Replace/augment with executor policies | Missing |
-| MCP | Keep, PC-first | Missing |
-| Skills | Keep after core | Missing |
+| MCP | Keep, PC-first | Partial: config registry and UI status/tool-list surfaces exist; external tool execution pending |
+| Skills | Keep after core | Done for local manifest discovery, enable/disable state and context listing |
 | Hooks | Keep after tool parity | Missing |
 | Sub-agents | Later | Missing |
 | RLM | Later | Missing |
@@ -433,8 +436,11 @@ The next implementation sequence is fixed:
 26. [x] Add durable task records + queue lifecycle (core/mobile side).
 27. [x] Add mobile task manager UI.
 28. [x] Add MCP/skills.
+29. [x] Add `apply_patch` unified-diff compatibility.
 
 ## 5. Implementation progress log
+- 2026-05-25 (Phase H — apply_patch unified diff + docs/runtime hardening): Added unified-diff compatibility to `apply_patch` while preserving operation batches; PC-gateway apply_patch now normalizes unified diffs into the same safe operation model before remote execution. Hardened active-PC Files browsing to use the real `WorkspaceConnection.workspace_id`, fixed one-shot terminal UI-state restore and save-directory creation, cleaned fresh warnings in touched code, and refreshed README/status/roadmap/audit docs after auditing the local PhaseD2–PhaseG commits. Verification: targeted patch/terminal tests green; full workspace verification target is 108 mobile / 152 core / 2 pc-host.
+
 - 2026-05-25 (Phase G — MCP and skills complete): Added `SkillManifest`/`SkillRegistry` frontmatter parser with multi-path discovery, `McpClientRegistry`/`McpServerConfig`/`McpTransport` with JSON persistence, `SkillsUiState`/`skills_panel` and `McpUiState`/`mcp_panel` Dioxus UI components, `CockpitSection::Mcp` and `CockpitSection::Skills` in drawer/navbar, full wiring through `main.rs` → `cockpit_section_panel`. All P7 checklist items closed: local skills format, bundled discovery paths, plugin host model, MCP client registry (stdio + http-sse), MCP UI, Skills UI. Verification: `cargo check` green, `cargo test --workspace` 134 core / 102 mobile / 2 pc-host (14 new tests: 7 skills + 7 mcp).
 
 - 2026-05-25 (Phase F2 — mobile task manager UI): Added `TasksUiState` with `refresh`, `cancel_task`, `prune_terminal`, and `set_filter` methods that delegate to `DurableTaskManager`. Added `tasks_panel.rs` Dioxus component with filter chips, task cards (label/kind/status badge/created age/summary/error), Refresh/Prune controls, cancel buttons for non-terminal tasks, and empty state. Added `CockpitSection::Tasks` to drawer enum with title/subtitle/navbar. Wired `tasks_state` signal through `main.rs` → `cockpit_section_panel`. Added drawer/navbar tests for Tasks integration. Verification: `cargo check` green, `cargo test --workspace` 134 core / 102 mobile / 2 pc-host.
@@ -468,7 +474,7 @@ The next implementation sequence is fixed:
 - 2026-05-16: Added CI `cargo check --workspace` and `cargo test --workspace` jobs plus Android bridge static checks.
 - 2026-05-16: Fixed approval-session persistence for mutable `MobileEngine` and stateless mobile runner callbacks via `ApprovalSessionRuntimeStore`.
 - 2026-05-16: Added operation-based atomic `apply_patch` tool and registered it in the default mobile tool registry.
-- 2026-05-16: Added local pre-tool snapshots inside `tool_loop::execute_approved_call()` for destructive local/Termux tools; PC-gateway snapshot path remains separate.
+- 2026-05-16: Added local pre-tool snapshots inside `tool_loop::execute_approved_call()` for destructive local/Termux tools; PC-gateway snapshot path was added later through gateway RPC routing.
 - 2026-05-16: Implemented PC-host Rust diagnostics using `cargo check --workspace --message-format=json`, mapped cargo levels to `PcDiagnosticSeverity`, and added path filtering.
 - 2026-05-16: Added PC post-edit diagnostics summary/metadata after `write_file` and `edit_file` calls inside `ToolExecutionCoordinator` when a `PcGatewayClient` is attached.
 - 2026-05-16: Wired `PcGatewayClient` through tool_loop, `MobileEngine`, `MobileRuntimeConfig`, and mobile runner so normal turns can execute PC workspace tools when a `WorkspaceConnection` is supplied. UI pairing remains separate.

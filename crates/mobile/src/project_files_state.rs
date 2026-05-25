@@ -127,14 +127,6 @@ impl ProjectFilesUiState {
         }
     }
 
-    fn browsing_relative(&self) -> PathBuf {
-        if self.browsing_dir.is_empty() {
-            PathBuf::from(".")
-        } else {
-            PathBuf::from(&self.browsing_dir)
-        }
-    }
-
     pub fn navigate_to_dir(&mut self, subdir: String) {
         self.browsing_dir = subdir;
         self.selected_path = None;
@@ -269,10 +261,6 @@ impl ProjectFilesUiState {
             workspace_id: workspace_id.to_string(),
         });
         self.loaded = true;
-
-        let relative = self.browsing_relative();
-        let request_path = relative.to_string_lossy().replace('\\', "/");
-        let request_path = if request_path == "." { "." } else { &request_path };
 
         match scan_pc_gateway_tree(client, workspace_id, DEFAULT_MAX_TREE_ENTRIES).await {
             Ok(mut snapshot) => {

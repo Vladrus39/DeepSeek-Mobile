@@ -7,7 +7,7 @@ use crate::mobile_drawer::CockpitSection;
 use crate::native_bridge::NativeBridgeState;
 use crate::pc_pairing_panel::pc_pairing_panel;
 use crate::pc_pairing_state::PcPairingUiState;
-use crate::project_files_panel::project_files_panel;
+use crate::project_files_panel::{project_files_panel, PcFileBrowserConnection};
 use crate::project_files_state::ProjectFilesUiState;
 use crate::git_panel::git_panel;
 use crate::git_state::{GitPanelAction, GitUiState};
@@ -46,10 +46,16 @@ pub fn cockpit_section_panel(
         CockpitSection::Chat => chat_empty_state(),
         CockpitSection::PcHost => pc_pairing_panel(pc_pairing_state, native_bridge),
         CockpitSection::Files => {
-            let pc_client = pc_pairing_state().active_workspace_connection()
-                .and_then(|conn| conn.pc_gateway.clone())
-                .map(|config| deepseek_mobile_core::PcGatewayClient::new(config));
-            project_files_panel(project_files_state, approval_cards(), pc_client)
+            let pc_connection = pc_pairing_state()
+                .active_workspace_connection()
+                .and_then(|connection| {
+                    connection.pc_gateway.clone().map(|config| PcFileBrowserConnection {
+                        client: deepseek_mobile_core::PcGatewayClient::new(config),
+                        workspace_id: connection.workspace_id.clone(),
+                        workspace_root: connection.workspace_root.display().to_string(),
+                    })
+                });
+            project_files_panel(project_files_state, approval_cards(), pc_connection)
         }
         CockpitSection::Snapshots => snapshots_panel(snapshots_state),
         CockpitSection::Diagnostics => diagnostics_panel(&diagnostics_state()),

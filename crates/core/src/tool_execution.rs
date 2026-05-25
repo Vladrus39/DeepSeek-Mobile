@@ -46,6 +46,7 @@ pub struct ToolExecutionRoute {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize)]
+#[serde(tag = "type", rename_all = "lowercase")]
 enum RemotePatchOperation {
     Replace {
         path: String,
@@ -348,7 +349,8 @@ impl<'a> ToolExecutionCoordinator<'a> {
         arguments: &Value,
     ) -> Result<ToolResult> {
         // Parse patch operations from the apply_patch arguments
-        let operations: Vec<RemotePatchOperation> = serde_json::from_value(arguments.get("operations").cloned().unwrap_or(json!([])))
+        let operations_value = crate::tools::patch::normalized_operations_value(arguments)?;
+        let operations: Vec<RemotePatchOperation> = serde_json::from_value(operations_value)
             .map_err(|e| anyhow!("failed to parse apply_patch operations: {}", e))?;
 
         if operations.is_empty() {
@@ -833,6 +835,32 @@ mod tests {
         let result = gateway_response_to_tool_result(response).unwrap();
         assert!(!result.success);
         assert!(result.content.contains("msg"));
+    }
+
+    #[test]
+    fn remote_patch_operation_deserializes_normalized_unified_diff() {
+        let operations_value = crate::tools::patch::normalized_operations_value(&json!({
+            "unified_diff": "\
+--- a/a.txt
++++ b/a.txt
+@@ -1 +1 @@
+-one
++two
+"
+        }))
+        .unwrap();
+
+        let operations: Vec<RemotePatchOperation> =
+            serde_json::from_value(operations_value).unwrap();
+        assert_eq!(
+            operations,
+            vec![RemotePatchOperation::Replace {
+                path: "a.txt".to_string(),
+                search: "one\n".to_string(),
+                replace: "two\n".to_string(),
+                expected_occurrences: Some(1),
+            }]
+        );
     }
 
     #[tokio::test]

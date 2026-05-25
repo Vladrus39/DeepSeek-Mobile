@@ -308,7 +308,7 @@ async fn create_pre_tool_snapshot_if_needed(
             let reason = format!("pre-tool snapshot before {} ({})", call.name, call.id);
             match client.create_snapshot(&context.workspace.id, &reason).await {
                 Ok(PcGatewayResponse::SnapshotRecord(record)) => return Ok(Some(record)),
-                Ok(other) => return Ok(None), // unexpected response, skip
+                Ok(_other) => return Ok(None), // unexpected response, skip
                 Err(_) => return Ok(None), // gateway error, skip snapshot
             }
         }

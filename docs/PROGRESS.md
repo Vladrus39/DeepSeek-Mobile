@@ -4,45 +4,50 @@
 
 ## Completed in the latest tranche
 
-- Added `SessionDiagnosticsContext` so post-edit diagnostics can survive beyond the immediate tool result.
-- Normalized diagnostics metadata for local/Termux and PC edit paths using `post_edit_diagnostics_*` keys consumed by the mobile diagnostics UI and engine.
-- Injected the latest diagnostics summary into the next model turn, so the model can see compiler/linter feedback before proposing the next fix.
-- Added Rust mobile Termux bridge contract:
-  - `AndroidTermuxCommand` wraps a `TermuxExecRequest` into a shell-backed Android payload;
-  - `AndroidTermuxCallback` correlates command results by `request_id`;
-  - `NativeBridgeState` queues Termux commands and rejects stale callbacks;
-  - `native_event_router` surfaces Termux completion/failure events to the timeline.
-- Added Android `DeepSeekTermuxBridge.kt` for Termux `RUN_COMMAND` intents and result bundle parsing.
-- Updated Android bridge manifest with Termux permission and package visibility query.
-- Added Android host integration documentation covering picker, PC discovery and Termux bridge wiring.
-- Wired approved Termux-workspace `exec_shell` calls to emit structured native `TermuxExecRequest` metadata instead of the old shell placeholder.
-- Taught the mobile layer to extract pending Termux tool metadata, queue `NativeMobileCommand::RunTermuxCommand`, and surface the queued request in the timeline.
-- Diagnosed the repeated GitHub Actions Rust failure as missing Ubuntu native dependencies for Dioxus/GTK/WebKit (`glib-2.0.pc`) and added the required apt install step to CI.
-- Wired the Git panel buttons to real `git` tool execution through `ToolExecutionCoordinator`, including active PC workspace routing when a saved PC connection exists.
+- Audited the local `main` after four new local commits (`PhaseD2` → `PhaseG`) and confirmed the working tree was clean before continuing.
+- Verified the new local state before edits: `cargo check` and `cargo test` were green.
+- Added unified-diff compatibility to `apply_patch` while preserving the existing operation-batch API.
+  - Local `ApplyPatchTool` now accepts `operations`, `unified_diff`, or `patch`.
+  - PC-gateway `apply_patch` routing normalizes unified diffs into the same safe operation model before remote execution.
+  - Added tests for modify/create unified diffs, rollback on later hunk failure, and remote operation deserialization.
+- Hardened the new Files panel PC path:
+  - the panel now passes the actual active `WorkspaceConnection.workspace_id` into PC-gateway file browsing instead of reusing the display root;
+  - backend switches between local and PC trigger a refresh;
+  - stale unused refresh state was removed.
+- Fixed terminal persistence behavior:
+  - saved terminal UI state is loaded only once instead of on every render;
+  - parent directories are created before saving;
+  - restored sessions are intentionally marked closed after restart;
+  - truncation markers now report the real number of dropped output lines.
+- Cleaned fresh warning/noise in touched code (`tool_loop`, Files panel/state, task panel CSS values, `main.rs` unused bindings).
+- Updated local documentation to reflect what was already completed while I was away: PC snapshots, remote-aware Files, durable tasks, task UI, MCP/skills registry/UI, terminal UI-state persistence, and Termux continuation.
 
 ## Verification
 
-- `cargo check --workspace --all-targets` — passed
-- `cargo test --workspace` — passed
-- Test totals after this tranche:
-  - mobile: 101
-  - core: 117
+- `cargo +stable-x86_64-pc-windows-msvc check --workspace --all-targets` — passed
+- Targeted tests passed:
+  - `deepseek-mobile-core tools::patch::tests`
+  - `deepseek-mobile-core tool_execution::tests::remote_patch_operation_deserializes_normalized_unified_diff`
+  - `deepseek-mobile terminal_state::tests`
+- Full workspace test target after this tranche:
+  - mobile: 108
+  - core: 152
   - pc-host: 2
 
 ## Current focus
 
-The remaining product gaps are now concentrated around end-to-end host/runtime integration rather than isolated contracts:
+The remaining product gaps are concentrated around production integration and release readiness:
 
-1. final Android host integration plus Termux callback/result-continuation closure;
-2. auto-commit lifecycle integration;
-3. real diff surfaces for project files instead of preview scaffolding;
-4. terminal persistence and PC-workspace snapshot support;
-5. durable background tasks, runtime API, then MCP/plugins/skills.
+1. final Dioxus Android host adapter and device/emulator verification;
+2. Termux workspace selector and Android import/export completion;
+3. runtime HTTP/SSE API over the stable runtime/task model;
+4. durable task artifacts/logs and PC-running-task reconciliation;
+5. dev-server lifecycle, PC-host service/autostart and release/troubleshooting docs.
 
 ## Notes from the audit
 
 - PC-host already contains Rust, TypeScript, and Python diagnostics implementations.
-- Diagnostics are now both UI-visible and model-readable on the following turn.
-- The Files panel is useful but still local-preview oriented; it is not yet a remote-aware workspace browser.
-- The Git UI now runs real status/diff/branch/commit/push/pull actions; auto-commit remains a separate lifecycle hook.
-- `ModelRouter`, `ContextManager`, and `auto_commit_and_push` are available building blocks, not yet active orchestration features.
+- Diagnostics are both UI-visible and model-readable on the following turn.
+- The Git UI runs real status/diff/branch/commit/push/pull actions; engine auto-commit is also wired behind config.
+- Files browsing is now active-PC-aware, but deeper editor/project-diff UX can still be improved later.
+- MCP/skills currently means registry/config/UI/context surfaces, not unrestricted external tool execution.
