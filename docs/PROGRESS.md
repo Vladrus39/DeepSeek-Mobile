@@ -24,6 +24,7 @@
 - Updated local documentation to reflect what was already completed while I was away: PC snapshots, remote-aware Files, durable tasks, task UI, MCP/skills registry/UI, terminal UI-state persistence, and Termux continuation.
 - Added `docs/PHONE_PC_OPERATING_MODEL.md` to lock the intended product architecture: Android app as the primary UI/orchestrator, Termux and PC Host as execution backends, optional DeepSeek-TUI compatibility without depending on TUI internals, and a target PC bootstrap flow.
 - Improved PC pairing launcher bootstrap: Windows/macOS/Linux scripts now prefer a bundled `deepseek-pc-host` binary next to the pairing files, fall back to `PATH`, and emit a clear install/release-package instruction when missing.
+- Updated GitHub Actions checkout steps to `actions/checkout@v6` so CI runs on the Node.js 24 action runtime instead of the deprecated Node.js 20 runtime.
 
 ## Verification
 
