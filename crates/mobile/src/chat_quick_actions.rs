@@ -29,6 +29,14 @@ pub const QUICK_ACTIONS: &[QuickAction] = &[
         label: "Fix diagnostics",
         prompt: "Review the latest diagnostics context and propose minimal fixes. Prefer small safe patches.",
     },
+    QuickAction {
+        label: "Open on PC",
+        prompt: "Use open_path on the project root so I can browse files in the system file manager on the PC.",
+    },
+    QuickAction {
+        label: "Termux check",
+        prompt: "If Termux workspace is active, run pwd and ls -la via exec_shell and summarize the environment.",
+    },
 ];
 
 pub fn chat_quick_actions_bar(on_select: EventHandler<String>) -> Element {
