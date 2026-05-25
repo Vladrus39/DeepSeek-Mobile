@@ -275,6 +275,31 @@ impl<'a> ToolExecutionCoordinator<'a> {
                     }
                 }
             }
+            "snapshot_create" => {
+                let reason = optional_str(&call.arguments, "reason").unwrap_or("manual snapshot");
+                gateway_response_to_tool_result(client.create_snapshot(workspace_id, reason).await?)
+            }
+            "snapshot_list" => {
+                gateway_response_to_tool_result(client.list_snapshots(workspace_id).await?)
+            }
+            "snapshot_restore" => {
+                let snapshot_id = required_str(&call.arguments, "snapshot_id")?;
+                gateway_response_to_tool_result(client.restore_snapshot(workspace_id, snapshot_id).await?)
+            }
+            "detect_tasks" => {
+                gateway_response_to_tool_result(client.detect_tasks(workspace_id).await?)
+            }
+            "task_run" => {
+                let task_id = required_str(&call.arguments, "task_id")?;
+                gateway_response_to_tool_result(client.run_task(task_id).await?)
+            }
+            "task_stop" => {
+                let task_id = required_str(&call.arguments, "task_id")?;
+                gateway_response_to_tool_result(client.stop_task(task_id).await?)
+            }
+            "task_list" => {
+                gateway_response_to_tool_result(client.list_tasks().await?)
+            }
             other => Err(anyhow!(
                 "tool '{}' is not yet mapped to PC gateway execution",
                 other
@@ -643,6 +668,33 @@ fn gateway_response_to_tool_result(response: PcGatewayResponse) -> Result<ToolRe
         PcGatewayResponse::TerminalClosed { session_id, exit_code } => {
             Ok(ToolResult::success(format!("terminal {} closed (exit: {:?})", session_id, exit_code))
                 .with_metadata(json!({"terminal_session_id": session_id, "exit_code": exit_code})))
+        }
+        PcGatewayResponse::SnapshotRecord(snapshot) => {
+            Ok(ToolResult::success(format!(
+                "Created snapshot {} with {} file(s), {} bytes",
+                snapshot.id, snapshot.file_count, snapshot.total_bytes
+            ))
+            .with_metadata(serde_json::to_value(snapshot)?))
+        }
+        PcGatewayResponse::SnapshotList(snapshots) => {
+            Ok(ToolResult::success(serde_json::to_string_pretty(&snapshots)?)
+                .with_metadata(serde_json::to_value(snapshots)?))
+        }
+        PcGatewayResponse::SnapshotRestoreReport(report) => {
+            Ok(ToolResult::success(serde_json::to_string_pretty(&report)?)
+                .with_metadata(serde_json::to_value(report)?))
+        }
+        PcGatewayResponse::TaskStarted { task_id, process_id } => {
+            Ok(ToolResult::success(format!("task {} started (pid {})", task_id, process_id))
+                .with_metadata(json!({"task_id": task_id, "process_id": process_id})))
+        }
+        PcGatewayResponse::TaskStopped { task_id } => {
+            Ok(ToolResult::success(format!("task {} stopped", task_id))
+                .with_metadata(json!({"task_id": task_id})))
+        }
+        PcGatewayResponse::TaskList(tasks) => {
+            Ok(ToolResult::success(serde_json::to_string_pretty(&tasks)?)
+                .with_metadata(serde_json::to_value(tasks)?))
         }
         PcGatewayResponse::Error(error) => Ok(ToolResult::error(format!("{}: {}", error.code, error.message))),
         _ => Ok(ToolResult::success("unhandled PC gateway response variant".to_string())),

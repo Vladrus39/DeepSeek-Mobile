@@ -280,6 +280,17 @@ impl PcGatewayClient {
         .await
     }
 
+    pub async fn stop_task(&self, task_id: impl Into<String>) -> Result<PcGatewayResponse> {
+        self.send(PcGatewayRequest::StopTask {
+            task_id: task_id.into(),
+        })
+        .await
+    }
+
+    pub async fn list_tasks(&self) -> Result<PcGatewayResponse> {
+        self.send(PcGatewayRequest::ListTasks).await
+    }
+
     pub async fn start_dev_server(
         &self,
         workspace_id: impl Into<String>,

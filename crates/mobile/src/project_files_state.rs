@@ -3,11 +3,32 @@ use crate::project_files::{
     read_pc_gateway_file, ProjectFilePreview, ProjectTreeSnapshot, DEFAULT_MAX_FILE_BYTES,
     DEFAULT_MAX_TREE_ENTRIES,
 };
+use std::fmt;
 use std::path::{Path, PathBuf};
 use deepseek_mobile_core::{ApprovalCardView, PcGatewayClient};
 use crate::project_diff::{ProjectDiffPreview, build_text_diff_preview};
 
 const DEFAULT_WORKSPACE_ROOT: &str = ".";
+
+/// Which backend the file browser is reading from.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum FileBrowserBackend {
+    /// Local / Termux filesystem.
+    Local,
+    /// Remote PC gateway with an active client session.
+    PcGateway {
+        workspace_id: String,
+    },
+}
+
+impl fmt::Display for FileBrowserBackend {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            FileBrowserBackend::Local => write!(f, "local"),
+            FileBrowserBackend::PcGateway { .. } => write!(f, "PC gateway"),
+        }
+    }
+}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ProjectFilesUiState {
@@ -19,6 +40,9 @@ pub struct ProjectFilesUiState {
     pub last_error: Option<String>,
     pub pending_diff: Option<ProjectDiffPreview>,
     pub loaded: bool,
+    /// Which file backend is active. `None` means uninitialised – use
+    /// `detect_source()` or an explicit `set_backend()` before refreshing.
+    pub backend: FileBrowserBackend,
 }
 
 impl Default for ProjectFilesUiState {
@@ -37,13 +61,42 @@ impl Default for ProjectFilesUiState {
             last_error: None,
             pending_diff: None,
             loaded: false,
+            backend: FileBrowserBackend::Local,
         }
     }
 }
 
 impl ProjectFilesUiState {
+    /// Override the file source backend.
+    pub fn set_backend(&mut self, backend: FileBrowserBackend) {
+        self.backend = backend;
+    }
+
+    /// True when the active file source is a remote PC gateway.
+    pub fn is_pc_backend(&self) -> bool {
+        matches!(self.backend, FileBrowserBackend::PcGateway { .. })
+    }
+
+    /// Refresh the tree from the current backend.
     pub fn refresh(&mut self) {
         self.loaded = true;
+        match &self.backend {
+            FileBrowserBackend::PcGateway { .. } => {
+                // Defer to refresh_via_pc which needs a client reference.
+                // This path is taken when the state is reset or navigated without
+                // the async PC refresh pathway. The panel should call
+                // refresh_via_pc instead when a client is available.
+                self.last_error = Some(
+                    "PC gateway refresh requires refresh_via_pc (async)".into(),
+                );
+            }
+            FileBrowserBackend::Local => {
+                self.do_local_refresh();
+            }
+        }
+    }
+
+    fn do_local_refresh(&mut self) {
         let root = PathBuf::from(&self.workspace_root);
         let scan_root = if self.browsing_dir.is_empty() {
             root.clone()
@@ -74,11 +127,20 @@ impl ProjectFilesUiState {
         }
     }
 
+    fn browsing_relative(&self) -> PathBuf {
+        if self.browsing_dir.is_empty() {
+            PathBuf::from(".")
+        } else {
+            PathBuf::from(&self.browsing_dir)
+        }
+    }
+
     pub fn navigate_to_dir(&mut self, subdir: String) {
         self.browsing_dir = subdir;
         self.selected_path = None;
         self.preview = None;
-        self.refresh();
+        // Refresh is triggered externally via the panel spawn; just reset state.
+        self.loaded = false;
     }
 
     pub fn navigate_up(&mut self) {
@@ -93,11 +155,28 @@ impl ProjectFilesUiState {
         }
         self.selected_path = None;
         self.preview = None;
-        self.refresh();
+        self.loaded = false;
     }
 
     pub fn open_file(&mut self, path: impl Into<String>) {
         let path = path.into();
+        match &self.backend {
+            FileBrowserBackend::PcGateway { .. } => {
+                // open_file_via_pc needs a client reference.
+                // Caller must use open_file_via_pc when a client is available.
+                self.selected_path = Some(path.clone());
+                self.last_error = Some(
+                    "PC gateway file open requires open_file_via_pc (async)".into(),
+                );
+                self.preview = None;
+            }
+            FileBrowserBackend::Local => {
+                self.do_local_open_file(path);
+            }
+        }
+    }
+
+    fn do_local_open_file(&mut self, path: String) {
         let root = PathBuf::from(&self.workspace_root);
         let file_path = if self.browsing_dir.is_empty() {
             PathBuf::from(&path)
@@ -159,11 +238,16 @@ impl ProjectFilesUiState {
     }
 
     pub fn current_browsing_display(&self) -> String {
-        if self.browsing_dir.is_empty() {
-            format!("Root: {}", self.workspace_root)
+        let kind = match &self.backend {
+            FileBrowserBackend::Local => "Local",
+            FileBrowserBackend::PcGateway { .. } => "PC",
+        };
+        let dir = if self.browsing_dir.is_empty() {
+            String::new()
         } else {
-            format!("Browse: {}/{}", self.workspace_root, self.browsing_dir)
-        }
+            format!(" / {}", self.browsing_dir)
+        };
+        format!("{}: {}{}", kind, self.workspace_root, dir)
     }
 
     pub fn has_selection(&self) -> bool {
@@ -175,10 +259,39 @@ impl ProjectFilesUiState {
 
 impl ProjectFilesUiState {
     /// Refresh the tree using the PC gateway client.
-    pub async fn refresh_via_pc(&mut self, client: &PcGatewayClient, workspace_id: &str) -> Result<(), anyhow::Error> {
+    /// Returns `true` on success, `false` on error (also sets last_error).
+    pub async fn refresh_via_pc(
+        &mut self,
+        client: &PcGatewayClient,
+        workspace_id: &str,
+    ) -> bool {
+        self.set_backend(FileBrowserBackend::PcGateway {
+            workspace_id: workspace_id.to_string(),
+        });
         self.loaded = true;
+
+        let relative = self.browsing_relative();
+        let request_path = relative.to_string_lossy().replace('\\', "/");
+        let request_path = if request_path == "." { "." } else { &request_path };
+
         match scan_pc_gateway_tree(client, workspace_id, DEFAULT_MAX_TREE_ENTRIES).await {
-            Ok(snapshot) => {
+            Ok(mut snapshot) => {
+                // Filter tree entries to the current browsing directory
+                if !self.browsing_dir.is_empty() {
+                    let prefix = format!("{}/", self.browsing_dir);
+                    let prefix_len = prefix.len();
+                    snapshot.entries.retain(|e| e.path.starts_with(&prefix) || e.path == self.browsing_dir);
+                    for e in &mut snapshot.entries {
+                        if e.path.starts_with(&prefix) {
+                            e.path = e.path[prefix_len..].to_string();
+                        }
+                        if e.path == self.browsing_dir && e.kind == crate::project_files::ProjectEntryKind::Directory { continue; }
+                    }
+                    snapshot.root = format!("{}/{}", workspace_id, self.browsing_dir);
+                } else {
+                    snapshot.root = workspace_id.to_string();
+                }
+
                 let selected = self
                     .selected_path
                     .clone()
@@ -191,18 +304,34 @@ impl ProjectFilesUiState {
                 if let Some(path) = selected {
                     let _ = self.open_file_via_pc(client, &path, workspace_id).await;
                 }
+                true
             }
             Err(error) => {
                 self.last_error = Some(format!("PC gateway scan failed: {}", error));
                 self.preview = None;
+                false
             }
         }
-        Ok(())
     }
 
     /// Open a file using the PC gateway client.
-    pub async fn open_file_via_pc(&mut self, client: &PcGatewayClient, path: &str, workspace_id: &str) -> std::result::Result<(), String> {
-        match read_pc_gateway_file(client, workspace_id, path, DEFAULT_MAX_FILE_BYTES).await {
+    pub async fn open_file_via_pc(
+        &mut self,
+        client: &PcGatewayClient,
+        path: &str,
+        workspace_id: &str,
+    ) -> std::result::Result<(), String> {
+        self.set_backend(FileBrowserBackend::PcGateway {
+            workspace_id: workspace_id.to_string(),
+        });
+
+        let full_path = if self.browsing_dir.is_empty() {
+            path.to_string()
+        } else {
+            format!("{}/{}", self.browsing_dir, path)
+        };
+
+        match read_pc_gateway_file(client, workspace_id, &full_path, DEFAULT_MAX_FILE_BYTES).await {
             Ok(preview) => {
                 self.selected_path = Some(path.to_string());
                 self.preview = Some(preview);
@@ -234,6 +363,7 @@ fn first_string_arg(card: &ApprovalCardView, keys: &[&str]) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::ProjectFilesUiState;
+    use crate::project_files_state::FileBrowserBackend;
     use std::fs;
 
     fn unique_dir(name: &str) -> std::path::PathBuf {
@@ -276,5 +406,38 @@ mod tests {
         assert!(state.last_error.as_ref().unwrap().contains("Failed to open"));
 
         let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn default_backend_is_local() {
+        let state = ProjectFilesUiState::default();
+        assert_eq!(state.backend, FileBrowserBackend::Local);
+    }
+
+    #[test]
+    fn is_pc_backend_reflects_set_backend() {
+        let mut state = ProjectFilesUiState::default();
+        assert!(!state.is_pc_backend());
+        state.set_backend(FileBrowserBackend::PcGateway {
+            workspace_id: "w1".into(),
+        });
+        assert!(state.is_pc_backend());
+    }
+
+    #[test]
+    fn navigate_up_from_root_is_noop() {
+        let mut state = ProjectFilesUiState::default();
+        state.navigate_up();
+        assert!(state.browsing_dir.is_empty());
+    }
+
+    #[test]
+    fn navigate_to_dir_resets_selection() {
+        let mut state = ProjectFilesUiState::default();
+        state.selected_path = Some("foo.rs".into());
+        state.navigate_to_dir("subdir".into());
+        assert_eq!(state.browsing_dir, "subdir");
+        assert!(state.selected_path.is_none());
+        assert!(!state.loaded);
     }
 }

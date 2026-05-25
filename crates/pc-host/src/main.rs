@@ -13,8 +13,8 @@ use deepseek_mobile_core::{
     PcEnvironmentDescriptor, PcGatewayCapability, PcGatewayConnectionStatus, PcGatewayDirEntry,
     PcGatewayError, PcGatewayHealth, PcGatewayLogEntry, PcGatewayLogs, PcGatewayRequest,
     PcGatewayRequestEnvelope, PcGatewayResponse, PcGatewayResponseEnvelope,
-    PcGatewaySecurityPolicy, PolicyPreset, PcTaskDescriptor, PcTaskKind, PcTerminalSession,
-    PcWorkspaceGrant,
+    PcGatewaySecurityPolicy, PolicyPreset, PcRunningTaskInfo, PcTaskDescriptor, PcTaskKind,
+    PcTerminalSession, PcWorkspaceGrant,
 };
 use serde::Deserialize;
 use std::env;
@@ -33,8 +33,18 @@ use std::collections::HashMap;
 struct PcHostState {
     config: Arc<PcHostConfig>,
     terminals: Arc<Mutex<HashMap<String, TerminalHandle>>>,
+    tasks: Arc<Mutex<HashMap<String, TaskHandle>>>,
     log_ring: Arc<Mutex<LogRing>>,
     start_time: std::time::Instant,
+}
+
+/// Handle for a tracked background task process.
+struct TaskHandle {
+    id: String,
+    label: String,
+    kind: String,
+    child: Child,
+    started_at_unix: u64,
 }
 
 #[derive(Clone, Debug)]
@@ -214,6 +224,7 @@ async fn main() -> Result<()> {
     let state = PcHostState {
         config: Arc::new(config),
         terminals: Arc::new(Mutex::new(HashMap::new())),
+        tasks: Arc::new(Mutex::new(HashMap::new())),
         log_ring: Arc::new(Mutex::new(LogRing::new(200))),
         start_time: std::time::Instant::now(),
     };
@@ -461,6 +472,9 @@ async fn handle_gateway_request(state: &PcHostState, request: PcGatewayRequest) 
         PcGatewayRequest::CloseTerminal { session_id } => {
             close_terminal(state, &session_id).await
         }
+        PcGatewayRequest::RunTask { task_id } => run_task_handler(state, &task_id).await,
+        PcGatewayRequest::StopTask { task_id } => stop_task_handler(state, &task_id).await,
+        PcGatewayRequest::ListTasks => list_tasks_handler(state).await,
         unsupported => Ok(PcGatewayResponse::Error(PcGatewayError::new(
             "unsupported_request",
             format!("request is not implemented by this PC host build: {:?}", unsupported),
@@ -1205,6 +1219,106 @@ fn nearest_existing_parent(path: &Path) -> Result<PathBuf> {
     }
 }
 
+// ── Background task handlers ──
+
+async fn run_task_handler(state: &PcHostState, task_id: &str) -> Result<PcGatewayResponse> {
+    // Detect available tasks for the workspace
+    let workspace_id = &state.config.workspace.id;
+    let detected = detect_tasks(&state.config, workspace_id).await?;
+    let PcGatewayResponse::Tasks(tasks) = detected else {
+        return Ok(PcGatewayResponse::Error(PcGatewayError::new(
+            "no_tasks",
+            "unable to detect tasks for this workspace",
+        )));
+    };
+
+    let Some(task) = tasks.into_iter().find(|t| t.id == task_id) else {
+        return Ok(PcGatewayResponse::Error(PcGatewayError::new(
+            "task_not_found",
+            format!("no task found with id '{}'", task_id),
+        )));
+    };
+
+    // If already running, return the existing handle
+    let mut handles = state.tasks.lock().await;
+    if handles.contains_key(task_id) {
+        return Ok(PcGatewayResponse::Error(PcGatewayError::new(
+            "task_already_running",
+            format!("task '{}' is already running", task_id),
+        )));
+    }
+
+    let command = &task.command;
+    let child = tokio::process::Command::new(&command.program)
+        .args(&command.args)
+        .current_dir(
+            command
+                .working_dir
+                .clone()
+                .unwrap_or_else(|| state.config.workspace_root.clone()),
+        )
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .with_context(|| format!("spawn task '{}'", task_id))?;
+
+    let pid = child.id().unwrap_or(0);
+
+    let task_id_owned = task_id.to_string();
+    let label = task.label.clone();
+    let kind = format!("{:?}", task.kind);
+    let started_at = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+
+    let handle = TaskHandle {
+        id: task_id_owned.clone(),
+        label: label.clone(),
+        kind: kind.clone(),
+        child,
+        started_at_unix: started_at,
+    };
+    handles.insert(task_id_owned, handle);
+
+    Ok(PcGatewayResponse::TaskStarted {
+        task_id: task_id.to_string(),
+        process_id: pid.to_string(),
+    })
+}
+
+async fn stop_task_handler(state: &PcHostState, task_id: &str) -> Result<PcGatewayResponse> {
+    let mut handles = state.tasks.lock().await;
+    let Some(mut handle) = handles.remove(task_id) else {
+        return Ok(PcGatewayResponse::Error(PcGatewayError::new(
+            "task_not_running",
+            format!("task '{}' is not running", task_id),
+        )));
+    };
+
+    let _ = handle.child.start_kill();
+    // Best-effort wait for cleanup
+    let _ = tokio::time::timeout(std::time::Duration::from_secs(5), handle.child.wait()).await;
+
+    Ok(PcGatewayResponse::TaskStopped {
+        task_id: task_id.to_string(),
+    })
+}
+
+async fn list_tasks_handler(state: &PcHostState) -> Result<PcGatewayResponse> {
+    let handles = state.tasks.lock().await;
+    let running: Vec<PcRunningTaskInfo> = handles
+        .values()
+        .map(|h| PcRunningTaskInfo {
+            id: h.id.clone(),
+            label: h.label.clone(),
+            kind: h.kind.clone(),
+            started_at_unix: h.started_at_unix,
+        })
+        .collect();
+    Ok(PcGatewayResponse::TaskList(running))
+}
+
 fn truncate_output(text: String, max_bytes: usize) -> String {
     if text.len() <= max_bytes {
         return text;
@@ -1301,6 +1415,7 @@ fn request_operation_name(request: &PcGatewayRequest) -> String {
         PcGatewayRequest::ExecuteCommand { .. } => "execute_command".to_string(),
         PcGatewayRequest::RunTask { .. } => "run_task".to_string(),
         PcGatewayRequest::StopTask { .. } => "stop_task".to_string(),
+        PcGatewayRequest::ListTasks => "list_tasks".to_string(),
         PcGatewayRequest::StartDevServer { .. } => "start_dev_server".to_string(),
         PcGatewayRequest::StopDevServer { .. } => "stop_dev_server".to_string(),
         PcGatewayRequest::GetDiagnostics { .. } => "get_diagnostics".to_string(),

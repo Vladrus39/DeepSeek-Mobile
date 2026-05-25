@@ -74,6 +74,7 @@ pub use pc_gateway::{
     PcGatewayRequestEnvelope, PcGatewayResponse, PcGatewayResponseEnvelope,
     PcGatewaySecurityPolicy, PcGatewayTransportMode, PcGatewayTrustLevel, PolicyPreset, PcPreviewDescriptor,
     CommandStreamEvent, PcTaskDescriptor, PcTaskKind, PcTerminalSession, PcWorkspaceGrant,
+    PcRunningTaskInfo,
     PcWorkspaceIndexSummary,
 };
 pub use pc_gateway_client::{PcGatewayClient, PcGatewayEndpointHealth};

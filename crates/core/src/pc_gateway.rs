@@ -469,6 +469,14 @@ pub struct PcTaskDescriptor {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PcRunningTaskInfo {
+    pub id: String,
+    pub label: String,
+    pub kind: String,
+    pub started_at_unix: u64,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct PcPreviewDescriptor {
     pub id: String,
     pub workspace_id: String,
@@ -559,6 +567,7 @@ pub enum PcGatewayRequest {
     ExecuteCommand { workspace_id: String, command: CommandRequest, environment_id: Option<String> },
     RunTask { task_id: String },
     StopTask { task_id: String },
+    ListTasks,
     StartDevServer { workspace_id: String, command: CommandRequest, environment_id: Option<String> },
     StopDevServer { preview_id: String },
     GetDiagnostics { workspace_id: String, path: Option<String> },
@@ -597,6 +606,7 @@ pub enum PcGatewayResponse {
     CommandOutput(CommandOutput),
     TaskStarted { task_id: String, process_id: String },
     TaskStopped { task_id: String },
+    TaskList(Vec<PcRunningTaskInfo>),
     PreviewStarted(PcPreviewDescriptor),
     PreviewStopped { preview_id: String },
     Diagnostics(Vec<PcDiagnostic>),
