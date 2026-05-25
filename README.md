@@ -57,6 +57,7 @@ cargo +stable-x86_64-pc-windows-msvc test --workspace
 
 Подробности:
 
+- `docs/PHONE_PC_OPERATING_MODEL.md`
 - `docs/PROJECT_AUDIT.md`
 - `docs/MASTER_PLAN.md`
 - `docs/ROADMAP.md`

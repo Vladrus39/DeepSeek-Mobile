@@ -76,7 +76,7 @@ Flow:
 6. Android parses the result bundle with `DeepSeekTermuxBridge.parseResult(requestId, resultIntent)`.
 7. Host maps the payload to `AndroidTermuxCallback::Completed` or `AndroidTermuxCallback::Failed`.
 8. Rust rejects stale request ids and routes completion/failure into the mobile timeline.
-9. The remaining lifecycle work is to feed accepted completion back into the agent as the final `exec_shell` result, not only as a native timeline event.
+9. `NativeMobileEvent::TermuxCommandCompleted` triggers `continue_termux_result`, injecting the real command output back into the paused agent turn so the model can continue from the actual tool result.
 
 Important host requirements:
 
@@ -92,7 +92,7 @@ The repository now has the bridge contracts, but the final Android host still ne
 
 - Dioxus/native adapter that drains `NativeBridgeState` commands in the running Android app.
 - Android service or receiver for Termux pending-intent results.
-- Result-continuation plumbing that turns an accepted Termux callback into the final `ToolResult`/model-visible output for the original `exec_shell` call.
+- Device/emulator verification that the host callback reaches the existing Rust/mobile `continue_termux_result` plumbing.
 - Device/emulator verification of picker, PC discovery and Termux flows against the final host shell.
 
 ## Manual verification checklist

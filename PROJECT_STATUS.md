@@ -48,3 +48,5 @@ DeepSeek-Mobile is in active development with a coherent working core:
 5. Release packaging: Android build/release notes, PC-host binary/service notes and troubleshooting docs.
 
 See `docs/PROJECT_AUDIT.md` for the detailed audit and `docs/MASTER_PLAN.md` for the execution backlog.
+
+The intended phone/PC product organization is documented in `docs/PHONE_PC_OPERATING_MODEL.md`.

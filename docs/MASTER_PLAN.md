@@ -9,6 +9,8 @@ Reference repository: `Hmbown/DeepSeek-TUI`.
 
 Current project audit: `docs/PROJECT_AUDIT.md`.
 
+Phone/PC operating model: `docs/PHONE_PC_OPERATING_MODEL.md`.
+
 ## 0. Non-negotiable rules
 
 1. Do not replace the mobile architecture with a blind copy of DeepSeek TUI.
@@ -370,6 +372,7 @@ Checklist:
 - [x] API key setup and secret storage plan.
 - [ ] Android build/release notes.
 - [ ] PC-host binary/release notes.
+- [ ] PC-host bootstrap bundle: bundled binary first, PATH fallback second, explicit install flow third.
 - [ ] Troubleshooting docs.
 
 Acceptance criteria:

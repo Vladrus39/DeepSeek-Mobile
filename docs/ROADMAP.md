@@ -72,4 +72,5 @@
 - [x] MCP/skills config and UI layer
 - [ ] Durable task artifacts/logs and PC-running-task synchronization
 - [ ] Runtime HTTP/SSE API
+- [ ] PC-host bootstrap bundle: bundled binary → PATH fallback → explicit install
 - [ ] Release packaging and troubleshooting docs
