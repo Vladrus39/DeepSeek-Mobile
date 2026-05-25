@@ -777,6 +777,7 @@ dependencies = [
  "anyhow",
  "deepseek-mobile-core",
  "dioxus",
+ "serde",
  "serde_json",
  "tokio",
  "uuid",

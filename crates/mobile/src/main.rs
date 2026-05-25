@@ -81,7 +81,7 @@ fn app() -> Element {
     let mut snapshots_state = use_signal(SnapshotsUiState::default);
     let mut diagnostics_state = use_signal(DiagnosticsUiState::default);
     let git_state = use_signal(GitUiState::default);
-    let terminal_state = use_signal(TerminalUiState::default);
+    let mut terminal_state = use_signal(TerminalUiState::default);
     let mut settings_state = use_signal(SettingsFormState::default);
     let mut onboarding_done = use_signal(|| {
         if let Some(config) = load_saved_config() {
@@ -138,6 +138,16 @@ fn app() -> Element {
                 }
                 loading_signal.set(false);
             });
+        }
+    });
+
+    // Auto-save terminal state on changes
+    let terminal_persist_signal = terminal_state;
+    let terminal_persist_path = std::path::PathBuf::from(".deepseek-mobile").join("terminal_state.json");
+    use_effect(move || {
+        let state = terminal_persist_signal();
+        if !state.sessions.is_empty() {
+            let _ = state.save_to_file(&terminal_persist_path);
         }
     });
 
@@ -216,6 +226,14 @@ fn app() -> Element {
                 );
                 timeline.set(next_timeline);
             }
+        }
+    }
+
+    // Load saved terminal sessions
+    let terminal_persistence_path = std::path::PathBuf::from(".deepseek-mobile").join("terminal_state.json");
+    if terminal_persistence_path.exists() {
+        if let Ok(saved_terminal) = TerminalUiState::load_from_file(&terminal_persistence_path) {
+            terminal_state.set(saved_terminal);
         }
     }
 

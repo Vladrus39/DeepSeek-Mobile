@@ -8,5 +8,6 @@ dioxus = { workspace = true }
 deepseek-mobile-core = { workspace = true }
 tokio = { workspace = true }
 anyhow = "1"
+serde = { workspace = true }
 serde_json = { workspace = true }
 uuid = { version = "1", features = ["v4"] }

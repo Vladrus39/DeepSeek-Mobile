@@ -4,19 +4,23 @@
 //! and user input for sending commands to remote terminals.
 
 use deepseek_mobile_core::PcTerminalSession;
+use serde::{Deserialize, Serialize};
+use std::path::Path;
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct TerminalSessionView {
     pub id: String,
     pub title: String,
     pub cwd: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub output: Vec<String>,
     pub is_open: bool,
     pub exit_code: Option<i32>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct TerminalUiState {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub sessions: Vec<TerminalSessionView>,
     pub selected_session_id: Option<String>,
     pub input_text: String,
@@ -85,6 +89,40 @@ impl TerminalUiState {
 
     pub fn active_session_count(&self) -> usize {
         self.sessions.iter().filter(|s| s.is_open).count()
+    }
+
+    /// Save terminal state to a JSON file, truncating output to last N lines per session.
+    pub fn save_to_file(&self, path: impl AsRef<Path>) -> anyhow::Result<()> {
+        const MAX_OUTPUT_LINES: usize = 200;
+        let mut compact = self.clone();
+        for session in &mut compact.sessions {
+            if session.output.len() > MAX_OUTPUT_LINES {
+                let keep = session.output.split_off(session.output.len() - MAX_OUTPUT_LINES);
+                // Insert a marker at the start
+                session.output = keep;
+                session.output.insert(0, format!("...[{} lines truncated]...", session.output.len().saturating_sub(MAX_OUTPUT_LINES + 1)));
+            }
+        }
+        let json = serde_json::to_string_pretty(&compact)?;
+        std::fs::write(path.as_ref(), json)?;
+        Ok(())
+    }
+
+    /// Load terminal state from a JSON file, or return default if file missing.
+    pub fn load_from_file(path: impl AsRef<Path>) -> anyhow::Result<Self> {
+        let path = path.as_ref();
+        if !path.exists() {
+            return Ok(Self::default());
+        }
+        let json = std::fs::read_to_string(path)?;
+        let state: Self = serde_json::from_str(&json)?;
+        // Mark all sessions as closed since processes don't survive restart
+        let mut state = state;
+        for session in &mut state.sessions {
+            session.is_open = false;
+        }
+        state.selected_session_id = None;
+        Ok(state)
     }
 }
 
