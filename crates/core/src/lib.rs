@@ -79,7 +79,7 @@ pub use pc_gateway::{
     PcGatewayHealth, PcGatewayPairingRequest, PcGatewayPairingResponse, PcGatewayRequest,
     PcGatewayRequestEnvelope, PcGatewayResponse, PcGatewayResponseEnvelope,
     PcGatewaySecurityPolicy, PcGatewayTransportMode, PcGatewayTrustLevel, PolicyPreset, PcPreviewDescriptor,
-    CommandStreamEvent, PcTaskDescriptor, PcTaskKind, PcTerminalSession, PcWorkspaceGrant,
+    CommandStreamEvent, PcRunningTaskEvent, PcTaskDescriptor, PcTaskKind, PcTerminalSession, PcWorkspaceGrant,
     PcRunningTaskInfo,
     PcWorkspaceIndexSummary,
 };

@@ -8,7 +8,7 @@ use crate::executor::CommandRequest;
 use crate::pc_gateway::{
     PcGatewayConfig, PcGatewayEndpointCandidate, PcGatewayError, PcGatewayHealth,
     PcGatewayRequest, PcGatewayRequestEnvelope, PcGatewayResponse, PcGatewayResponseEnvelope,
-    CommandStreamEvent,
+    CommandStreamEvent, PcRunningTaskEvent,
     PcGatewaySecurityPolicy,
 };
 use anyhow::{anyhow, Result};
@@ -291,6 +291,85 @@ impl PcGatewayClient {
         self.send(PcGatewayRequest::ListTasks).await
     }
 
+    /// Subscribe to live task state changes via SSE.
+    /// Returns an mpsc receiver that produces PcRunningTaskEvent items.
+    pub async fn stream_task_events(&self) -> Result<mpsc::Receiver<PcRunningTaskEvent>> {
+        let (tx, rx) = mpsc::channel::<PcRunningTaskEvent>(32);
+        let http = self.http.clone();
+        let endpoints = self.endpoint_plan();
+        let auth_token = self.config.auth_token.clone();
+        let config = self.config.clone();
+        let tx_err = tx.clone();
+        tokio::spawn(async move {
+            let mut last_error = String::new();
+            for endpoint in &endpoints {
+                if let Err(e) = endpoint.validate(config.allow_http_on_local_network) {
+                    last_error = e;
+                    continue;
+                }
+                let url = format!(
+                    "{}/v1/runtime/tasks/events",
+                    endpoint.base_url.trim_end_matches('/')
+                );
+                let mut builder = http.get(&url);
+                if let Some(ref token) = auth_token {
+                    builder = builder.bearer_auth(token);
+                }
+                match builder.send().await {
+                    Ok(response) => {
+                        if !response.status().is_success() {
+                            let status = response.status();
+                            let text = response.text().await.unwrap_or_default();
+                            let _ = tx_err
+                                .send(PcRunningTaskEvent::TaskFailed {
+                                    task_id: String::new(),
+                                    error: format!("HTTP {}: {}", status, text),
+                                })
+                                .await;
+                            continue;
+                        }
+                        let mut buf = String::new();
+                        let mut bytes_stream = response.bytes_stream();
+                        while let Some(Ok(chunk)) = bytes_stream.next().await {
+                            if let Ok(text) = String::from_utf8(chunk.to_vec()) {
+                                buf.push_str(&text);
+                                // Split on "\n\n" (SSE event boundary).
+                                while let Some(pos) = buf.find("\n\n") {
+                                    let raw = buf[..pos].to_string();
+                                    buf = buf[pos + 2..].to_string();
+                                    // Extract data: payload from the SSE event.
+                                    for event_line in raw.lines() {
+                                        let event_line = event_line.trim();
+                                        if event_line.is_empty() {
+                                            continue;
+                                        }
+                                        if let Some(ev) = parse_task_sse_event(event_line) {
+                                            if tx.send(ev).await.is_err() {
+                                                return;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        return;
+                    }
+                    Err(e) => {
+                        last_error = e.to_string();
+                        continue;
+                    }
+                }
+            }
+            let _ = tx_err
+                .send(PcRunningTaskEvent::TaskFailed {
+                    task_id: String::new(),
+                    error: format!("all endpoints failed: {}", last_error),
+                })
+                .await;
+        });
+        Ok(rx)
+    }
+
     pub async fn start_dev_server(
         &self,
         workspace_id: impl Into<String>,
@@ -521,6 +600,19 @@ fn parse_sse_event(raw: &str) -> Option<CommandStreamEvent> {
         "exit" => Some(CommandStreamEvent::Exit(value.get("code")?.as_i64().map(|c| c as i32))),
         _ => None,
     }
+}
+
+/// Parse a single task SSE event line from the runtime tasks events stream.
+/// The pc-host sends the full PcRunningTaskEvent as a JSON data line.
+fn parse_task_sse_event(raw: &str) -> Option<PcRunningTaskEvent> {
+    let data = raw.strip_prefix("data: ").unwrap_or(raw);
+    // The SSE event uses axum's Event::default().data() which adds "data:" prefix.
+    // Try direct JSON parse first, then with "data: " prefix.
+    if let Ok(ev) = serde_json::from_str::<PcRunningTaskEvent>(data) {
+        return Some(ev);
+    }
+    // Also accept plain JSON without SSE framing.
+    serde_json::from_str::<PcRunningTaskEvent>(raw).ok()
 }
 
 #[cfg(test)]

@@ -726,6 +726,15 @@ pub enum CommandStreamEvent {
     Error(String),
 }
 
+/// Live event pushed over the task-events SSE stream when a task changes state.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub enum PcRunningTaskEvent {
+    TaskStarted(PcRunningTaskInfo),
+    TaskCompleted { task_id: String, exit_code: Option<i32> },
+    TaskFailed { task_id: String, error: String },
+    TaskStopped { task_id: String },
+}
+
 #[cfg(test)]
 mod tests {
     use super::{

@@ -15,7 +15,7 @@ DeepSeek-Mobile is in active development with a coherent working core:
 - Git panel actions and engine auto-commit/push lifecycle are wired through real git routes;
 - durable task records, queue lifecycle, artifacts/logs, task UI, MCP config registry and skills registry/UI are present;
 - PC-host exposes a runtime HTTP task API for listing running tasks and reading per-task logs;
-- mobile Tasks panel reconciles active PC-host running tasks through `ListTasks` and can stop PC tasks through `StopTask`;
+- mobile Tasks panel now subscribes to live PC-host task events via SSE (`stream_task_events`) and reconciles running tasks in real-time;
 - Termux workspace selection is available in Settings and activates a persisted Termux runtime workspace;
 - core ZIP workspace import/export helpers exist with traversal protection and metadata exclusion;
 - Files panel can import a picked project ZIP into the phone workspace and export/share the phone workspace as ZIP;
@@ -35,7 +35,7 @@ DeepSeek-Mobile is in active development with a coherent working core:
 | Diagnostics | Rust + TypeScript + Python paths exist; latest diagnostics are re-injected into the next turn |
 | Files | Local and active PC workspace browsing use real file data; pending approval diffs are real |
 | Tasks | Durable records, queue lifecycle, artifacts/logs, PC-host log capture, mobile task manager UI and PC running-task sync exist |
-| Runtime HTTP API | PC-host exposes task list/log endpoints and the mobile UI reconciles running PC tasks; SSE/live event streaming is still pending |
+| Runtime HTTP API | PC-host exposes task list/log endpoints; mobile UI subscribes to live SSE task events for real-time updates |
 | Termux workspace | Settings selector validates an absolute Termux path and activates a persisted Termux runtime connection |
 | Workspace import/export | Files panel exposes project ZIP import/export over the core helpers; final Android host picker/share verification remains pending |
 | MCP/skills | Config/manifest registries and mobile UI surfaces exist |
@@ -46,16 +46,15 @@ DeepSeek-Mobile is in active development with a coherent working core:
 
 - Final Android host adapter is still not verified on device/emulator; Rust/Kotlin contracts exist, but production wiring needs a final pass.
 - Final visual UI pass is still not verified on device/emulator because the local environment currently lacks Dioxus CLI (`dx`).
-- Durable tasks have records/UI, artifacts/logs, PC-host process start/stop/list/log RPCs and manual mobile reconciliation; automatic SSE/live updates remain.
+- Durable tasks have records/UI, artifacts/logs, PC-host process start/stop/list/log RPCs and live SSE subscription; mobile UI updates in real-time without manual polling.
 - MCP/skills currently provide registry/config/UI/context surfaces; actual external MCP tool execution must stay behind approval/workspace boundaries when expanded.
 - Terminal UI state persists recent sessions/output as closed sessions after restart; live process resurrection is intentionally not claimed.
 
 ## Highest-value remaining work
 
 1. Final Dioxus Android host adapter + device/emulator verification for picker, PC discovery, terminal and Termux callbacks.
-2. Runtime SSE/live event streaming over the now-stable runtime/task model.
-3. Dev-server lifecycle and PC-host autostart/service installer.
-4. Release packaging: Android build/release notes, PC-host binary/service notes and troubleshooting docs.
+2. Dev-server lifecycle and PC-host autostart/service installer.
+3. Release packaging: Android build/release notes, PC-host binary/service notes and troubleshooting docs.
 
 See `docs/PROJECT_AUDIT.md` for the detailed audit and `docs/MASTER_PLAN.md` for the execution backlog.
 

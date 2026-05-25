@@ -8,12 +8,13 @@ use std::convert::Infallible;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::Command as TokioCommand;
 use tokio_stream::wrappers::ReceiverStream;
+use tokio::sync::broadcast;
 use deepseek_mobile_core::{
     CommandOutput, CommandRequest, LogRing, PcDiagnostic, PcDiagnosticSeverity,
     PcEnvironmentDescriptor, PcGatewayCapability, PcGatewayConnectionStatus, PcGatewayDirEntry,
     PcGatewayError, PcGatewayHealth, PcGatewayLogEntry, PcGatewayLogs, PcGatewayRequest,
     PcGatewayRequestEnvelope, PcGatewayResponse, PcGatewayResponseEnvelope,
-    PcGatewaySecurityPolicy, PolicyPreset, PcRunningTaskInfo, PcTaskDescriptor, PcTaskKind,
+    PcGatewaySecurityPolicy, PolicyPreset, PcRunningTaskEvent, PcRunningTaskInfo, PcTaskDescriptor, PcTaskKind,
     PcTerminalSession, PcWorkspaceGrant,
 };
 use serde::Deserialize;
@@ -33,6 +34,7 @@ struct PcHostState {
     config: Arc<PcHostConfig>,
     terminals: Arc<Mutex<HashMap<String, TerminalHandle>>>,
     tasks: Arc<Mutex<HashMap<String, TaskHandle>>>,
+    task_events: Arc<Mutex<Option<broadcast::Sender<PcRunningTaskEvent>>>>,
     log_ring: Arc<Mutex<LogRing>>,
     start_time: std::time::Instant,
 }
@@ -42,7 +44,7 @@ struct TaskHandle {
     id: Arc<String>,
     label: Arc<String>,
     kind: Arc<String>,
-    child: Child,
+    child: Arc<Mutex<Option<Child>>>,
     log_path: PathBuf,
     started_at_unix: u64,
 }
@@ -223,10 +225,12 @@ async fn main() -> Result<()> {
     let config = PcHostConfig::from_env()?;
     let bind_addr = config.bind_addr;
     let gateway_label = config.gateway_label.clone();
+    let (task_events_tx, _) = broadcast::channel::<PcRunningTaskEvent>(32);
     let state = PcHostState {
         config: Arc::new(config),
         terminals: Arc::new(Mutex::new(HashMap::new())),
         tasks: Arc::new(Mutex::new(HashMap::new())),
+        task_events: Arc::new(Mutex::new(Some(task_events_tx))),
         log_ring: Arc::new(Mutex::new(LogRing::new(200))),
         start_time: std::time::Instant::now(),
     };
@@ -237,6 +241,7 @@ async fn main() -> Result<()> {
         .route("/v1/gateway/exec/stream", post(exec_stream_handler))
         .route("/v1/gateway/logs", get(logs_handler))
         .route("/v1/runtime/tasks", get(runtime_tasks_handler))
+        .route("/v1/runtime/tasks/events", get(runtime_task_events_handler))
         .route("/v1/runtime/tasks/{task_id}/log", get(runtime_task_log_handler))
         .with_state(state);
     // Note: /v1/runtime/tasks and log routes return task status data
@@ -1276,23 +1281,26 @@ async fn run_task_handler(state: &PcHostState, task_id: &str) -> Result<PcGatewa
     let pid = child.id().unwrap_or(0);
 
     // Spawn background output collector
-    let task_id_owned = Arc::new(task_id.to_string());
+    let task_id_arc = Arc::new(task_id.to_string());
     let log_path_clone = log_path.clone();
 
     if let Some(stdout) = child.stdout.take() {
-        let tid = task_id_owned.clone();
+        let tid = task_id_arc.clone();
         let lp = log_path_clone.clone();
         tokio::spawn(async move {
             pipe_to_log(tid, lp, stdout).await;
         });
     }
     if let Some(stderr) = child.stderr.take() {
-        let tid = task_id_owned.clone();
+        let tid = task_id_arc.clone();
         let lp = log_path_clone;
         tokio::spawn(async move {
             pipe_to_log(tid, lp, stderr).await;
         });
     }
+
+    // Wrap child so the handle and watcher can share ownership.
+    let child_shared = Arc::new(Mutex::new(Some(child)));
 
     let label = Arc::new(task.label.clone());
     let kind = Arc::new(format!("{:?}", task.kind));
@@ -1307,16 +1315,31 @@ async fn run_task_handler(state: &PcHostState, task_id: &str) -> Result<PcGatewa
     }
 
     let handle = TaskHandle {
-        id: task_id_owned,
+        id: task_id_arc.clone(),
         label,
         kind,
-        child,
-        log_path,
+        child: child_shared.clone(),
+        log_path: log_path.clone(),
         started_at_unix: started_at,
     };
 
-
     handles.insert(task_id.to_string(), handle);
+
+    // Emit TaskStarted event through broadcast.
+    {
+        let events = state.task_events.lock().await;
+        if let Some(ref tx) = *events {
+            let _ = tx.send(PcRunningTaskEvent::TaskStarted(PcRunningTaskInfo {
+                id: task_id.to_string(),
+                label: task.label.clone(),
+                kind: format!("{:?}", task.kind),
+                started_at_unix: started_at,
+            }));
+        }
+    }
+
+    // Spawn background watcher to await child completion.
+    spawn_task_watcher(state, task_id.to_string(), child_shared, log_path.clone());
 
     Ok(PcGatewayResponse::TaskStarted {
         task_id: task_id.to_string(),
@@ -1333,13 +1356,22 @@ async fn stop_task_handler(state: &PcHostState, task_id: &str) -> Result<PcGatew
         )));
     };
 
-    let _ = handle.child.start_kill();
-    // Best-effort wait for cleanup
-    let _ = tokio::time::timeout(std::time::Duration::from_secs(5), handle.child.wait()).await;
+    // Kill the child process.
+    {
+        let mut child_lock = handle.child.lock().await;
+        if let Some(ref mut child) = *child_lock {
+            let _ = child.start_kill();
+            let _ = tokio::time::timeout(std::time::Duration::from_secs(5), child.wait()).await;
+        }
+        *child_lock = None;
+    }
 
     if let Err(e) = log_line_to_file(&handle.log_path, "Task stopped").await {
         tracing::warn!("failed to write task stop log: {}", e);
     }
+
+    // Emit TaskStopped event.
+    emit_task_event(state, PcRunningTaskEvent::TaskStopped { task_id: task_id.to_string() }).await;
 
     Ok(PcGatewayResponse::TaskStopped {
         task_id: task_id.to_string(),
@@ -1358,6 +1390,109 @@ async fn list_tasks_handler(state: &PcHostState) -> Result<PcGatewayResponse> {
         })
         .collect();
     Ok(PcGatewayResponse::TaskList(running))
+}
+
+/// Send a task event through the broadcast channel (best-effort).
+async fn emit_task_event(state: &PcHostState, event: PcRunningTaskEvent) {
+    let events = state.task_events.lock().await;
+    if let Some(ref tx) = *events {
+        let _ = tx.send(event);
+    }
+}
+
+/// Background watcher: waits for the child process to exit, then emits
+/// a completion / failure event and cleans up the handle.
+fn spawn_task_watcher(
+    state: &PcHostState,
+    task_id: String,
+    child_shared: Arc<Mutex<Option<Child>>>,
+    log_path: PathBuf,
+) {
+    let state_clone = state.clone();
+    let tid = task_id.clone();
+    tokio::spawn(async move {
+        // Take ownership of the child from the shared slot.
+        let child_opt = {
+            let mut lock = child_shared.lock().await;
+            lock.take()
+        };
+
+        let exit_code = if let Some(mut child) = child_opt {
+            match child.wait().await {
+                Ok(status) => status.code(),
+                Err(e) => {
+                    let _ = log_line_to_file(&log_path, &format!("Task error: {}", e)).await;
+                    emit_task_event(
+                        &state_clone,
+                        PcRunningTaskEvent::TaskFailed {
+                            task_id: tid.clone(),
+                            error: e.to_string(),
+                        },
+                    )
+                    .await;
+                    // Remove handle from the tasks map.
+                    state_clone.tasks.lock().await.remove(&tid);
+                    return;
+                }
+            }
+        } else {
+            // Child was already taken (e.g. by stop_task_handler).
+            let _ = log_line_to_file(&log_path, "Task ended (stopped externally)").await;
+            state_clone.tasks.lock().await.remove(&tid);
+            return;
+        };
+
+        let _ = log_line_to_file(&log_path, &format!("Task completed with exit code {:?}", exit_code)).await;
+
+        emit_task_event(
+            &state_clone,
+            PcRunningTaskEvent::TaskCompleted {
+                task_id: tid.clone(),
+                exit_code,
+            },
+        )
+        .await;
+
+        // Remove handle from the tasks map.
+        state_clone.tasks.lock().await.remove(&tid);
+    });
+}
+
+/// GET /v1/runtime/tasks/events — SSE stream of task state changes.
+async fn runtime_task_events_handler(
+    State(state): State<PcHostState>,
+) -> Sse<ReceiverStream<Result<Event, Infallible>>> {
+    let (tx, rx) = tokio::sync::mpsc::channel::<Result<Event, Infallible>>(16);
+
+    let task_events = state.task_events.clone();
+    tokio::spawn(async move {
+        let rx_opt = {
+            let mut lock = task_events.lock().await;
+            lock.as_ref().map(|sender| sender.subscribe())
+        };
+
+        let Some(mut broadcast_rx) = rx_opt else {
+            let _ = tx.send(Ok(Event::default().data(r#"{"kind":"error","data":"no broadcast channel"}"#))).await;
+            return;
+        };
+
+        loop {
+            match broadcast_rx.recv().await {
+                Ok(event) => {
+                    let data = serde_json::to_string(&event).unwrap_or_default();
+                    if tx.send(Ok(Event::default().data(data))).await.is_err() {
+                        break;
+                    }
+                }
+                Err(broadcast::error::RecvError::Lagged(n)) => {
+                    let _ = tx.send(Ok(Event::default().data(format!(r#"{{"kind":"lagged","skipped":{}}}"#, n)))).await;
+                }
+                Err(broadcast::error::RecvError::Closed) => break,
+            }
+        }
+    });
+
+    Sse::new(ReceiverStream::new(rx))
 }
 
 // ── Task output logging ──

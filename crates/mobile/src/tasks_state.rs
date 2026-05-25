@@ -1,6 +1,6 @@
 use deepseek_mobile_core::{
     DurableTaskManager, DurableTaskRecord, DurableTaskStatus, PcGatewayClient, PcGatewayResponse,
-    PcRunningTaskInfo,
+    PcRunningTaskEvent, PcRunningTaskInfo,
 };
 use std::collections::HashSet;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -79,6 +79,25 @@ impl TasksUiState {
         });
         self.pc_running_tasks = tasks;
         self.pc_last_error = None;
+        self.pc_last_synced_at_unix = Some(current_unix_time());
+    }
+
+    /// Apply a single live PC task event from the SSE stream.
+    pub fn apply_pc_event(&mut self, event: &PcRunningTaskEvent) {
+        match event {
+            PcRunningTaskEvent::TaskStarted(info) => {
+                // Insert or replace the task in the running list
+                self.pc_running_tasks.retain(|t| t.id != info.id);
+                self.pc_running_tasks.push(info.clone());
+                self.pc_running_tasks
+                    .sort_by(|a, b| b.started_at_unix.cmp(&a.started_at_unix));
+            }
+            PcRunningTaskEvent::TaskCompleted { task_id, .. }
+            | PcRunningTaskEvent::TaskFailed { task_id, .. }
+            | PcRunningTaskEvent::TaskStopped { task_id } => {
+                self.pc_running_tasks.retain(|t| t.id != *task_id);
+            }
+        }
         self.pc_last_synced_at_unix = Some(current_unix_time());
     }
 
@@ -170,7 +189,7 @@ fn current_unix_time() -> u64 {
 mod tests {
     use super::TasksUiState;
     use deepseek_mobile_core::{
-        DurableTaskRecord, DurableTaskStatus, PcRunningTaskInfo,
+        DurableTaskRecord, DurableTaskStatus, PcRunningTaskEvent, PcRunningTaskInfo,
     };
 
     #[test]
@@ -209,6 +228,57 @@ mod tests {
         assert!(state.pc_running_tasks.is_empty());
         assert!(state.pc_last_error.is_none());
         assert!(state.pc_last_synced_at_unix.is_none());
+    }
+
+    #[test]
+    fn apply_pc_event_task_started_adds_to_list() {
+        let mut state = TasksUiState::default();
+        state.apply_pc_event(&PcRunningTaskEvent::TaskStarted(pc_task("t1", "Task 1", 100)));
+        assert_eq!(state.pc_running_tasks.len(), 1);
+        assert_eq!(state.pc_running_tasks[0].id, "t1");
+        assert!(state.pc_last_synced_at_unix.is_some());
+    }
+
+    #[test]
+    fn apply_pc_event_task_started_replaces_existing() {
+        let mut state = TasksUiState::default();
+        state.apply_pc_event(&PcRunningTaskEvent::TaskStarted(pc_task("t1", "Old", 100)));
+        state.apply_pc_event(&PcRunningTaskEvent::TaskStarted(pc_task("t1", "New", 200)));
+        assert_eq!(state.pc_running_tasks.len(), 1);
+        assert_eq!(state.pc_running_tasks[0].label, "New");
+    }
+
+    #[test]
+    fn apply_pc_event_task_completed_removes() {
+        let mut state = TasksUiState::default();
+        state.apply_pc_running_tasks(vec![pc_task("t1", "T1", 100), pc_task("t2", "T2", 200)]);
+        state.apply_pc_event(&PcRunningTaskEvent::TaskCompleted {
+            task_id: "t1".to_string(),
+            exit_code: Some(0),
+        });
+        assert_eq!(state.pc_running_tasks.len(), 1);
+        assert_eq!(state.pc_running_tasks[0].id, "t2");
+    }
+
+    #[test]
+    fn apply_pc_event_task_failed_removes() {
+        let mut state = TasksUiState::default();
+        state.apply_pc_running_tasks(vec![pc_task("t1", "T1", 100)]);
+        state.apply_pc_event(&PcRunningTaskEvent::TaskFailed {
+            task_id: "t1".to_string(),
+            error: "boom".to_string(),
+        });
+        assert!(state.pc_running_tasks.is_empty());
+    }
+
+    #[test]
+    fn apply_pc_event_task_stopped_removes() {
+        let mut state = TasksUiState::default();
+        state.apply_pc_running_tasks(vec![pc_task("t1", "T1", 100)]);
+        state.apply_pc_event(&PcRunningTaskEvent::TaskStopped {
+            task_id: "t1".to_string(),
+        });
+        assert!(state.pc_running_tasks.is_empty());
     }
 
     fn pc_task(id: &str, label: &str, started_at_unix: u64) -> PcRunningTaskInfo {

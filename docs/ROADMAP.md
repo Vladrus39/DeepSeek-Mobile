@@ -75,7 +75,7 @@
 - [x] Durable task artifacts/logs
 - [x] Runtime HTTP task API
 - [x] PC-running-task synchronization/reconciliation
-- [ ] Runtime SSE/live event streaming
+- [x] Runtime SSE/live event streaming
 - [ ] PC-host release package includes matching host binary / explicit installer
 - [ ] Real Android visual verification through Dioxus CLI and device/emulator
 - [ ] Release packaging and troubleshooting docs

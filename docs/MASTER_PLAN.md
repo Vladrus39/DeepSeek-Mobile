@@ -338,7 +338,7 @@ Checklist:
 - [x] Add artifacts and logs per task.
 - [x] Add HTTP task list/log runtime API.
 - [x] Add mobile PC running-task reconciliation and stop controls.
-- [ ] Add SSE/live runtime event streaming after core task model is stable.
+- [x] Add SSE/live runtime event streaming after core task model is stable.
 
 Acceptance criteria:
 
@@ -397,8 +397,8 @@ Acceptance criteria:
 | Shell execution | Route to PC/Termux | Partial: PC-host active and Rust/mobile Termux continuation done; final Android host verification pending |
 | Git tools | Keep with mobile UI | Done: core/PC routing, panel actions and auto-commit lifecycle are wired |
 | Web/search/fetch | Keep with approval | Done in core with network capability and approval policy |
-| Runtime HTTP/SSE API | Keep later | Partial: task list/log HTTP endpoints and mobile PC task reconciliation done; SSE/live events pending |
-| Durable task queue | Keep | Partial: records, lifecycle, PC task RPC, artifacts/logs, mobile UI and manual PC running-task sync done; automatic live updates pending |
+| Runtime HTTP/SSE API | Keep later | Done: task list/log HTTP endpoints, mobile PC task reconciliation and live SSE events |
+| Durable task queue | Keep | Done: records, lifecycle, PC task RPC, artifacts/logs, mobile UI and live SSE subscription |
 | LSP diagnostics | Keep, PC-first plus local/Termux fallback | Partial: Rust/TypeScript/Python providers, UI metadata and next-turn model context implemented |
 | PC connectivity | Keep multi-transport, offline-first | Partial: endpoint candidates, failover, health, discovery, reconnect controls, persisted active route and remote-aware Files are implemented |
 | Snapshots/rollback | Keep, mobile-safe file-copy | Done for local and PC-gateway snapshot create/list/restore paths |

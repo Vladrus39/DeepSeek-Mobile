@@ -112,9 +112,9 @@ The main remaining work is no longer “port the basics from the TUI.” It is n
 | Termux | Native request queue, callback correlation, model continuation and Settings workspace activation exist | Final Android host verification |
 | Android files | Chat attachment ingestion, core ZIP import/export helpers and Files panel import/export UI exist | Final native picker/share device verification |
 | Terminal | PC-host sessions and persisted mobile UI history exist | Live terminal process resurrection is not claimed; service-level behavior can be improved later |
-| Durable tasks | Core records, queue lifecycle, artifacts/logs, PC task RPCs, mobile UI and manual PC running-task reconciliation exist | Automatic SSE/live task updates |
+| Durable tasks | Core records, queue lifecycle, artifacts/logs, PC task RPCs, mobile UI and live SSE subscription exist | — |
 | MCP/skills | Registry/config/UI/context surfaces exist | Actual external MCP tool execution must be added carefully behind approval/workspace boundaries |
-| Runtime API | PC-host HTTP task list/log endpoints exist | SSE/live event streaming still missing |
+| Runtime API | PC-host HTTP task list/log endpoints + SSE/live event streaming exist | — |
 | Packaging | Development flow works | Android release notes, PC-host binary/service notes and troubleshooting docs |
 
 ## Comparison with DeepSeek-TUI
@@ -130,17 +130,16 @@ The main remaining work is no longer “port the basics from the TUI.” It is n
 | Web/GitHub tools | Done in core |
 | Diagnostics | Providers and model reinjection done |
 | Snapshots | Local and PC-gateway paths done |
-| Runtime API | Partial: PC-host task list/log HTTP endpoints done; SSE/live events pending |
-| Durable tasks | Partial: records/queue/UI/RPC/artifacts/logs and manual PC running-task sync done; SSE/live updates pending |
+| Runtime API | Done: PC-host task list/log HTTP endpoints + SSE/live events |
+| Durable tasks | Done: records/queue/UI/RPC/artifacts/logs and live SSE task-event subscription |
 | MCP/skills/plugins | Partial: registry/config/UI/context surfaces done; external tool execution pending |
 | Android-native execution | Partial: contracts done, final host adapter pending |
 
 ## Recommended next execution order
 
 1. Final Dioxus Android host adapter and emulator/device verification.
-2. Runtime SSE/live event streaming over existing runtime/task state.
-3. Final Android picker/share/Termux device verification.
-4. Dev-server lifecycle, PC-host service/autostart and release/troubleshooting docs.
+2. Final Android picker/share/Termux device verification.
+3. Dev-server lifecycle, PC-host service/autostart and release/troubleshooting docs.
 
 ## Audit conclusion
 

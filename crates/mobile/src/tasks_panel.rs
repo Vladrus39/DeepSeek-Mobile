@@ -468,9 +468,24 @@ pub fn tasks_panel(mut state: Signal<TasksUiState>, pc_client: Option<PcGatewayC
 fn sync_pc_tasks(mut state: Signal<TasksUiState>, pc_client: Option<PcGatewayClient>) {
     if let Some(client) = pc_client {
         spawn(async move {
+            // Initial full sync via list_tasks
             let mut next = state();
             next.refresh_pc_running_tasks(&client).await;
             state.set(next);
+
+            // Subscribe to live SSE events
+            match client.stream_task_events().await {
+                Ok(mut rx) => {
+                    while let Some(event) = rx.recv().await {
+                        let mut next = state();
+                        next.apply_pc_event(&event);
+                        state.set(next);
+                    }
+                }
+                Err(_) => {
+                    // SSE subscription unavailable; will fall back to manual sync
+                }
+            }
         });
     } else {
         state.write().clear_pc_running_tasks();
