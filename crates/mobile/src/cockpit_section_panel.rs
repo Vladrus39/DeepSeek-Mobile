@@ -1,5 +1,7 @@
 use crate::diagnostics_panel::diagnostics_panel;
 use crate::diagnostics_state::DiagnosticsUiState;
+use crate::mcp_panel::mcp_panel;
+use crate::mcp_state::McpUiState;
 use crate::mobile_approval_panel::mobile_approval_panel;
 use crate::mobile_drawer::CockpitSection;
 use crate::native_bridge::NativeBridgeState;
@@ -13,6 +15,8 @@ use crate::mobile_git_runner::{apply_git_action_result, run_mobile_git_action};
 use crate::mobile_runtime_config::MobileRuntimeConfig;
 use crate::settings_panel::settings_panel;
 use crate::settings_state::SettingsFormState;
+use crate::skills_panel::skills_panel;
+use crate::skills_state::SkillsUiState;
 use crate::snapshots_panel::snapshots_panel;
 use crate::snapshots_state::SnapshotsUiState;
 use crate::tasks_panel::tasks_panel;
@@ -32,6 +36,8 @@ pub fn cockpit_section_panel(
     diagnostics_state: Signal<DiagnosticsUiState>,
     mut git_state: Signal<GitUiState>,
     mut terminal_state: Signal<TerminalUiState>,
+    mcp_state: Signal<McpUiState>,
+    skills_state: Signal<SkillsUiState>,
     tasks_state: Signal<TasksUiState>,
     settings_state: Signal<SettingsFormState>,
     on_approval_decision: EventHandler<(String, ReviewDecision)>,
@@ -128,6 +134,8 @@ pub fn cockpit_section_panel(
                 git_state.write().set_commit_message(message);
             }),
         ),
+        CockpitSection::Mcp => mcp_panel(mcp_state),
+        CockpitSection::Skills => skills_panel(skills_state),
         CockpitSection::Tasks => tasks_panel(tasks_state),
         CockpitSection::Settings => settings_panel(settings_state),
     }
@@ -158,6 +166,8 @@ mod tests {
         assert_eq!(CockpitSection::Terminal.title(), "Terminal");
         assert_eq!(CockpitSection::Approvals.title(), "Approvals");
         assert_eq!(CockpitSection::Git.title(), "Git & GitHub");
+        assert_eq!(CockpitSection::Mcp.title(), "MCP");
+        assert_eq!(CockpitSection::Skills.title(), "Skills");
         assert_eq!(CockpitSection::Tasks.title(), "Tasks");
         assert_eq!(CockpitSection::Settings.title(), "Settings");
     }

@@ -9,6 +9,8 @@ pub enum CockpitSection {
     Diagnostics,
     Terminal,
     Approvals,
+    Mcp,
+    Skills,
     Git,
     Tasks,
     Settings,
@@ -24,6 +26,8 @@ impl CockpitSection {
             CockpitSection::Diagnostics => "Diagnostics",
             CockpitSection::Terminal => "Terminal",
             CockpitSection::Approvals => "Approvals",
+            CockpitSection::Mcp => "MCP",
+            CockpitSection::Skills => "Skills",
             CockpitSection::Git => "Git & GitHub",
             CockpitSection::Tasks => "Tasks",
             CockpitSection::Settings => "Settings",
@@ -39,6 +43,8 @@ impl CockpitSection {
             CockpitSection::Diagnostics => "Post-edit errors and warnings",
             CockpitSection::Terminal => "PC / Termux command output",
             CockpitSection::Approvals => "Tool calls waiting for confirmation",
+            CockpitSection::Mcp => "MCP server status, tools, config",
+            CockpitSection::Skills => "Skill bundles: enable/disable",
             CockpitSection::Git => "Status, commits, push, pull, PRs",
             CockpitSection::Tasks => "Background tasks, build jobs, test runs",
             CockpitSection::Settings => "DeepSeek API, GitHub, disks, security",
@@ -71,6 +77,8 @@ pub fn default_drawer_items() -> Vec<DrawerItem> {
         item(CockpitSection::Diagnostics),
         item(CockpitSection::Terminal),
         item(CockpitSection::Approvals),
+        item(CockpitSection::Mcp),
+        item(CockpitSection::Skills),
         item(CockpitSection::Git),
         item(CockpitSection::Tasks),
         item(CockpitSection::Settings),
@@ -241,6 +249,8 @@ pub struct NavItem {
 pub fn default_nav_items() -> Vec<NavItem> {
     vec![
         NavItem { section: CockpitSection::Chat, label: "Chat", short: "💬" },
+        NavItem { section: CockpitSection::Skills, label: "Skills", short: "⚡" },
+        NavItem { section: CockpitSection::Mcp, label: "MCP", short: "🔌" },
         NavItem { section: CockpitSection::PcHost, label: "PC", short: "🖥" },
         NavItem { section: CockpitSection::Files, label: "Files", short: "📁" },
         NavItem { section: CockpitSection::Terminal, label: "Term", short: ">" },
@@ -304,6 +314,8 @@ mod tests {
         assert_eq!(CockpitSection::Terminal.title(), "Terminal");
         assert_eq!(CockpitSection::Approvals.title(), "Approvals");
         assert_eq!(CockpitSection::Git.title(), "Git & GitHub");
+        assert_eq!(CockpitSection::Mcp.title(), "MCP");
+        assert_eq!(CockpitSection::Skills.title(), "Skills");
         assert_eq!(CockpitSection::Tasks.title(), "Tasks");
         assert_eq!(CockpitSection::Settings.title(), "Settings");
     }
@@ -313,14 +325,18 @@ mod tests {
         let items = super::default_drawer_items();
         let titles: Vec<&str> = items.iter().map(|i| i.title).collect();
         assert!(titles.contains(&"Chat"));
+        assert!(titles.contains(&"MCP"));
+        assert!(titles.contains(&"Skills"));
         assert!(titles.contains(&"Tasks"));
         assert!(titles.contains(&"Settings"));
     }
 
     #[test]
-    fn bottom_nav_includes_tasks() {
+    fn bottom_nav_includes_all_new_sections() {
         let items = super::default_nav_items();
         let labels: Vec<&str> = items.iter().map(|i| i.label).collect();
+        assert!(labels.contains(&"MCP"));
+        assert!(labels.contains(&"Skills"));
         assert!(labels.contains(&"Tasks"));
     }
 }

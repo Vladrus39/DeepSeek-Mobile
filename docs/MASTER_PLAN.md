@@ -343,11 +343,12 @@ Goal: add extensibility only after the core mobile agent is stable.
 
 Checklist:
 
-- [ ] Add local skills manifest format.
-- [ ] Add bundled mobile-safe starter skills.
-- [ ] Add plugin host model.
-- [ ] Add MCP client through PC gateway first.
-- [ ] Add MCP UI for server status and tool list.
+- [x] Add local skills manifest format.
+- [x] Add bundled mobile-safe starter skills (discovery from ~/.deepseek/skills, .agents/skills, .claude/skills).
+- [x] Add plugin host model (MCPClientRegistry, McpServerConfig, McpTransport).
+- [x] Add MCP client registry through JSON config file (~/.deepseek-mobile/mcp.json) with stdio and http-sse transports.
+- [x] Add MCP UI for server status and tool list.
+- [x] Add Skills UI panel with enable/disable toggles.
 
 Acceptance criteria:
 
@@ -431,9 +432,11 @@ The next implementation sequence is fixed:
 25. [x] Add background tasks (PC-host process spawning + gateway RPC).
 26. [x] Add durable task records + queue lifecycle (core/mobile side).
 27. [x] Add mobile task manager UI.
-28. [ ] Add MCP/skills.
+28. [x] Add MCP/skills.
 
 ## 5. Implementation progress log
+- 2026-05-25 (Phase G — MCP and skills complete): Added `SkillManifest`/`SkillRegistry` frontmatter parser with multi-path discovery, `McpClientRegistry`/`McpServerConfig`/`McpTransport` with JSON persistence, `SkillsUiState`/`skills_panel` and `McpUiState`/`mcp_panel` Dioxus UI components, `CockpitSection::Mcp` and `CockpitSection::Skills` in drawer/navbar, full wiring through `main.rs` → `cockpit_section_panel`. All P7 checklist items closed: local skills format, bundled discovery paths, plugin host model, MCP client registry (stdio + http-sse), MCP UI, Skills UI. Verification: `cargo check` green, `cargo test --workspace` 134 core / 102 mobile / 2 pc-host (14 new tests: 7 skills + 7 mcp).
+
 - 2026-05-25 (Phase F2 — mobile task manager UI): Added `TasksUiState` with `refresh`, `cancel_task`, `prune_terminal`, and `set_filter` methods that delegate to `DurableTaskManager`. Added `tasks_panel.rs` Dioxus component with filter chips, task cards (label/kind/status badge/created age/summary/error), Refresh/Prune controls, cancel buttons for non-terminal tasks, and empty state. Added `CockpitSection::Tasks` to drawer enum with title/subtitle/navbar. Wired `tasks_state` signal through `main.rs` → `cockpit_section_panel`. Added drawer/navbar tests for Tasks integration. Verification: `cargo check` green, `cargo test --workspace` 134 core / 102 mobile / 2 pc-host.
 
 - 2026-05-25 (Phase F1 — durable task record + queue lifecycle): Added `DurableTaskStatus` enum (Queued/Running/Completed/Failed/Canceled), `DurableTaskRecord` struct with lifecycle methods (`mark_running`, `mark_completed`, `mark_failed`, `mark_canceled`), and `DurableTaskManager` with single-file JSON persistence under `base_dir/tasks.json`. Manager supports `create`, `save`, `load`, `load_all`, `update_status`, `delete`, `count_by_status`, and `prune_terminal_tasks`. Registered `pub mod durable_task` in core lib, re-exported `DurableTaskManager`, `DurableTaskRecord`, `DurableTaskStatus`. Verification: 16/16 durable_task tests pass, `cargo check --workspace --all-targets` green.

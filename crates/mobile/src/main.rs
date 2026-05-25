@@ -10,6 +10,8 @@ mod diagnostics_state;
 mod document_picker;
 mod git_panel;
 mod git_state;
+mod mcp_panel;
+mod mcp_state;
 mod mobile_approval_panel;
 mod mobile_drawer;
 mod mobile_engine_runner;
@@ -31,6 +33,8 @@ mod project_files_state;
 mod saved_timeline_loader;
 mod settings_panel;
 mod settings_state;
+mod skills_panel;
+mod skills_state;
 mod snapshots_panel;
 mod snapshots_state;
 mod tasks_panel;
@@ -48,6 +52,7 @@ use diagnostics_state::DiagnosticsUiState;
 use dioxus::prelude::*;
 use document_picker::{DocumentPickerRequest, DocumentPickerState};
 use git_state::GitUiState;
+use mcp_state::McpUiState;
 use mobile_approval_panel::mobile_approval_panel;
 use mobile_drawer::{bottom_nav_bar, mobile_drawer, CockpitSection};
 use mobile_engine_runner::{
@@ -59,6 +64,7 @@ use pc_pairing_state::PcPairingUiState;
 use project_files_state::ProjectFilesUiState;
 use saved_timeline_loader::load_default_saved_events;
 use settings_state::{load_saved_config, SettingsFormState};
+use skills_state::SkillsUiState;
 use snapshots_state::SnapshotsUiState;
 use tasks_state::TasksUiState;
 use terminal_state::TerminalUiState;
@@ -87,6 +93,8 @@ fn app() -> Element {
     let git_state = use_signal(GitUiState::default);
     let mut terminal_state = use_signal(TerminalUiState::default);
     let mut settings_state = use_signal(SettingsFormState::default);
+    let mut mcp_state = use_signal(McpUiState::default);
+    let skills_state = use_signal(SkillsUiState::default);
     let mut onboarding_done = use_signal(|| {
         if let Some(config) = load_saved_config() {
             let key = config.api_key.trim();
@@ -372,6 +380,8 @@ fn app() -> Element {
                         diagnostics_state,
                         git_state,
                         terminal_state,
+                        mcp_state,
+                        skills_state,
                         tasks_state,
                         settings_state,
                         EventHandler::new(move |(approval_id, decision): (String, ReviewDecision)| {

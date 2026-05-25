@@ -15,6 +15,7 @@ pub mod engine;
 pub mod events;
 pub mod executor;
 pub mod github;
+pub mod mcp;
 pub mod model_router;
 pub mod pc_gateway;
 pub mod pc_gateway_client;
@@ -23,6 +24,7 @@ pub mod pc_logs;
 pub mod pc_pairing;
 pub mod runtime_store;
 pub mod session;
+pub mod skills;
 pub mod snapshots;
 pub mod tool_call;
 pub mod tool_execution;
@@ -66,6 +68,7 @@ pub use executor::{
 };
 pub use github::{GitHubBranch, GitHubClient, GitHubCommitResult, GitHubContentEntry, GitHubFileContent,
     GitHubIssue, GitHubPullRequest, GitHubRepo, GitHubRepoInfo};
+pub use mcp::{McpClientRegistry, McpServerConfig, McpServerState, McpServerStatus, McpToolDescriptor, McpTransport};
 pub use model_router::{ModelRouter, RouteDecision, TaskProfile};
 pub use pc_gateway::{
     is_private_or_loopback_http_url, validate_gateway_base_url,
@@ -93,6 +96,7 @@ pub use runtime_store::{
     TurnRecord,
 };
 pub use session::Session;
+pub use skills::{SkillManifest, SkillRegistry};
 pub use snapshots::{
     WorkspaceRestoreReport, WorkspaceSnapshotFile, WorkspaceSnapshotRecord, WorkspaceSnapshotService,
 };
