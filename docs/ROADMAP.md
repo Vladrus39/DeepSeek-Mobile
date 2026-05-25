@@ -70,7 +70,8 @@
 - [x] Diagnostics injected into the next model turn
 - [x] Durable background task records and task manager UI
 - [x] MCP/skills config and UI layer
+- [x] PC pairing launchers prefer bundled `deepseek-pc-host` and fall back to PATH
 - [ ] Durable task artifacts/logs and PC-running-task synchronization
 - [ ] Runtime HTTP/SSE API
-- [ ] PC-host bootstrap bundle: bundled binary → PATH fallback → explicit install
+- [ ] PC-host release package includes matching host binary / explicit installer
 - [ ] Release packaging and troubleshooting docs

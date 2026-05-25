@@ -372,7 +372,8 @@ Checklist:
 - [x] API key setup and secret storage plan.
 - [ ] Android build/release notes.
 - [ ] PC-host binary/release notes.
-- [ ] PC-host bootstrap bundle: bundled binary first, PATH fallback second, explicit install flow third.
+- [x] PC pairing launchers prefer bundled `deepseek-pc-host` and fall back to PATH.
+- [ ] PC-host release package includes matching host binary / explicit installer.
 - [ ] Troubleshooting docs.
 
 Acceptance criteria:

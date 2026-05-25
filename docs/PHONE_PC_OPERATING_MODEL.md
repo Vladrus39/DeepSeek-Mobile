@@ -65,16 +65,17 @@ Current implemented flow:
 5. Android discovers/probes the host and persists the selected PC workspace connection.
 6. Normal engine turns use that active PC workspace automatically.
 
-Important current limitation:
+Current bootstrap behavior:
 
-- The generated launch scripts currently assume `deepseek-pc-host` is already available on the PC `PATH` or placed by the user/release package.
-
-Target v1 bootstrap should be stronger:
-
-1. If the pairing bundle contains a matching `deepseek-pc-host` binary, run that local binary.
+1. If the pairing bundle contains a matching `deepseek-pc-host` binary next to the launcher or under `bin/`, run that local binary.
 2. Else if `deepseek-pc-host` is on `PATH`, run it.
-3. Else show a clear install instruction or run a signed installer/download step only after explicit user confirmation.
-4. Optionally offer “install as service/autostart” after the first successful manual run.
+3. Else show a clear install instruction.
+
+Target v1 packaging should add the missing distribution piece:
+
+1. Include the matching `deepseek-pc-host` binary in the PC pairing/release package when possible.
+2. Offer a signed installer/download step only after explicit user confirmation.
+3. Optionally offer “install as service/autostart” after the first successful manual run.
 
 This keeps pairing simple while avoiding a hidden dependency on DeepSeek-TUI.
 

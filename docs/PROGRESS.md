@@ -23,6 +23,7 @@
 - Cleaned fresh warning/noise in touched code (`tool_loop`, Files panel/state, task panel CSS values, `main.rs` unused bindings).
 - Updated local documentation to reflect what was already completed while I was away: PC snapshots, remote-aware Files, durable tasks, task UI, MCP/skills registry/UI, terminal UI-state persistence, and Termux continuation.
 - Added `docs/PHONE_PC_OPERATING_MODEL.md` to lock the intended product architecture: Android app as the primary UI/orchestrator, Termux and PC Host as execution backends, optional DeepSeek-TUI compatibility without depending on TUI internals, and a target PC bootstrap flow.
+- Improved PC pairing launcher bootstrap: Windows/macOS/Linux scripts now prefer a bundled `deepseek-pc-host` binary next to the pairing files, fall back to `PATH`, and emit a clear install/release-package instruction when missing.
 
 ## Verification
 
