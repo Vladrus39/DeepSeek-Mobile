@@ -24,27 +24,46 @@ pub fn health_panel(snapshot: RuntimeHealthSnapshot) -> Element {
             div {
                 color: "#9ca3af",
                 font_size: "12px",
-                "What works right now on this device. This is a coding agent — not full-phone or full-PC remote control."
+                "Phone-first full coding agent. Termux = main executor; PC Host = optional boost for huge repos."
             }
 
             {health_row("DeepSeek API", if snapshot.api_configured { "Configured" } else { "Missing" }, snapshot.api_configured)}
-            {health_row("Execution mode", mode_label, snapshot.execution_mode == ExecutionMode::Agent)}
-            {health_row("PC Host", &snapshot.pc_status_label, snapshot.pc_online)}
             {health_row(
-                "PC workspace",
-                if snapshot.pc_workspace_active { "Active" } else { "None — local phone sandbox only" },
-                snapshot.pc_workspace_active,
+                "Full agent on phone",
+                if snapshot.full_agent_on_phone_ready {
+                    "Ready (API + Termux)"
+                } else if snapshot.termux_valid {
+                    "Termux OK — add API key"
+                } else {
+                    "Set up Termux path"
+                },
+                snapshot.full_agent_on_phone_ready,
             )}
+            {health_row("Execution mode", mode_label, snapshot.execution_mode == ExecutionMode::Agent)}
             {health_row(
                 "Termux workspace",
                 if snapshot.termux_valid {
-                    "Valid path saved"
+                    "Valid — primary executor"
                 } else if snapshot.termux_configured {
                     "Path invalid"
                 } else {
                     "Not configured"
                 },
                 snapshot.termux_valid,
+            )}
+            {health_row(
+                "PC Host (optional)",
+                &snapshot.pc_status_label,
+                snapshot.pc_online || !snapshot.pc_workspace_active,
+            )}
+            {health_row(
+                "PC workspace",
+                if snapshot.pc_workspace_active {
+                    "Active boost"
+                } else {
+                    "Not used"
+                },
+                !snapshot.pc_workspace_active || snapshot.pc_online,
             )}
             {health_row(
                 "MCP servers",
@@ -74,18 +93,19 @@ pub fn health_panel(snapshot: RuntimeHealthSnapshot) -> Element {
                 }
             }
 
-            div {
-                background_color: "#111827",
-                border: "1px solid #374151",
-                border_radius: "14px",
-                padding: "12px",
-                display: "flex",
-                flex_direction: "column",
-                gap: "6px",
+            if !snapshot.network_hints.is_empty() {
+                div {
+                    background_color: "#111827",
+                    border: "1px solid #374151",
+                    border_radius: "14px",
+                    padding: "12px",
+                    display: "flex",
+                    flex_direction: "column",
+                    gap: "6px",
 
-                div { font_weight: "bold", font_size: "13px", "PC gateway URLs" }
-                for hint in snapshot.network_hints {
-                    div { color: "#9ca3af", font_size: "11px", "{hint}" }
+                    for hint in snapshot.network_hints {
+                        div { color: "#9ca3af", font_size: "11px", "{hint}" }
+                    }
                 }
             }
 

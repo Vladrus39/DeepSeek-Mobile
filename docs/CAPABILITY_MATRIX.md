@@ -2,15 +2,16 @@
 
 **Updated:** 2026-05-26
 
-This is what DeepSeek-Mobile **actually** does today — compared to a desktop IDE agent (Cursor) and to “control the whole phone/PC”.
+This is what DeepSeek-Mobile **actually** does today. Product stance: **phone-first full agent** ([PRODUCT_POSITIONING.md](./PRODUCT_POSITIONING.md)); PC Host is optional.
 
 ## Summary
 
 | Expectation | Supported? |
 |-------------|------------|
-| Coding agent on a **project** (files, patch, git, tests via tools) | **Yes** (with PC Host or Termux for shell) |
-| **PC workstation** remote control via pairing | **Yes** (workspace-bound, token auth) |
-| **Phone-only** sandbox editing + Termux shell | **Yes** (Termux needs setup) |
+| **Full coding agent on phone** (TUI-like: files, patch, git, tests) | **Yes** with **Termux workspace** configured |
+| Coding agent in **sandbox only** (no Termux) | **Partial** — no `exec_shell`; edits/ZIP/plan only |
+| **PC workstation** (optional boost) | **Yes** when paired — not required for “full agent” |
+| **Phone-only** without Termux setup | **Lite** — not equivalent to desktop TUI |
 | Control **entire phone** (all apps, system UI) | **Partial** — `phone_control` (URL, share, launch app by package); not full UI automation |
 | Control **entire PC** (any folder, any app) | **Partial** — paired workspace + optional trusted paths (Settings grant mode); see [EXTENDED_CONTROL_ROADMAP.md](./EXTENDED_CONTROL_ROADMAP.md) |
 | Same as **Cursor on desktop** | **No** — different product shape |
@@ -28,23 +29,23 @@ This is what DeepSeek-Mobile **actually** does today — compared to a desktop I
 | Snapshots | Yes |
 | Import/export project ZIP | Yes (Android picker on device) |
 
-### Termux workspace
+### Termux workspace (primary — full agent on phone)
 
 | Capability | Status |
 |------------|--------|
 | exec_shell (approved) | Yes (native bridge + model continuation) |
 | File tools under Termux path | Yes |
-| Requires Termux app + RUN_COMMAND permission | User setup |
+| git / build / test | Yes if installed in Termux |
+| Requires Termux + RUN_COMMAND + path in Settings | User setup (onboarding helps) |
 
-### PC Host workspace
+### PC Host workspace (optional — huge repos)
 
 | Capability | Status |
 |------------|--------|
-| Files, patch, shell stream | Yes |
+| Files, patch, shell stream | Yes when host running |
 | Git panel + engine git tools | Yes |
-| Diagnostics reinjection | Yes |
-| Terminal / tasks / SSE task events | Yes |
-| Requires running `deepseek-pc-host` | User setup |
+| Terminal / tasks / SSE | Yes |
+| Requires pairing + `deepseek-pc-host` on PC | **Optional** user setup |
 
 ### Always on phone (any active workspace)
 

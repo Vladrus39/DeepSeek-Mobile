@@ -44,12 +44,12 @@ pub fn pc_pairing_panel(
                     div {
                         font_size: "18px",
                         font_weight: "bold",
-                        "Connect PC Host"
+                        "PC Host (optional)"
                     }
                     div {
                         color: "#9ca3af",
                         font_size: "13px",
-                        "Create a one-click pairing ZIP, open it on the computer, then control the PC workspace from Android."
+                        "Optional boost for very large repos. Full agent on phone uses Termux — you do not need this panel for normal work."
                     }
                 }
 

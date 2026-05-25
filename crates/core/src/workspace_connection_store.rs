@@ -45,7 +45,7 @@ impl WorkspaceConnectionStore {
     pub fn load_or_default(&self) -> Result<WorkspaceConnectionManager> {
         if !self.path.exists() {
             let manager = WorkspaceConnectionManager::new()
-                .with_selection_policy(WorkspaceSelectionPolicy::ManualOnly);
+                .with_selection_policy(WorkspaceSelectionPolicy::PreferTermux);
             self.save(&manager)?;
             return Ok(manager);
         }
@@ -102,7 +102,7 @@ mod tests {
     fn creates_default_manual_store() {
         let store = store("default");
         let manager = store.load_or_default().unwrap();
-        assert_eq!(manager.selection_policy, WorkspaceSelectionPolicy::ManualOnly);
+        assert_eq!(manager.selection_policy, WorkspaceSelectionPolicy::PreferTermux);
         assert!(store.path().exists());
         let _ = fs::remove_file(store.path());
     }

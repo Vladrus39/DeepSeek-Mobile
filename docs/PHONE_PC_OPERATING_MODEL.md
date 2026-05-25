@@ -6,22 +6,24 @@ This document defines how DeepSeek-Mobile should work across Android, Termux, a 
 
 ## Core principle
 
-The Android app is the primary user interface and orchestration layer. Execution backends are selectable per workspace:
+The Android app is the primary user interface and orchestration layer. See **PRODUCT_POSITIONING.md** — phone-first full agent; PC optional.
 
-1. **Phone app local workspace** — app-private files, attachments, approvals, snapshots and model orchestration.
-2. **Phone + Termux workspace** — Android-local command execution through a saved Termux workspace after approval.
-3. **Phone + PC Host workspace** — the phone controls the agent while the PC executes file, shell, git, diagnostics, terminal and task operations inside the granted project.
-4. **Remote runtime later** — same idea as PC Host, but over a remote runtime when explicitly configured.
+Execution backends (priority):
 
-The PC is not required for the app to launch or chat. The PC is required for the best “full coding workstation” experience on large real projects unless Termux is configured with the needed toolchains.
+1. **Phone + Termux workspace** — **default full agent path**: shell, git, build, test in a Termux project directory (TUI parity on device).
+2. **Phone app local workspace** — lite mode: app-private files, attachments, snapshots; no normal shell.
+3. **Phone + PC Host workspace (optional)** — when the project is too large for the phone or the user prefers desktop toolchains; phone UI, PC execution.
+4. **Remote runtime later** — optional, same pattern as PC Host.
+
+The PC is **not** required to launch, chat, or run a full agent. Termux + toolchain setup is the phone-native equivalent of a desktop coding terminal. PC Host is for **scaling up**, not for “being a real product.”
 
 ## Capability matrix
 
 | Mode | What works | Main limits | Best use |
 |---|---|---|---|
 | Android app only | Chat, attachments, app-private workspace files, approvals, snapshots, patching, model planning | No normal local shell executor; git/build/test depends on binaries being available in the app environment, which should not be assumed | Review, planning, small file edits, attachment-based work |
-| Android + Termux | Local Android coding with a saved Termux workspace, approved shell commands, git/build/test if installed in Termux | User must install/configure Termux packages; Android permissions and external app settings must be correct; final host verification is still pending | Phone-only coding for small/medium repos |
-| Android + PC Host | Full workstation execution from phone UI: files, git, tests, builds, diagnostics, terminal, long tasks | Requires paired PC host running and reachable over LAN/direct/tunnel | Main recommended pro workflow |
+| Android + Termux | **Full agent on phone** — same tool surface as TUI with Termux as executor | Termux install, `termux.properties`, RUN_COMMAND, valid path in Settings | **Main recommended workflow** |
+| Android + PC Host | Optional workstation boost from phone UI when project exceeds phone capacity | Paired PC host on LAN/tunnel | Optional — not default positioning |
 | Android + existing DeepSeek-TUI | Optional config/skills compatibility only | Do not drive the TUI UI or depend on its internals | Migration/interoperability, not core runtime |
 
 ## Recommended product stance

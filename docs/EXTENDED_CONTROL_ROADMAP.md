@@ -1,83 +1,70 @@
-# Extended control roadmap (phone + PC «как Cursor здесь»)
+# Extended control roadmap (phone-first)
 
-This document is the **honest architecture plan** for moving from «coding agent with three channels» toward «control the whole phone and PC like the Cursor IDE agent in this chat». See also [CAPABILITY_MATRIX.md](./CAPABILITY_MATRIX.md) for what works today.
+**Canonical positioning:** [PRODUCT_POSITIONING.md](./PRODUCT_POSITIONING.md)
 
-## What «like Cursor here» actually means
+This plan extends the **phone-first** agent (Termux = full executor on device). PC Host is **optional boost** for oversized projects, not the primary product path.
 
-| Layer | Cursor IDE (this chat) | DeepSeek Mobile target |
-|-------|------------------------|-------------------------|
-| PC filesystem | Whole workspace + user-approved paths | **Today:** paired `deepseek-pc-host` workspace grant. **Next:** user-granted trusted paths + broader pc-host RPCs |
-| PC shell | Integrated terminal, background processes | **Today:** `exec_shell` via gateway. **Next:** persistent sessions, `explorer`/OS open, multi-workspace |
-| PC UI | Editor, panels, git UI | **Not goal:** replicate IDE UI — agent uses files/git/shell/MCP |
-| Phone sandbox | N/A | **Today:** `read_file` / `write_file` under app storage |
-| Phone shell | N/A | **Today:** Termux `RUN_COMMAND` when user configures path |
-| Phone UI / apps | N/A | **Today:** `phone_control` (`open_url`, `share_file`, `launch_app`). **Next:** settings deep links, notifications, optional accessibility |
-
-Full parity with Cursor Desktop is **not** a single feature — it is phased expansion of **executors** and **native bridges**, always bounded by OS security.
-
-## Three executors (unchanged spine)
+## Executors (priority order)
 
 ```mermaid
-flowchart LR
-  subgraph phone [Phone]
-    A[LocalAndroid sandbox]
-    T[Termux shell]
-    N[Native bridge: picker / URL / apps]
-  end
-  subgraph pc [PC]
-    H[deepseek-pc-host HTTP]
-  end
-  Agent[Mobile agent] --> A
+flowchart TB
+  Agent[Mobile agent UI + core]
+  T[Termux — primary full agent on phone]
+  S[App sandbox — lite edits / ZIP]
+  P[PC Host — optional huge-repo boost]
   Agent --> T
-  Agent --> N
-  Agent --> H
+  Agent --> S
+  Agent --> P
 ```
 
-## Phase 1 — Shipped in this tranche
+| Priority | Executor | Purpose |
+|----------|----------|---------|
+| 1 | **Termux** | Shell, git, build, test — **same role as desktop terminal in TUI** |
+| 2 | **Local sandbox** | Safe storage, attachments, small edits without Termux |
+| 3 | **PC Host** | When repo/tooling is too heavy for phone; finish work on workstation |
+| — | **phone_control** | URLs, share sheet, launch app, settings — auxiliary |
 
-- **Pairing ZIP embeds `deepseek-pc-host`** when `tools/pc-host/bin` or `target/release` binaries exist (`discover_pc_host_binaries`).
-- **Autostart helpers:** `scripts/install-pc-host-from-pairing.ps1` / `.sh` read `deepseek-pc-host.env` from the bundle.
-- **`phone_control` tool:** `open_url`, `share_file`, `launch_app` → metadata → Android `NativeBridge` drain.
-- **Settings trusted paths** (one per line) when External access = **Allowed by user grant** — wired into `ToolContext::resolve_path`.
+## Phase A — Phone-first v1 (current focus)
 
-## Phase 2 — PC breadth (in progress)
+1. **Termux happy path** — onboarding saves path, Settings validation, Health “Full agent ready”, device verification of RUN_COMMAND bridge. *In progress.*
+2. **TUI parity gaps on device** — MCP stdio on phone, large-output routing, file summaries (see ROADMAP Phase 7–8).
+3. **Default workspace policy** — `PreferTermux` for new installs; PC does not override Termux unless user activates PC workspace.
+4. **phone_control** — `open_url`, `share_file`, `launch_app`, `open_settings`. *Shipped.*
 
-1. **pc-host trusted paths** — `DEEPSEEK_PC_HOST_TRUSTED_PATHS` in pairing env; absolute paths allowed when under workspace or grant list. **Shipped.**
-2. **Open on PC** — `open_path` tool + `PcGatewayRequest::OpenPath` (Explorer / xdg-open / open). **Shipped.**
-3. **Persistent shell sessions** on pc-host (SSE already used for tasks — extend for terminal). *Next.*
-4. **mDNS + Tailscale** URL hints in Health panel. **Shipped (manual URLs).**
+## Phase B — Optional PC boost (already partially shipped)
 
-## Phase 3 — Phone breadth (in progress)
+Use only when the user opens **PC Host** panel or activates a PC workspace:
 
-1. **Termux** — onboarding path field + Settings; Health recommendations. **Shipped (wizard slice).**
-2. **Intents:** `phone_control` `open_settings` + `launch_app`. **Shipped** (`send_notification` next).
-3. **Optional Shizuku / ADB** (power users): separate opt-in module, never default — high risk, store policy.
-4. **Accessibility service** (last resort): read-only UI tree for automation — requires explicit consent and Play policy review.
+- Pairing ZIP + embedded `deepseek-pc-host`
+- Trusted paths (`DEEPSEEK_PC_HOST_TRUSTED_PATHS`)
+- `open_path` in OS file manager on PC
+- Tasks / SSE / terminal on pc-host
+- Autostart scripts (`install-pc-host-from-pairing.*`)
 
-## Phase 4 — «One agent, many surfaces»
+**Not** the default onboarding message (“you must pair PC to be pro”).
 
-- **Cloud relay** (optional): phone talks to pc-host via tunnel when not on LAN — already sketched in `PcGatewayTransportMode::TunnelHttps`.
-- **Shared task queue** across phone + PC (durable tasks crate) with single timeline in app.
-- **MCP on PC host** proxy: phone invokes PC-installed MCP servers through gateway.
+## Phase C — Later (explicitly not v1 core)
 
-## Security principles (non-negotiable)
+- Accessibility / Shizuku / ADB UI automation (opt-in, policy risk)
+- Cloud relay / tunnel as default (LAN pairing is enough for v1)
+- MCP proxy **only on PC** — nice-to-have; prefer **on-device MCP** first for phone-first parity
 
-1. **Pairing token** only in ZIP/env — treat as password; short TTL optional.
-2. **No silent full-disk access** on phone or PC — grants are visible in Settings.
-3. **Plan mode** never executes tools (including `phone_control`).
-4. **Approvals** for write/shell/network; `phone_control` uses Suggest/Required tier.
+## Security (unchanged)
 
-## How to test Phase 1 locally
+1. Pairing token = secret; short TTL optional.
+2. Grants visible in Settings (trusted paths).
+3. Plan mode never runs tools.
+4. Approvals for shell/write/network.
 
-1. `.\scripts\build-pc-host-bundles.ps1`
-2. Export pairing ZIP from app → confirm zip contains `deepseek-pc-host.exe`.
-3. Unzip on PC → `.\start-deepseek-pc-host.ps1` or `.\scripts\install-pc-host-from-pairing.ps1`
-4. On phone, agent tool call: `phone_control` action `open_url` with app in foreground — browser opens.
+## How to verify phone-first locally
 
-## Decision: do we need «full phone UI automation»?
+1. Install Termux + `allow-external-apps=true` (see `docs/TROUBLESHOOTING.md`).
+2. Onboarding or Settings → save valid Termux path → Health shows **Full agent ready**.
+3. Agent mode → `exec_shell` with `pwd` / `git status` — timeline continues after Termux callback.
+4. PC Host panel — **skip**; agent should still run full tools on Termux project.
 
-For **developer use**, Termux + `phone_control` + sandbox files cover 80% of cases (clone repo, run scripts, open GitHub Actions log in browser).
+## How to verify optional PC boost
 
-For **consumer-style «tap any app»**, Accessibility or ADB is required — defer until product commits to policy/legal review.
-
-**Recommendation:** invest in **PC host + Termux + MCP** before phone UI automation.
+1. `.\scripts\build-pc-host-bundles.ps1` → export pairing ZIP.
+2. Start host on PC → activate PC workspace in app (user choice).
+3. Run tests/git against PC project path.

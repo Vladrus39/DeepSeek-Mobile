@@ -22,6 +22,8 @@ pub struct RuntimeHealthSnapshot {
     pub native_last_error: Option<String>,
     pub recommendations: Vec<String>,
     pub network_hints: Vec<String>,
+    /// API + valid Termux path — full agent on phone without PC.
+    pub full_agent_on_phone_ready: bool,
 }
 
 impl RuntimeHealthSnapshot {
@@ -65,20 +67,26 @@ impl RuntimeHealthSnapshot {
             || bridge.is_waiting_for_termux_callback()
             || bridge.is_waiting_for_pc_discovery_callback();
 
+        let full_agent_on_phone_ready = api_configured && termux_valid;
+
         let mut recommendations = Vec::new();
         if !api_configured {
             recommendations.push("Add a DeepSeek API key in Settings.".to_string());
         }
-        if !pc_workspace_active {
-            recommendations.push(
-                "For full workstation power: export PC pairing from PC Host panel and start deepseek-pc-host on your PC.".to_string(),
-            );
-        } else if !pc_online {
-            recommendations.push("PC workspace is saved but host is offline — start deepseek-pc-host on the PC.".to_string());
-        }
         if !termux_valid {
             recommendations.push(
-                "For phone-only shell: set an absolute Termux path in Settings (e.g. /data/data/com.termux/files/home/project).".to_string(),
+                "Full agent on phone: install Termux, set allow-external-apps, then save a valid project path in Settings (e.g. /data/data/com.termux/files/home/project).".to_string(),
+            );
+        } else if !full_agent_on_phone_ready {
+            recommendations.push("Complete API key and Termux path to unlock the full on-device agent.".to_string());
+        }
+        if termux_valid && pc_workspace_active && !pc_online {
+            recommendations.push(
+                "Optional PC boost: saved PC workspace is offline — start deepseek-pc-host if you still need the desktop project.".to_string(),
+            );
+        } else if !termux_valid && !pc_workspace_active {
+            recommendations.push(
+                "Optional: PC Host panel — only for very large repos when Termux is not enough (not required for a full phone agent).".to_string(),
             );
         }
         if mcp_servers_total > 0 && mcp_servers_connected == 0 {
@@ -88,12 +96,15 @@ impl RuntimeHealthSnapshot {
             recommendations.push("Plan mode is on — tools will not run until you switch to Agent mode.".to_string());
         }
 
-        let network_hints = vec![
-            "LAN: http://<pc-lan-ip>:8787 (same Wi‑Fi as phone)".to_string(),
-            "Loopback on PC only: http://127.0.0.1:8787".to_string(),
-            "Tailscale: http://<machine>.ts.net:8787 when MagicDNS is on".to_string(),
-            "Pairing bundle sets DEEPSEEK_PC_HOST_* — re-export after changing trusted paths.".to_string(),
-        ];
+        let network_hints = if pc_workspace_active {
+            vec![
+                "Optional PC Host URLs:".to_string(),
+                "LAN: http://<pc-lan-ip>:8787 (same Wi‑Fi)".to_string(),
+                "Tailscale: http://<machine>.ts.net:8787".to_string(),
+            ]
+        } else {
+            Vec::new()
+        };
 
         Self {
             api_configured,
@@ -109,6 +120,7 @@ impl RuntimeHealthSnapshot {
             native_last_error: bridge.last_error.clone(),
             recommendations,
             network_hints,
+            full_agent_on_phone_ready,
         }
     }
 
@@ -116,8 +128,18 @@ impl RuntimeHealthSnapshot {
         self.api_configured
     }
 
-    pub fn workstation_ready(&self) -> bool {
+    /// Full TUI-like agent on the phone (Termux), without PC.
+    pub fn full_agent_on_phone_ready(&self) -> bool {
+        self.full_agent_on_phone_ready
+    }
+
+    /// Optional PC workstation boost is connected.
+    pub fn pc_boost_ready(&self) -> bool {
         self.api_configured && self.pc_workspace_active && self.pc_online
+    }
+
+    pub fn workstation_ready(&self) -> bool {
+        self.pc_boost_ready()
     }
 }
 
@@ -144,5 +166,25 @@ mod tests {
             .recommendations
             .iter()
             .any(|line| line.contains("API key")));
+    }
+
+    #[test]
+    fn recommends_termux_not_pc_as_primary_path() {
+        let snapshot = RuntimeHealthSnapshot::collect(
+            &SettingsFormState::default(),
+            &PcPairingUiState::default(),
+            &TermuxWorkspaceState::default(),
+            &McpUiState::default(),
+            &NativeBridgeState::default(),
+        );
+        assert!(!snapshot.full_agent_on_phone_ready);
+        assert!(snapshot
+            .recommendations
+            .iter()
+            .any(|line| line.contains("Termux")));
+        assert!(snapshot
+            .recommendations
+            .iter()
+            .any(|line| line.contains("Optional") && line.contains("PC Host")));
     }
 }

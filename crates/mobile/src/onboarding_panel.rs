@@ -10,7 +10,7 @@ enum OnboardingStep {
     Done,
 }
 
-/// Full-screen setup wizard: API → optional PC/Termux guidance → start.
+/// Full-screen setup wizard: API → Termux (full agent) → optional PC note → start.
 pub fn onboarding_panel(on_complete: EventHandler<String>) -> Element {
     let mut step = use_signal(|| OnboardingStep::Api);
     let mut api_key_input = use_signal(String::new);
@@ -42,7 +42,7 @@ pub fn onboarding_panel(on_complete: EventHandler<String>) -> Element {
                 max_width: "360px",
                 match step() {
                     OnboardingStep::Api => "Step 1/3 — Connect the coding agent API.",
-                    OnboardingStep::Workspaces => "Step 2/3 — Choose how commands run (you can skip and configure later).",
+                    OnboardingStep::Workspaces => "Step 2/3 — Termux = full agent on phone (recommended). PC Host is optional later.",
                     OnboardingStep::Done => "Step 3/3 — Ready to open the cockpit.",
                 }
             }
@@ -102,13 +102,12 @@ pub fn onboarding_panel(on_complete: EventHandler<String>) -> Element {
                         }
                     },
                     OnboardingStep::Workspaces => rsx! {
-                        div { font_weight: "bold", "Execution backends" }
-                        {capability_card("Phone sandbox", "Edit files inside the app workspace. Shell commands need Termux or PC.", true)}
-                        {capability_card("Termux (phone shell)", "Install Termux, enable RUN_COMMAND in termux.properties, grant permission in Android settings.", false)}
+                        div { font_weight: "bold", "Full agent on this phone" }
+                        {capability_card("Termux project (main)", "Install Termux, allow-external-apps in ~/.termux/termux.properties, grant RUN_COMMAND. Same role as terminal on desktop TUI.", true)}
                         div {
                             color: "#9ca3af",
                             font_size: "11px",
-                            "Optional Termux project path (absolute):"
+                            "Termux project path (absolute):"
                         }
                         input {
                             background_color: "#1f2937",
@@ -119,12 +118,8 @@ pub fn onboarding_panel(on_complete: EventHandler<String>) -> Element {
                             value: "{termux_path_input}",
                             oninput: move |e| termux_path_input.set(e.value()),
                         }
-                        {capability_card("PC Host (recommended pro)", "Pairing ZIP → start deepseek-pc-host on PC → full git/tests/build on your machine", false)}
-                        div {
-                            color: "#6b7280",
-                            font_size: "11px",
-                            "Coding agent cockpit — extended control via Termux, PC Host, and phone_control (not full UI automation)."
-                        }
+                        {capability_card("App sandbox (lite)", "Small edits and ZIP import without Termux. No shell here.", false)}
+                        {capability_card("PC Host (optional)", "Later: pair PC only if the repo is too large for the phone. Not required.", false)}
                         button {
                             background_color: "#3b82f6",
                             color: "white",
@@ -141,7 +136,7 @@ pub fn onboarding_panel(on_complete: EventHandler<String>) -> Element {
                         div {
                             color: "#9ca3af",
                             font_size: "12px",
-                            "Open Chat for the agent, PC Host to pair, Health for status, Settings for Termux and execution mode."
+                            "Open Chat with Agent mode, Health to confirm Termux, Settings to adjust path. PC Host panel only if you need desktop boost."
                         }
                         button {
                             background_color: "#10b981",

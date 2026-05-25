@@ -2,15 +2,19 @@
 
 ## Vision
 
-DeepSeek-Mobile is a full coding agent for Android + PC. The phone is the cockpit;
-the model thinks in the cloud; the Rust core manages turns, tools and approvals;
-PC-host, Termux or remote runtimes execute heavy work.
+DeepSeek-Mobile is a **full coding agent on Android** (phone-first), porting the DeepSeek-TUI runtime to Dioxus + native bridges. The phone is the cockpit; the model runs in the cloud; the Rust core manages turns, tools and approvals.
 
-Three execution modes:
+**Primary executor on device:** Termux (real shell/git/build in a project directory).  
+**Lite mode:** local app sandbox (files/patch without shell).  
+**Optional:** PC-host when a project is too large for the phone — remote finish on a workstation, not a requirement to use the app.
 
-1. **Local Android workspace** — safe file operations and patching inside app-managed storage.
-2. **Termux bridge** — execute development commands on the same Android device through Termux.
-3. **PC-host / remote executor** — run heavy tasks on a paired PC or VM while the phone stays the control panel.
+See `docs/PRODUCT_POSITIONING.md`.
+
+Execution modes (priority):
+
+1. **Termux workspace** — full agent on the phone (main path).
+2. **Local Android workspace** — safe file operations inside app storage.
+3. **PC-host / remote** — optional boost for huge repos.
 
 ## Phase 0 — Stabilize repository
 

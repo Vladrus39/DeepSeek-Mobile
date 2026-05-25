@@ -14,11 +14,15 @@ pub const QUICK_ACTIONS: &[QuickAction] = &[
         prompt: "Plan mode: analyze the active workspace and propose next steps. Do not assume tools ran — only reason from context.",
     },
     QuickAction {
-        label: "PC git status",
+        label: "Termux pwd",
+        prompt: "Run pwd and ls -la in the active Termux workspace via exec_shell and summarize the environment.",
+    },
+    QuickAction {
+        label: "Git status",
         prompt: "Run git status in the active workspace and summarize branch, staged changes, and risks.",
     },
     QuickAction {
-        label: "PC tests",
+        label: "Run tests",
         prompt: "Run the project's test command (prefer cargo test --workspace if Rust). Summarize failures with file paths.",
     },
     QuickAction {
@@ -31,11 +35,7 @@ pub const QUICK_ACTIONS: &[QuickAction] = &[
     },
     QuickAction {
         label: "Open on PC",
-        prompt: "Use open_path on the project root so I can browse files in the system file manager on the PC.",
-    },
-    QuickAction {
-        label: "Termux check",
-        prompt: "If Termux workspace is active, run pwd and ls -la via exec_shell and summarize the environment.",
+        prompt: "If a PC Host workspace is active, use open_path on the project root. Otherwise say Termux is the active executor and open the project path with list_dir.",
     },
 ];
 
