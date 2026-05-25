@@ -14,6 +14,7 @@ DeepSeek-Mobile is in active development with a coherent working core:
 - Termux `exec_shell` is queued through the native bridge and can be continued back into the model with real callback output;
 - Git panel actions and engine auto-commit/push lifecycle are wired through real git routes;
 - durable task records, queue lifecycle, task UI, MCP config registry and skills registry/UI are present;
+- mobile UI chrome now exposes live API/PC/workspace state and dynamic badges for approvals, diagnostics, dirty Git state, running tasks and native waits;
 - GitHub Actions Rust job installs the Linux GTK/WebKit/pkg-config dependencies required by the Dioxus mobile crate before workspace checks.
 
 ## Verified today
@@ -21,7 +22,7 @@ DeepSeek-Mobile is in active development with a coherent working core:
 | Area | Current state |
 |---|---|
 | Build | Green |
-| Tests | 108 mobile / 152 core / 2 pc-host |
+| Tests | 109 mobile / 153 core / 2 pc-host |
 | Mobile settings | Saved config is loaded into live turns and approval continuations |
 | GitHub tools | Use token from saved settings first, environment variables second |
 | Pairing | Online discovery promotes an active route; “Open PC workspace” persists it |
@@ -31,10 +32,12 @@ DeepSeek-Mobile is in active development with a coherent working core:
 | Tasks | Durable records, queue lifecycle and mobile task manager UI exist |
 | MCP/skills | Config/manifest registries and mobile UI surfaces exist |
 | Android bridge | Document picker, PC discovery, terminal, share and Termux bridge contracts are present |
+| Mobile UI | Cockpit screens exist; latest chrome/nav pass compiles; final Android visual verification still pending |
 
 ## Implemented but still partial
 
 - Final Android host adapter is still not verified on device/emulator; Rust/Kotlin contracts exist, but production wiring needs a final pass.
+- Final visual UI pass is still not verified on device/emulator because the local environment currently lacks Dioxus CLI (`dx`).
 - Durable tasks have records/UI and PC-host process start/stop/list RPCs; artifacts/logs per task and tighter PC-running-task synchronization remain.
 - MCP/skills currently provide registry/config/UI/context surfaces; actual external MCP tool execution must stay behind approval/workspace boundaries when expanded.
 - Terminal UI state persists recent sessions/output as closed sessions after restart; live process resurrection is intentionally not claimed.

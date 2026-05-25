@@ -47,20 +47,20 @@ use agent_timeline::MobileTimelineState;
 use agent_timeline_panel::agent_timeline_panel;
 use chat_attachment::ChatComposerState;
 use cockpit_section_panel::cockpit_section_panel;
-use deepseek_mobile_core::{AgentEvent, ApprovalCardView, ReviewDecision};
+use deepseek_mobile_core::{AgentEvent, ApprovalCardView, DurableTaskStatus, ReviewDecision};
 use diagnostics_state::DiagnosticsUiState;
 use dioxus::prelude::*;
 use document_picker::{DocumentPickerRequest, DocumentPickerState};
 use git_state::GitUiState;
 use mcp_state::McpUiState;
 use mobile_approval_panel::mobile_approval_panel;
-use mobile_drawer::{bottom_nav_bar, mobile_drawer, CockpitSection};
+use mobile_drawer::{bottom_nav_bar, mobile_drawer, CockpitSection, MobileChromeSummary};
 use mobile_engine_runner::{
     continue_mobile_approval, load_default_mobile_approval_cards, run_mobile_turn_streaming,
 };
 use native_bridge::{NativeBridgeState, NativeMobileCommand, NativeMobileEvent};
 use onboarding_panel::onboarding_panel;
-use pc_pairing_state::PcPairingUiState;
+use pc_pairing_state::{PcPairingUiState, PcPairingUiStatus};
 use project_files_state::ProjectFilesUiState;
 use saved_timeline_loader::load_default_saved_events;
 use settings_state::{load_saved_config, SettingsFormState};
@@ -71,6 +71,90 @@ use terminal_state::TerminalUiState;
 
 fn main() {
     dioxus::launch(app);
+}
+
+fn build_chrome_summary(
+    settings: &SettingsFormState,
+    pc: &PcPairingUiState,
+    approvals: usize,
+    native_bridge: &NativeBridgeState,
+    files: &ProjectFilesUiState,
+    diagnostics: &DiagnosticsUiState,
+    git: &GitUiState,
+    tasks: &TasksUiState,
+) -> MobileChromeSummary {
+    let (pc_label, pc_online) = match &pc.status {
+        PcPairingUiStatus::NotConfigured => ("PC SETUP".to_string(), false),
+        PcPairingUiStatus::ReadyToExport => ("PAIR".to_string(), false),
+        PcPairingUiStatus::Exported => ("ZIP".to_string(), false),
+        PcPairingUiStatus::WaitingForPc => ("PC WAIT".to_string(), false),
+        PcPairingUiStatus::Online => ("PC ON".to_string(), true),
+        PcPairingUiStatus::Offline => ("PC OFF".to_string(), false),
+        PcPairingUiStatus::Error(_) => ("PC ERR".to_string(), false),
+    };
+
+    let (active_project_title, active_project_subtitle) =
+        if let Some(connection) = pc.active_workspace_connection() {
+            (
+                connection.workspace_name,
+                format!("PC: {}", connection.workspace_root.display()),
+            )
+        } else if let Some(request) = pc.request.as_ref() {
+            (
+                request.workspace_id.clone(),
+                format!("PC target pending: {}", request.workspace_root),
+            )
+        } else {
+            (
+                "Local workspace".to_string(),
+                files.current_browsing_display(),
+            )
+        };
+
+    let running_tasks = tasks
+        .tasks
+        .iter()
+        .filter(|task| {
+            matches!(
+                task.status,
+                DurableTaskStatus::Queued | DurableTaskStatus::Running
+            )
+        })
+        .count();
+
+    MobileChromeSummary {
+        api_configured: !settings.api_key.trim().is_empty(),
+        pc_label,
+        pc_online,
+        active_project_title,
+        active_project_subtitle,
+        pending_approvals: approvals,
+        running_tasks,
+        diagnostics_errors: diagnostics.error_count(),
+        diagnostics_warnings: diagnostics.warning_count(),
+        dirty_files: git.changed_files,
+        native_waiting: native_bridge.has_pending_commands()
+            || native_bridge.is_waiting_for_termux_callback()
+            || native_bridge.is_waiting_for_pc_discovery_callback(),
+    }
+}
+
+fn status_chip(label: String, colors: (&'static str, &'static str, &'static str)) -> Element {
+    let (background, border, color) = colors;
+    let border_style = format!("1px solid {border}");
+    rsx! {
+        div {
+            background_color: background,
+            color,
+            border: "{border_style}",
+            border_radius: "999px",
+            padding: "7px 9px",
+            font_size: "11px",
+            font_weight: "bold",
+            white_space: "nowrap",
+            "{label}"
+        }
+    }
 }
 
 fn app() -> Element {
@@ -126,10 +210,18 @@ fn app() -> Element {
             let mut loading_signal = termux_continuation_loading;
             spawn(async move {
                 loading_signal.set(true);
-                match crate::mobile_engine_runner::continue_mobile_termux_result(config, result).await {
+                match crate::mobile_engine_runner::continue_mobile_termux_result(config, result)
+                    .await
+                {
                     Ok(result) => {
                         let mut next_timeline = event_timeline();
-                        push_agent_event(&mut next_timeline, &AgentEvent::Status("Termux result injected — model continuing with real output".to_string()));
+                        push_agent_event(
+                            &mut next_timeline,
+                            &AgentEvent::Status(
+                                "Termux result injected — model continuing with real output"
+                                    .to_string(),
+                            ),
+                        );
                         for event in &result.events {
                             push_agent_event(&mut next_timeline, event);
                         }
@@ -143,7 +235,10 @@ fn app() -> Element {
                     }
                     Err(error) => {
                         let mut next_timeline = event_timeline();
-                        push_agent_event(&mut next_timeline, &AgentEvent::Error(format!("Termux continuation failed: {}", error)));
+                        push_agent_event(
+                            &mut next_timeline,
+                            &AgentEvent::Error(format!("Termux continuation failed: {}", error)),
+                        );
                         event_timeline.set(next_timeline);
                     }
                 }
@@ -154,7 +249,8 @@ fn app() -> Element {
 
     // Auto-save terminal state on changes
     let terminal_persist_signal = terminal_state;
-    let terminal_persist_path = std::path::PathBuf::from(".deepseek-mobile").join("terminal_state.json");
+    let terminal_persist_path =
+        std::path::PathBuf::from(".deepseek-mobile").join("terminal_state.json");
     use_effect(move || {
         let state = terminal_persist_signal();
         if !state.sessions.is_empty() {
@@ -245,7 +341,8 @@ fn app() -> Element {
         let terminal_persistence_path =
             std::path::PathBuf::from(".deepseek-mobile").join("terminal_state.json");
         if terminal_persistence_path.exists() {
-            if let Ok(saved_terminal) = TerminalUiState::load_from_file(&terminal_persistence_path) {
+            if let Ok(saved_terminal) = TerminalUiState::load_from_file(&terminal_persistence_path)
+            {
                 terminal_state.set(saved_terminal);
             }
         }
@@ -262,6 +359,27 @@ fn app() -> Element {
         };
     }
 
+    let chrome_summary = build_chrome_summary(
+        &settings_state(),
+        &pc_pairing_state(),
+        approval_cards().len(),
+        &native_bridge(),
+        &project_files_state(),
+        &diagnostics_state(),
+        &git_state(),
+        &tasks_state(),
+    );
+    let api_chip = status_chip(
+        chrome_summary.api_chip_label().to_string(),
+        chrome_summary.api_chip_colors(),
+    );
+    let pc_chip = status_chip(
+        chrome_summary.pc_label.clone(),
+        chrome_summary.pc_chip_colors(),
+    );
+    let drawer_summary = chrome_summary.clone();
+    let bottom_nav_summary = chrome_summary.clone();
+
     rsx! {
         div {
             background_color: "#0f0f0f",
@@ -276,6 +394,7 @@ fn app() -> Element {
             {mobile_drawer(
                 drawer_open(),
                 active_section(),
+                drawer_summary,
                 EventHandler::new(move |section| {
                     active_section.set(section);
                     drawer_open.set(false);
@@ -303,18 +422,74 @@ fn app() -> Element {
                     display: "flex",
                     flex_direction: "column",
                     align_items: "center",
+                    min_width: "0",
                     div { font_size: "18px", font_weight: "bold", "DeepSeek Mobile" }
-                    div { color: "#9ca3af", font_size: "12px", "{active_section().subtitle()}" }
+                    div {
+                        color: "#9ca3af",
+                        font_size: "12px",
+                        text_align: "center",
+                        white_space: "nowrap",
+                        overflow: "hidden",
+                        text_overflow: "ellipsis",
+                        max_width: "190px",
+                        "{active_section().subtitle()}"
+                    }
                 }
 
                 div {
-                    background_color: "#111827",
-                    color: "#d1d5db",
-                    border: "1px solid #374151",
-                    border_radius: "999px",
-                    padding: "8px 10px",
+                    display: "flex",
+                    align_items: "center",
+                    gap: "6px",
+                    {api_chip}
+                    {pc_chip}
+                }
+            }
+
+            div {
+                background_color: "#101827",
+                border: "1px solid #1f2937",
+                border_radius: "16px",
+                padding: "10px 12px",
+                margin_bottom: "12px",
+                display: "flex",
+                align_items: "center",
+                justify_content: "space-between",
+                gap: "10px",
+
+                div {
+                    min_width: "0",
+                    div {
+                        color: "#6b7280",
+                        font_size: "10px",
+                        font_weight: "bold",
+                        letter_spacing: "0.08em",
+                        "ACTIVE WORKSPACE"
+                    }
+                    div {
+                        color: "white",
+                        font_size: "14px",
+                        font_weight: "bold",
+                        white_space: "nowrap",
+                        overflow: "hidden",
+                        text_overflow: "ellipsis",
+                        "{chrome_summary.active_project_title}"
+                    }
+                    div {
+                        color: "#9ca3af",
+                        font_size: "11px",
+                        white_space: "nowrap",
+                        overflow: "hidden",
+                        text_overflow: "ellipsis",
+                        "{chrome_summary.active_project_subtitle}"
+                    }
+                }
+
+                div {
+                    color: "#60a5fa",
                     font_size: "12px",
-                    "API"
+                    font_weight: "bold",
+                    white_space: "nowrap",
+                    "{active_section().title()}"
                 }
             }
 
@@ -613,6 +788,7 @@ fn app() -> Element {
 
             {bottom_nav_bar(
                 active_section(),
+                bottom_nav_summary,
                 EventHandler::new(move |section| {
                     active_section.set(section);
                 })

@@ -25,6 +25,8 @@
 - Added `docs/PHONE_PC_OPERATING_MODEL.md` to lock the intended product architecture: Android app as the primary UI/orchestrator, Termux and PC Host as execution backends, optional DeepSeek-TUI compatibility without depending on TUI internals, and a target PC bootstrap flow.
 - Improved PC pairing launcher bootstrap: Windows/macOS/Linux scripts now prefer a bundled `deepseek-pc-host` binary next to the pairing files, fall back to `PATH`, and emit a clear install/release-package instruction when missing.
 - Updated GitHub Actions checkout steps to `actions/checkout@v6` so CI runs on the Node.js 24 action runtime instead of the deprecated Node.js 20 runtime.
+- Added a mobile UI chrome pass: live API/PC chips, active workspace summary, dynamic drawer/bottom-nav badges, scrollable bottom navigation, and removal of an invalid `space_around` CSS value.
+- Added `docs/UI_STATUS_AND_VERIFICATION.md` to separate what is already implemented from what still needs real Android visual/device verification.
 
 ## Verification
 
@@ -34,8 +36,8 @@
   - `deepseek-mobile-core tool_execution::tests::remote_patch_operation_deserializes_normalized_unified_diff`
   - `deepseek-mobile terminal_state::tests`
 - Full workspace test target after this tranche:
-  - mobile: 108
-  - core: 152
+  - mobile: 109
+  - core: 153
   - pc-host: 2
 
 ## Current focus

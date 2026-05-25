@@ -56,6 +56,7 @@ The main remaining work is no longer “port the basics from the TUI.” It is n
 - Onboarding/settings
 - Files with real tree/preview, real pending diffs, and active-PC-aware browsing
 - Snapshots, diagnostics, terminal, PC host, Git, tasks, MCP, and Skills panels
+- Global mobile chrome with live API/PC status, active workspace summary and dynamic badges for approvals, diagnostics, dirty Git state, running tasks and native waits
 - Native bridge contracts for document picker, discovery, terminal, sharing, and Termux `RUN_COMMAND` execution
 - Termux result continuation from callback output back into the model turn
 
@@ -86,6 +87,7 @@ The main remaining work is no longer “port the basics from the TUI.” It is n
 | Area | Current reality | What remains |
 |---|---|---|
 | Android host | Rust/Kotlin bridge contracts and integration notes exist | Final Dioxus host adapter and emulator/device verification |
+| Visual UI verification | Cockpit screens and dynamic chrome exist; code-level checks pass | Real Android render/touch verification through Dioxus CLI and device/emulator |
 | Termux | Native request queue, callback correlation and model continuation exist | Termux workspace selector and final host verification |
 | Android files | Chat attachment ingestion exists | Project import/export flow |
 | Terminal | PC-host sessions and persisted mobile UI history exist | Live terminal process resurrection is not claimed; service-level behavior can be improved later |

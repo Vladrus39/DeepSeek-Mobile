@@ -17,12 +17,14 @@ Mobile-first **DeepSeek Coding Agent** для Android с опциональны�
 - Termux `exec_shell` Rust/mobile lifecycle: native request queue, callback correlation, `continue_termux_result`
 - Native Android bridge contracts: document picker, PC discovery, share/terminal events, Termux `RUN_COMMAND` adapter
 - Мобильные панели: chat, approvals, files с real pending diffs и PC-aware browsing, snapshots, diagnostics, PC host, terminal, Git actions, tasks, MCP, skills, settings
+- UI chrome: live API/PC chips, active workspace header, dynamic badges for approvals/diagnostics/Git/tasks/native waits, drawer + scrollable bottom navigation
 - Durable task records + queue lifecycle + mobile task manager UI
 - Онбординг и сохранение настроек DeepSeek/GitHub
 
 ## Что ещё не доведено до конца
 
 - Финальный Dioxus Android host adapter и ручная device/emulator verification bridge-контрактов
+- Финальная визуальная проверка на Android через Dioxus CLI/emulator/device
 - Termux workspace selector и Android import/export completion
 - Runtime HTTP/SSE API поверх durable task/runtime модели
 - Artifacts/logs per durable task и более тесная связка task UI с PC-host running tasks
@@ -53,7 +55,7 @@ cargo +stable-x86_64-pc-windows-msvc test --workspace
 
 - `cargo +stable-x86_64-pc-windows-msvc check --workspace --all-targets` — проходит
 - `cargo +stable-x86_64-pc-windows-msvc test --workspace` — проходит
-- Последний локальный полный прогон: 108 mobile tests, 152 core tests, 2 pc-host tests
+- Последний локальный полный прогон: 109 mobile tests, 153 core tests, 2 pc-host tests
 
 Подробности:
 
@@ -62,4 +64,5 @@ cargo +stable-x86_64-pc-windows-msvc test --workspace
 - `docs/MASTER_PLAN.md`
 - `docs/ROADMAP.md`
 - `docs/android_host_integration.md`
+- `docs/UI_STATUS_AND_VERIFICATION.md`
 - `PROJECT_STATUS.md`

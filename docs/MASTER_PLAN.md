@@ -373,6 +373,8 @@ Checklist:
 - [ ] Android build/release notes.
 - [ ] PC-host binary/release notes.
 - [x] PC pairing launchers prefer bundled `deepseek-pc-host` and fall back to PATH.
+- [x] Mobile cockpit chrome shows live API/PC/workspace status and dynamic badges.
+- [ ] Real Android visual verification with Dioxus CLI on emulator/device.
 - [ ] PC-host release package includes matching host binary / explicit installer.
 - [ ] Troubleshooting docs.
 

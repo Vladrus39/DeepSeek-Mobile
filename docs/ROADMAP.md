@@ -71,7 +71,9 @@
 - [x] Durable background task records and task manager UI
 - [x] MCP/skills config and UI layer
 - [x] PC pairing launchers prefer bundled `deepseek-pc-host` and fall back to PATH
+- [x] Mobile cockpit chrome: live API/PC/workspace status and dynamic nav badges
 - [ ] Durable task artifacts/logs and PC-running-task synchronization
 - [ ] Runtime HTTP/SSE API
 - [ ] PC-host release package includes matching host binary / explicit installer
+- [ ] Real Android visual verification through Dioxus CLI and device/emulator
 - [ ] Release packaging and troubleshooting docs

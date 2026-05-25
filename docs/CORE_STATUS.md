@@ -7,8 +7,8 @@
 - `cargo +stable-x86_64-pc-windows-msvc check --workspace --all-targets` — green
 - `cargo +stable-x86_64-pc-windows-msvc test --workspace` — green
 - Tests:
-  - mobile: 108
-  - core: 152
+  - mobile: 109
+  - core: 153
   - pc-host: 2
 
 ## Core crate
