@@ -63,6 +63,9 @@ pub fn tasks_panel(mut state: Signal<TasksUiState>) -> Element {
         let summary = t.result_summary.clone();
         let err_msg = t.error_message.clone();
         let can_cancel = !status.is_terminal();
+        let has_artifacts = t.has_artifacts();
+        let artifact_count = t.artifact_count();
+        let first_artifact = t.artifact_paths.first().cloned();
 
         rsx! {
             div {
@@ -114,6 +117,28 @@ pub fn tasks_panel(mut state: Signal<TasksUiState>) -> Element {
                 }
                 if let Some(ref e) = err_msg {
                     div { color: "#fca5a5", font_size: "12px", "{e}" }
+                }
+
+                // Artifacts section
+                if has_artifacts {
+                    div {
+                        display: "flex",
+                        align_items: "center",
+                        gap: "4px",
+                        margin_top: "4px",
+                        font_size: "11px",
+                        color: "#9ca3af",
+
+                        div { "{artifact_count} artifact(s)" }
+                        div { font_size: "9px", color: "#6b7280", "\u{00b7}" }
+                        // Use a local String binding to avoid Dioxus rsx capture issues
+                        {{
+                            let artifact = first_artifact.as_deref().map(|s| s.to_string()).unwrap_or_else(|| String::from("—"));
+                            rsx! {
+                                div { "{artifact}" }
+                            }
+                        }}
+                    }
                 }
 
                 // Cancel button

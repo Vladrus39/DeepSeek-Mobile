@@ -5,7 +5,7 @@ use axum::response::sse::{Event, Sse};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use std::convert::Infallible;
-use tokio::io::{AsyncBufReadExt, BufReader};
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::Command as TokioCommand;
 use tokio_stream::wrappers::ReceiverStream;
 use deepseek_mobile_core::{
@@ -23,7 +23,6 @@ use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::fs;
-use tokio::io::AsyncWriteExt;
 use tokio::process::{Child, Command};
 use tokio::sync::Mutex;
 use tokio::time::timeout;
@@ -40,12 +39,15 @@ struct PcHostState {
 
 /// Handle for a tracked background task process.
 struct TaskHandle {
-    id: String,
-    label: String,
-    kind: String,
+    id: Arc<String>,
+    label: Arc<String>,
+    kind: Arc<String>,
     child: Child,
+    log_path: PathBuf,
     started_at_unix: u64,
 }
+
+
 
 #[derive(Clone, Debug)]
 struct PcHostConfig {
@@ -234,7 +236,11 @@ async fn main() -> Result<()> {
         .route("/v1/gateway/request", post(gateway_request_handler))
         .route("/v1/gateway/exec/stream", post(exec_stream_handler))
         .route("/v1/gateway/logs", get(logs_handler))
+        .route("/v1/runtime/tasks", get(runtime_tasks_handler))
+        .route("/v1/runtime/tasks/{task_id}/log", get(runtime_task_log_handler))
         .with_state(state);
+    // Note: /v1/runtime/tasks and log routes return task status data
+    // that survives the mobile app restart because the pc-host keeps tasks in memory.
 
     let listener = tokio::net::TcpListener::bind(bind_addr)
         .await
@@ -1248,8 +1254,13 @@ async fn run_task_handler(state: &PcHostState, task_id: &str) -> Result<PcGatewa
         )));
     }
 
+    // Prepare log path before spawning
+    let log_dir = state.config.workspace_root.join(".deepseek-mobile").join("tasks").join("logs");
+    tokio::fs::create_dir_all(&log_dir).await?;
+    let log_path = log_dir.join(format!("{}.log", task_id));
+
     let command = &task.command;
-    let child = tokio::process::Command::new(&command.program)
+    let mut child = tokio::process::Command::new(&command.program)
         .args(&command.args)
         .current_dir(
             command
@@ -1264,22 +1275,48 @@ async fn run_task_handler(state: &PcHostState, task_id: &str) -> Result<PcGatewa
 
     let pid = child.id().unwrap_or(0);
 
-    let task_id_owned = task_id.to_string();
-    let label = task.label.clone();
-    let kind = format!("{:?}", task.kind);
+    // Spawn background output collector
+    let task_id_owned = Arc::new(task_id.to_string());
+    let log_path_clone = log_path.clone();
+
+    if let Some(stdout) = child.stdout.take() {
+        let tid = task_id_owned.clone();
+        let lp = log_path_clone.clone();
+        tokio::spawn(async move {
+            pipe_to_log(tid, lp, stdout).await;
+        });
+    }
+    if let Some(stderr) = child.stderr.take() {
+        let tid = task_id_owned.clone();
+        let lp = log_path_clone;
+        tokio::spawn(async move {
+            pipe_to_log(tid, lp, stderr).await;
+        });
+    }
+
+    let label = Arc::new(task.label.clone());
+    let kind = Arc::new(format!("{:?}", task.kind));
     let started_at = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs();
 
+    // Write initial log line before moving log_path into the handle
+    if let Err(e) = log_line_to_file(&log_path, &format!("Task started (pid: {})", pid)).await {
+        tracing::warn!("failed to write task log: {}", e);
+    }
+
     let handle = TaskHandle {
-        id: task_id_owned.clone(),
-        label: label.clone(),
-        kind: kind.clone(),
+        id: task_id_owned,
+        label,
+        kind,
         child,
+        log_path,
         started_at_unix: started_at,
     };
-    handles.insert(task_id_owned, handle);
+
+
+    handles.insert(task_id.to_string(), handle);
 
     Ok(PcGatewayResponse::TaskStarted {
         task_id: task_id.to_string(),
@@ -1300,6 +1337,10 @@ async fn stop_task_handler(state: &PcHostState, task_id: &str) -> Result<PcGatew
     // Best-effort wait for cleanup
     let _ = tokio::time::timeout(std::time::Duration::from_secs(5), handle.child.wait()).await;
 
+    if let Err(e) = log_line_to_file(&handle.log_path, "Task stopped").await {
+        tracing::warn!("failed to write task stop log: {}", e);
+    }
+
     Ok(PcGatewayResponse::TaskStopped {
         task_id: task_id.to_string(),
     })
@@ -1310,13 +1351,94 @@ async fn list_tasks_handler(state: &PcHostState) -> Result<PcGatewayResponse> {
     let running: Vec<PcRunningTaskInfo> = handles
         .values()
         .map(|h| PcRunningTaskInfo {
-            id: h.id.clone(),
-            label: h.label.clone(),
-            kind: h.kind.clone(),
+            id: h.id.to_string(),
+            label: h.label.to_string(),
+            kind: h.kind.to_string(),
             started_at_unix: h.started_at_unix,
         })
         .collect();
     Ok(PcGatewayResponse::TaskList(running))
+}
+
+// ── Task output logging ──
+
+/// Pipe lines from a tokio AsyncRead stream into a task log file.
+#[allow(unused_variables)]
+async fn pipe_to_log(task_id: Arc<String>, log_path: PathBuf, reader: impl tokio::io::AsyncRead + Unpin) {
+    let mut lines = tokio::io::BufReader::new(reader).lines();
+    while let Ok(Some(line)) = lines.next_line().await {
+        if line.is_empty() {
+            continue;
+        }
+        let _ = log_line_to_file(&log_path, &line).await;
+    }
+    let _ = log_line_to_file(&log_path, "-- stdio stream ended --").await;
+}
+
+/// Write a single line to a log file (appending).
+async fn log_line_to_file(path: &Path, line: &str) -> std::io::Result<()> {
+    let unix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    let formatted = format!("[{}] {}\n", unix, line);
+    let mut file = tokio::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+        .await?;
+    file.write_all(formatted.as_bytes()).await?;
+    Ok(())
+}
+
+// ── Runtime API handlers ──
+
+#[derive(Clone, Debug, serde::Serialize)]
+struct RuntimeTaskInfo {
+    id: String,
+    label: String,
+    kind: String,
+    started_at_unix: u64,
+}
+
+/// GET /v1/runtime/tasks — list currently running tasks
+async fn runtime_tasks_handler(
+    State(state): State<PcHostState>,
+) -> (StatusCode, Json<Vec<RuntimeTaskInfo>>) {
+    let handles = state.tasks.lock().await;
+    let tasks: Vec<RuntimeTaskInfo> = handles
+        .values()
+        .map(|h| RuntimeTaskInfo {
+            id: h.id.to_string(),
+            label: h.label.to_string(),
+            kind: h.kind.to_string(),
+            started_at_unix: h.started_at_unix,
+        })
+        .collect();
+    (StatusCode::OK, Json(tasks))
+}
+
+/// GET /v1/runtime/tasks/{task_id}/log — stream task log file
+async fn runtime_task_log_handler(
+    State(state): State<PcHostState>,
+    axum::extract::Path(task_id): axum::extract::Path<String>,
+) -> Result<String, (StatusCode, String)> {
+    let log_path = {
+        let handles = state.tasks.lock().await;
+        let Some(handle) = handles.get(&task_id) else {
+            return Err((StatusCode::NOT_FOUND, format!("task '{}' not found", task_id)));
+        };
+        handle.log_path.clone()
+    };
+
+    if !log_path.exists() {
+        return Err((StatusCode::NOT_FOUND, "log file not found".to_string()));
+    }
+
+    let content = tokio::fs::read_to_string(&log_path)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("read log: {}", e)))?;
+    Ok(content)
 }
 
 fn truncate_output(text: String, max_bytes: usize) -> String {

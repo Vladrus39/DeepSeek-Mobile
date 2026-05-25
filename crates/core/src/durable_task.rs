@@ -7,6 +7,7 @@
 use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
 use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -89,6 +90,20 @@ impl DurableTaskRecord {
     pub fn mark_canceled(&mut self) {
         self.status = DurableTaskStatus::Canceled;
         self.completed_at_unix = Some(unix_secs());
+    }
+
+    /// Add an artifact path to this task record.
+    pub fn add_artifact(&mut self, path: impl Into<String>) {
+        self.artifact_paths.push(path.into());
+    }
+
+    /// Check whether this task has any artifacts.
+    pub fn has_artifacts(&self) -> bool {
+        !self.artifact_paths.is_empty()
+    }
+
+    pub fn artifact_count(&self) -> usize {
+        self.artifact_paths.len()
     }
 }
 
@@ -226,6 +241,69 @@ impl DurableTaskManager {
             self.write_state(&state)?;
         }
         Ok(removed)
+    }
+
+    /// Add an artifact path to a task record.
+    pub fn add_artifact(&self, task_id: &str, artifact_path: impl Into<String>) -> Result<bool> {
+        let mut state = self.load_state_or_default()?;
+        let Some(record) = state.tasks.iter_mut().find(|t| t.id == task_id) else {
+            return Ok(false);
+        };
+        record.artifact_paths.push(artifact_path.into());
+        self.write_state(&state)?;
+        Ok(true)
+    }
+
+    /// Append a log line to a task-specific log file under `base_dir / logs / {task_id}.log`.
+    /// The log file path is automatically added to the task's artifact_paths on first write.
+    pub fn append_log(&self, task_id: &str, line: impl AsRef<str>) -> Result<()> {
+        let task_dir = self
+            .path
+            .parent()
+            .unwrap_or_else(|| Path::new("."))
+            .join("logs");
+        fs::create_dir_all(&task_dir)?;
+
+        let log_path = task_dir.join(format!("{}.log", task_id));
+
+        let unix = unix_secs();
+        let log_line = format!("[{}] {}\n", unix, line.as_ref());
+        fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&log_path)?
+            .write_all(log_line.as_bytes())?;
+
+        // Ensure the log path is in artifact_paths
+        let log_path_str = log_path.to_string_lossy().to_string();
+        let mut state = self.load_state_or_default()?;
+        if let Some(record) = state.tasks.iter_mut().find(|t| t.id == task_id) {
+            if !record.artifact_paths.contains(&log_path_str) {
+                record.artifact_paths.push(log_path_str);
+                self.write_state(&state)?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Read the log file for a task. Returns None if the log file doesn't exist.
+    pub fn read_log(&self, task_id: &str) -> Result<Option<String>> {
+        let log_path = self
+            .path
+            .parent()
+            .unwrap_or_else(|| Path::new("."))
+            .join("logs")
+            .join(format!("{}.log", task_id));
+        if !log_path.exists() {
+            return Ok(None);
+        }
+        let content = fs::read_to_string(&log_path)?;
+        Ok(Some(content))
+    }
+
+    /// Return the base directory where task data (logs, artifacts) is stored.
+    pub fn base_dir(&self) -> &Path {
+        self.path.parent().unwrap_or_else(|| Path::new("."))
     }
 
     // ── Internals ──
@@ -443,6 +521,78 @@ mod tests {
         let dir = temp_dir();
         let mgr = DurableTaskManager::open_in(&dir).unwrap();
         assert!(mgr.load_all().unwrap().is_empty());
+        clean(&dir);
+    }
+
+    #[test]
+    fn test_add_artifact_methods() {
+        let mut record = DurableTaskRecord::new("t1", "Build", "cargo");
+        assert!(!record.has_artifacts());
+        assert_eq!(record.artifact_count(), 0);
+        record.add_artifact("/tmp/build.log");
+        assert!(record.has_artifacts());
+        assert_eq!(record.artifact_count(), 1);
+        assert_eq!(record.artifact_paths[0], "/tmp/build.log");
+    }
+
+    #[test]
+    fn test_manager_add_artifact() {
+        let dir = temp_dir();
+        let mgr = DurableTaskManager::open_in(&dir).unwrap();
+        mgr.create("t1", "Build", "cargo").unwrap();
+
+        assert!(mgr.add_artifact("t1", "/tmp/build.log").unwrap());
+        let loaded = mgr.load("t1").unwrap().unwrap();
+        assert_eq!(loaded.artifact_paths.len(), 1);
+        assert_eq!(loaded.artifact_paths[0], "/tmp/build.log");
+        clean(&dir);
+    }
+
+    #[test]
+    fn test_manager_add_artifact_nonexistent() {
+        let dir = temp_dir();
+        let mgr = DurableTaskManager::open_in(&dir).unwrap();
+        assert!(!mgr.add_artifact("ghost", "/tmp/x.log").unwrap());
+        clean(&dir);
+    }
+
+    #[test]
+    fn test_manager_append_and_read_log() {
+        let dir = temp_dir();
+        let mgr = DurableTaskManager::open_in(&dir).unwrap();
+        mgr.create("t1", "Build", "cargo").unwrap();
+
+        mgr.append_log("t1", "starting build").unwrap();
+        mgr.append_log("t1", "compilation ok").unwrap();
+
+        // Check log content
+        let log = mgr.read_log("t1").unwrap().expect("log should exist");
+        assert!(log.contains("starting build"));
+        assert!(log.contains("compilation ok"));
+
+        // Check that the log path is tracked as an artifact
+        let loaded = mgr.load("t1").unwrap().unwrap();
+        assert_eq!(loaded.artifact_paths.len(), 1);
+        assert!(loaded.artifact_paths[0].ends_with("t1.log"));
+        clean(&dir);
+    }
+
+    #[test]
+    fn test_manager_read_log_nonexistent() {
+        let dir = temp_dir();
+        let mgr = DurableTaskManager::open_in(&dir).unwrap();
+        assert!(mgr.read_log("ghost").unwrap().is_none());
+        clean(&dir);
+    }
+
+    #[test]
+    fn test_manager_append_log_nonexistent_task() {
+        let dir = temp_dir();
+        let mgr = DurableTaskManager::open_in(&dir).unwrap();
+        // Should still write the log file even if the task record doesn't exist
+        mgr.append_log("norecord", "some output").unwrap();
+        let log = mgr.read_log("norecord").unwrap().expect("log should exist");
+        assert!(log.contains("some output"));
         clean(&dir);
     }
 
