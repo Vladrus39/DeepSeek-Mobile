@@ -1,11 +1,19 @@
-use deepseek_mobile_core::{DurableTaskManager, DurableTaskRecord, DurableTaskStatus};
+use deepseek_mobile_core::{
+    DurableTaskManager, DurableTaskRecord, DurableTaskStatus, PcGatewayClient, PcGatewayResponse,
+    PcRunningTaskInfo,
+};
+use std::collections::HashSet;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::mobile_runtime_config::default_data_dir;
 
 #[derive(Clone, Debug)]
 pub struct TasksUiState {
     pub tasks: Vec<DurableTaskRecord>,
+    pub pc_running_tasks: Vec<PcRunningTaskInfo>,
     pub last_error: Option<String>,
+    pub pc_last_error: Option<String>,
+    pub pc_last_synced_at_unix: Option<u64>,
     pub filter_status: Option<DurableTaskStatus>,
 }
 
@@ -13,7 +21,10 @@ impl Default for TasksUiState {
     fn default() -> Self {
         Self {
             tasks: Vec::new(),
+            pc_running_tasks: Vec::new(),
             last_error: None,
+            pc_last_error: None,
+            pc_last_synced_at_unix: None,
             filter_status: None,
         }
     }
@@ -43,6 +54,57 @@ impl TasksUiState {
                 self.last_error = Some(format!("Failed to load tasks: {}", e));
             }
         }
+    }
+
+    /// Refresh currently running tasks from the active PC host.
+    pub async fn refresh_pc_running_tasks(&mut self, client: &PcGatewayClient) {
+        match client.list_tasks().await {
+            Ok(PcGatewayResponse::TaskList(tasks)) => self.apply_pc_running_tasks(tasks),
+            Ok(other) => {
+                self.pc_last_error = Some(format!("Unexpected PC task response: {:?}", other));
+            }
+            Err(error) => {
+                self.pc_last_error = Some(format!("Failed to sync PC tasks: {}", error));
+            }
+        }
+    }
+
+    pub fn apply_pc_running_tasks(&mut self, mut tasks: Vec<PcRunningTaskInfo>) {
+        tasks.sort_by(|left, right| {
+            right
+                .started_at_unix
+                .cmp(&left.started_at_unix)
+                .then(left.label.cmp(&right.label))
+                .then(left.id.cmp(&right.id))
+        });
+        self.pc_running_tasks = tasks;
+        self.pc_last_error = None;
+        self.pc_last_synced_at_unix = Some(current_unix_time());
+    }
+
+    pub fn clear_pc_running_tasks(&mut self) {
+        self.pc_running_tasks.clear();
+        self.pc_last_error = None;
+        self.pc_last_synced_at_unix = None;
+    }
+
+    pub fn active_count(&self) -> usize {
+        let pc_ids: HashSet<&str> = self
+            .pc_running_tasks
+            .iter()
+            .map(|task| task.id.as_str())
+            .collect();
+        let local_active = self
+            .tasks
+            .iter()
+            .filter(|task| {
+                matches!(
+                    task.status,
+                    DurableTaskStatus::Queued | DurableTaskStatus::Running
+                ) && !pc_ids.contains(task.id.as_str())
+            })
+            .count();
+        local_active + self.pc_running_tasks.len()
     }
 
     /// Cancel a queued or running task.
@@ -94,5 +156,73 @@ impl TasksUiState {
     pub fn set_filter(&mut self, status: Option<DurableTaskStatus>) {
         self.filter_status = status;
         self.refresh();
+    }
+}
+
+fn current_unix_time() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::TasksUiState;
+    use deepseek_mobile_core::{
+        DurableTaskRecord, DurableTaskStatus, PcRunningTaskInfo,
+    };
+
+    #[test]
+    fn pc_running_tasks_are_sorted_newest_first() {
+        let mut state = TasksUiState::default();
+        state.apply_pc_running_tasks(vec![
+            pc_task("old", "Old", 10),
+            pc_task("new", "New", 20),
+        ]);
+
+        assert_eq!(state.pc_running_tasks[0].id, "new");
+        assert_eq!(state.pc_running_tasks[1].id, "old");
+        assert!(state.pc_last_synced_at_unix.is_some());
+        assert!(state.pc_last_error.is_none());
+    }
+
+    #[test]
+    fn active_count_reconciles_local_and_pc_tasks_by_id() {
+        let mut state = TasksUiState::default();
+        state.tasks = vec![
+            local_task("same", DurableTaskStatus::Running),
+            local_task("queued", DurableTaskStatus::Queued),
+            local_task("done", DurableTaskStatus::Completed),
+        ];
+        state.apply_pc_running_tasks(vec![pc_task("same", "Same", 20), pc_task("pc", "PC", 30)]);
+
+        assert_eq!(state.active_count(), 3);
+    }
+
+    #[test]
+    fn clear_pc_running_tasks_resets_sync_state() {
+        let mut state = TasksUiState::default();
+        state.apply_pc_running_tasks(vec![pc_task("pc", "PC", 30)]);
+        state.clear_pc_running_tasks();
+
+        assert!(state.pc_running_tasks.is_empty());
+        assert!(state.pc_last_error.is_none());
+        assert!(state.pc_last_synced_at_unix.is_none());
+    }
+
+    fn pc_task(id: &str, label: &str, started_at_unix: u64) -> PcRunningTaskInfo {
+        PcRunningTaskInfo {
+            id: id.to_string(),
+            label: label.to_string(),
+            kind: "test".to_string(),
+            started_at_unix,
+        }
+    }
+
+    fn local_task(id: &str, status: DurableTaskStatus) -> DurableTaskRecord {
+        let mut task = DurableTaskRecord::new(id, id, "test");
+        task.status = status;
+        task
     }
 }

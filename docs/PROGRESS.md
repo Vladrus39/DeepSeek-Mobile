@@ -1,6 +1,6 @@
 # DeepSeek-Mobile — active progress
 
-**Current session:** 2026-05-25
+**Current session:** 2026-05-26
 
 ## Completed in the latest tranche
 
@@ -17,7 +17,12 @@
   - Import ZIP queues `DocumentPickerRequest::project_import()` and imports the returned local archive copy into the phone workspace;
   - Export ZIP writes `.deepseek-mobile/exports/deepseek-mobile-project-*.zip` and queues native share;
   - Android picker callbacks now route by `DocumentPickerPurpose`, so project archives no longer become chat attachments.
-- Refreshed local docs to show that durable task artifacts/logs, PC-host runtime task HTTP endpoints and project import/export UI are now implemented, while SSE/live task reconciliation and Android host device verification remain open.
+- Added PC running-task reconciliation in the mobile Tasks panel:
+  - the panel syncs active PC-host tasks through `PcGatewayClient::list_tasks()`;
+  - running PC tasks are displayed separately from local durable records;
+  - the cockpit task badge counts local and PC active work without double-counting matching ids;
+  - active PC tasks can be stopped through `PcGatewayClient::stop_task()`.
+- Refreshed local docs to show that durable task artifacts/logs, PC-host runtime task HTTP endpoints, project import/export UI and manual PC task reconciliation are now implemented, while SSE/live updates and Android host device verification remain open.
 - Audited the local `main` after four new local commits (`PhaseD2` → `PhaseG`) and confirmed the working tree was clean before continuing.
 - Verified the new local state before edits: `cargo check` and `cargo test` were green.
 - Added unified-diff compatibility to `apply_patch` while preserving the existing operation-batch API.
@@ -52,8 +57,9 @@
   - `deepseek-mobile termux_state::tests`
   - `deepseek-mobile-core workspace_io::tests`
   - `deepseek-mobile project_transfer_state::tests`
+  - `deepseek-mobile tasks_state::tests`
 - Full workspace test after this tranche:
-  - mobile: 125
+  - mobile: 128
   - core: 166
   - pc-host: 2
 
@@ -63,8 +69,7 @@ The remaining product gaps are concentrated around production integration and re
 
 1. final Dioxus Android host adapter and device/emulator verification, including picker/share/Termux flows;
 2. runtime SSE/live event streaming over the stable runtime/task model;
-3. PC-running-task reconciliation beyond task log capture;
-4. dev-server lifecycle, PC-host service/autostart and release/troubleshooting docs.
+3. dev-server lifecycle, PC-host service/autostart and release/troubleshooting docs.
 
 ## Notes from the audit
 

@@ -337,6 +337,7 @@ Checklist:
 - [x] Reuse PC task detection.
 - [x] Add artifacts and logs per task.
 - [x] Add HTTP task list/log runtime API.
+- [x] Add mobile PC running-task reconciliation and stop controls.
 - [ ] Add SSE/live runtime event streaming after core task model is stable.
 
 Acceptance criteria:
@@ -396,8 +397,8 @@ Acceptance criteria:
 | Shell execution | Route to PC/Termux | Partial: PC-host active and Rust/mobile Termux continuation done; final Android host verification pending |
 | Git tools | Keep with mobile UI | Done: core/PC routing, panel actions and auto-commit lifecycle are wired |
 | Web/search/fetch | Keep with approval | Done in core with network capability and approval policy |
-| Runtime HTTP/SSE API | Keep later | Partial: task list/log HTTP endpoints done; SSE/live events pending |
-| Durable task queue | Keep | Partial: records, lifecycle, PC task RPC, artifacts/logs and mobile UI done; live reconciliation pending |
+| Runtime HTTP/SSE API | Keep later | Partial: task list/log HTTP endpoints and mobile PC task reconciliation done; SSE/live events pending |
+| Durable task queue | Keep | Partial: records, lifecycle, PC task RPC, artifacts/logs, mobile UI and manual PC running-task sync done; automatic live updates pending |
 | LSP diagnostics | Keep, PC-first plus local/Termux fallback | Partial: Rust/TypeScript/Python providers, UI metadata and next-turn model context implemented |
 | PC connectivity | Keep multi-transport, offline-first | Partial: endpoint candidates, failover, health, discovery, reconnect controls, persisted active route and remote-aware Files are implemented |
 | Snapshots/rollback | Keep, mobile-safe file-copy | Done for local and PC-gateway snapshot create/list/restore paths |
@@ -448,8 +449,11 @@ The next implementation sequence is fixed:
 31. [x] Add Termux workspace selector with runtime activation.
 32. [x] Add core ZIP workspace import/export helpers.
 33. [x] Add Files panel Android project import/export UI.
+34. [x] Add mobile PC running-task reconciliation.
 
 ## 5. Implementation progress log
+- 2026-05-26 (Phase K — PC running-task reconciliation): Added mobile Tasks panel synchronization for active PC-host running tasks through `PcGatewayClient::list_tasks()`, a separate PC running-task card list, `StopTask` controls for active PC processes, and cockpit badge reconciliation so local durable tasks and PC-running tasks with the same id are not double-counted. Added task-state tests for PC task sorting, active-count reconciliation and clearing sync state. Verification: `cargo +stable-x86_64-pc-windows-msvc check --workspace --all-targets` green; `cargo +stable-x86_64-pc-windows-msvc test --workspace` passed with 128 mobile / 166 core / 2 pc-host tests.
+
 - 2026-05-25 (Phase J — Android project import/export UI): Added `ProjectTransferState` and Files panel controls for local phone workspace import/export. Import queues the Android archive picker with `DocumentPickerPurpose::ProjectImport`, imports the returned local archive copy through `workspace_io::import_project`, refreshes the local Files view, and keeps chat attachments routed separately. Export creates a timestamped ZIP under `.deepseek-mobile/exports/` through `workspace_io::export_project` and queues native share. Added native bridge event sequencing so repeated native callbacks are not dropped by idempotence guards. Verification: `cargo +stable-x86_64-pc-windows-msvc check --workspace --all-targets` green; `cargo +stable-x86_64-pc-windows-msvc test --workspace` passed with 125 mobile / 166 core / 2 pc-host tests.
 
 - 2026-05-25 (Phase I — Termux workspace activation + workspace IO hardening): Audited the user's `artifacts-log-capture-runtime-API` work and kept the durable task artifact/log + PC-host runtime task HTTP API instead of duplicating it. Added a Settings Termux workspace selector that validates absolute Termux paths, persists `termux_workspace.json`, activates a Termux `WorkspaceConnection`, and revalidates saved configs on load. Added `workspace_io` core ZIP import/export helpers with path traversal hardening, Windows/absolute path rejection, portable ZIP names, missing-root errors and `.deepseek-mobile` metadata exclusion. Verification: `cargo +stable-x86_64-pc-windows-msvc check --workspace --all-targets` green; `cargo +stable-x86_64-pc-windows-msvc test --workspace` passed with 120 mobile / 166 core / 2 pc-host tests.

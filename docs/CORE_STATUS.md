@@ -1,13 +1,13 @@
 # DeepSeek-Mobile — core, mobile, and host status
 
-**Updated:** 2026-05-25
+**Updated:** 2026-05-26
 
 ## Verification
 
 - `cargo +stable-x86_64-pc-windows-msvc check --workspace --all-targets` — green
 - `cargo +stable-x86_64-pc-windows-msvc test --workspace` — green
 - Tests:
-  - mobile: 125
+  - mobile: 128
   - core: 166
   - pc-host: 2
 
@@ -57,6 +57,7 @@
 - Terminal panel with persisted UI-state history
 - Git panel with real status/diff/branch/commit/push/pull actions
 - Durable task manager panel
+- PC running-task sync in Tasks panel
 - MCP panel
 - Skills panel
 - Bottom navigation and cockpit layout
@@ -72,13 +73,14 @@
 - New pairing requests use a generated token instead of an empty token.
 - Termux commands have Rust bridge queue/callback correlation, timeline routing, automatic queue extraction from pending tool-result metadata, and model continuation after callback result.
 - Saving the Termux workspace selector activates a persisted Termux runtime connection for future turns.
+- Tasks panel reconciles active PC-host running tasks through `ListTasks`, counts them in cockpit badges without double-counting matching local task ids, and can stop them through `StopTask`.
 - Android host integration notes document the native bridge contract boundaries.
 
 ### Still partial
 
 - Native Android host integration is not complete/verified.
 - Terminal UI history persists, but live terminal process resurrection after app restart is not claimed.
-- Durable task UI is backed by local records/artifacts/logs; live PC-running-task reconciliation remains.
+- Durable task UI is backed by local records/artifacts/logs and manual PC running-task reconciliation; automatic SSE/live updates remain.
 
 ## Android bridge module
 
@@ -117,12 +119,11 @@
 
 - Dev-server preview lifecycle
 - Autostart/service installer
-- PC-running-task reconciliation and richer runtime live updates
+- SSE/live runtime updates
 
 ## Highest-priority gaps
 
 1. Final Android host adapter + emulator/device verification
 2. Runtime SSE/live event streaming
-3. PC-running-task synchronization/reconciliation
-4. Final Android device/emulator verification
-5. Release packaging and troubleshooting docs
+3. Final Android device/emulator verification
+4. Release packaging and troubleshooting docs

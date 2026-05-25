@@ -155,7 +155,13 @@ pub fn cockpit_section_panel(
         ),
         CockpitSection::Mcp => mcp_panel(mcp_state),
         CockpitSection::Skills => skills_panel(skills_state),
-        CockpitSection::Tasks => tasks_panel(tasks_state),
+        CockpitSection::Tasks => {
+            let pc_client = pc_pairing_state()
+                .active_workspace_connection()
+                .and_then(|connection| connection.pc_gateway.clone())
+                .map(deepseek_mobile_core::PcGatewayClient::new);
+            tasks_panel(tasks_state, pc_client)
+        }
         CockpitSection::Settings => settings_panel(settings_state, termux_state),
     }
 }

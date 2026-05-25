@@ -1,6 +1,6 @@
 # Mobile UI status and verification
 
-**Updated:** 2026-05-25
+**Updated:** 2026-05-26
 
 ## Current UI reality
 
@@ -10,6 +10,7 @@ The mobile UI is no longer a rough mock. It contains the main cockpit surfaces r
 - chat timeline and approval cards;
 - Files, Snapshots, Diagnostics, PC Host, Terminal, Git, Tasks, MCP and Skills panels;
 - Files panel Import ZIP / Export ZIP controls for local phone workspace project transfer;
+- Tasks panel local durable records plus PC running-task sync/stop controls when a PC workspace is active;
 - native bridge status banners for Android callbacks;
 - bottom navigation and a drawer for deeper navigation.
 
@@ -63,6 +64,7 @@ Current local blocker for visual device verification:
    - approval card review;
    - Files panel local and active-PC browsing;
    - Files panel project Import ZIP and Export ZIP/native share;
+   - Tasks panel local records, PC running-task sync and PC stop-task action;
    - PC pairing export/import/discovery status;
    - Termux command callback continuation;
    - terminal open/output/close events;

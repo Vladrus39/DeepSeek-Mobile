@@ -49,7 +49,7 @@ use agent_timeline::MobileTimelineState;
 use agent_timeline_panel::agent_timeline_panel;
 use chat_attachment::ChatComposerState;
 use cockpit_section_panel::cockpit_section_panel;
-use deepseek_mobile_core::{AgentEvent, ApprovalCardView, DurableTaskStatus, ReviewDecision};
+use deepseek_mobile_core::{AgentEvent, ApprovalCardView, ReviewDecision};
 use diagnostics_state::DiagnosticsUiState;
 use dioxus::prelude::*;
 use document_picker::{DocumentPickerPurpose, DocumentPickerRequest, DocumentPickerState};
@@ -121,16 +121,7 @@ fn build_chrome_summary(
             )
         };
 
-    let running_tasks = tasks
-        .tasks
-        .iter()
-        .filter(|task| {
-            matches!(
-                task.status,
-                DurableTaskStatus::Queued | DurableTaskStatus::Running
-            )
-        })
-        .count();
+    let running_tasks = tasks.active_count();
 
     MobileChromeSummary {
         api_configured: !settings.api_key.trim().is_empty(),

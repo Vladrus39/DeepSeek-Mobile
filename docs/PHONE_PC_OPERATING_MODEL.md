@@ -1,6 +1,6 @@
 # Phone and PC operating model
 
-**Updated:** 2026-05-25
+**Updated:** 2026-05-26
 
 This document defines how DeepSeek-Mobile should work across Android, Termux, a paired PC, and optional DeepSeek-TUI compatibility. It is the product architecture target, not only an implementation note.
 
@@ -118,6 +118,7 @@ With PC Host paired, the phone should feel like a full coding agent controlling 
 - use git status/diff/commit/push/pull;
 - run terminal commands;
 - start/stop/list background tasks;
+- reconcile active PC-running tasks in the mobile Tasks panel;
 - snapshot/restore workspace state;
 - recover from reconnect/failover.
 
@@ -168,6 +169,7 @@ Implemented:
 - Durable task artifacts/log capture and PC-host runtime task HTTP endpoints.
 - Core ZIP workspace import/export helpers.
 - Files panel project import/export UI for local phone workspace archives.
+- Mobile Tasks panel sync/stop controls for active PC-host running tasks.
 
 Still needed:
 
@@ -177,7 +179,7 @@ Still needed:
 - PC Host release package that includes or installs the host binary;
 - optional PC service/autostart installer;
 - runtime SSE/live event streaming;
-- live PC-running-task synchronization/reconciliation.
+- automatic live task updates over SSE instead of manual sync.
 
 ## Recommended next implementation order
 
@@ -186,4 +188,4 @@ Still needed:
 3. Implement final Dioxus/native host adapter contract.
 4. Verify Android project import/export picker/share on device or emulator.
 5. Add runtime SSE/live event streaming only after the host/runtime boundaries are stable.
-6. Add PC-running-task reconciliation and release packaging.
+6. Add release packaging and troubleshooting docs.

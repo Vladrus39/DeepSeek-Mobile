@@ -1,6 +1,6 @@
 # DeepSeek-Mobile project audit
 
-**Audit refreshed:** 2026-05-25
+**Audit refreshed:** 2026-05-26
 
 **Reference project:** `Hmbown/DeepSeek-TUI`
 
@@ -12,7 +12,7 @@ The main remaining work is no longer “port the basics from the TUI.” It is n
 
 - verify and harden the final Android host adapter;
 - verify Android project import/export picker/share flow on the final host shell;
-- extend the runtime/task model with SSE/live updates and stronger reconciliation;
+- extend the runtime/task model with SSE/live updates;
 - add release packaging and troubleshooting material.
 
 ## What is solidly implemented
@@ -48,6 +48,7 @@ The main remaining work is no longer “port the basics from the TUI.” It is n
 - Host logs and health
 - PC snapshot RPC routing
 - Background task start/stop/list RPC routing
+- Mobile PC running-task reconciliation through the Tasks panel
 - Rust / TypeScript / Python diagnostics
 
 ### Mobile surfaces
@@ -62,6 +63,7 @@ The main remaining work is no longer “port the basics from the TUI.” It is n
 - Termux workspace selector that persists and activates a runtime Termux connection
 - Core workspace ZIP import/export helpers with archive traversal protection
 - Files panel project import/export UI for the local phone workspace
+- Tasks panel PC running-task sync and stop controls
 
 ## Important improvements completed in the latest tranche
 
@@ -93,9 +95,13 @@ The main remaining work is no longer “port the basics from the TUI.” It is n
 
    Saved terminal sessions load only once, save directories are created, restored sessions come back closed, and output truncation reports the real dropped-line count.
 
-8. **Documentation was brought back in sync.**
+8. **PC running-task reconciliation was wired into the mobile UI.**
 
-   README, project status, roadmap, core status, progress log and master plan now reflect completed PC snapshots, tasks, artifacts/logs, runtime task HTTP API, MCP/skills, Termux continuation, Termux workspace activation, project import/export UI, remote Files and unified-diff work.
+   The Tasks panel now calls the active PC Host `ListTasks` route, displays PC-running work separately from local durable records, reconciles duplicate ids for cockpit badges, and can send `StopTask` for active PC processes.
+
+9. **Documentation was brought back in sync.**
+
+   README, project status, roadmap, core status, progress log and master plan now reflect completed PC snapshots, tasks, artifacts/logs, runtime task HTTP API, PC task reconciliation, MCP/skills, Termux continuation, Termux workspace activation, project import/export UI, remote Files and unified-diff work.
 
 ## Partial implementations that still need completion
 
@@ -106,7 +112,7 @@ The main remaining work is no longer “port the basics from the TUI.” It is n
 | Termux | Native request queue, callback correlation, model continuation and Settings workspace activation exist | Final Android host verification |
 | Android files | Chat attachment ingestion, core ZIP import/export helpers and Files panel import/export UI exist | Final native picker/share device verification |
 | Terminal | PC-host sessions and persisted mobile UI history exist | Live terminal process resurrection is not claimed; service-level behavior can be improved later |
-| Durable tasks | Core records, queue lifecycle, artifacts/logs, PC task RPCs and mobile UI exist | Live PC-running-task synchronization/reconciliation |
+| Durable tasks | Core records, queue lifecycle, artifacts/logs, PC task RPCs, mobile UI and manual PC running-task reconciliation exist | Automatic SSE/live task updates |
 | MCP/skills | Registry/config/UI/context surfaces exist | Actual external MCP tool execution must be added carefully behind approval/workspace boundaries |
 | Runtime API | PC-host HTTP task list/log endpoints exist | SSE/live event streaming still missing |
 | Packaging | Development flow works | Android release notes, PC-host binary/service notes and troubleshooting docs |
@@ -125,7 +131,7 @@ The main remaining work is no longer “port the basics from the TUI.” It is n
 | Diagnostics | Providers and model reinjection done |
 | Snapshots | Local and PC-gateway paths done |
 | Runtime API | Partial: PC-host task list/log HTTP endpoints done; SSE/live events pending |
-| Durable tasks | Partial: records/queue/UI/RPC/artifacts/logs done; live sync pending |
+| Durable tasks | Partial: records/queue/UI/RPC/artifacts/logs and manual PC running-task sync done; SSE/live updates pending |
 | MCP/skills/plugins | Partial: registry/config/UI/context surfaces done; external tool execution pending |
 | Android-native execution | Partial: contracts done, final host adapter pending |
 
@@ -133,9 +139,8 @@ The main remaining work is no longer “port the basics from the TUI.” It is n
 
 1. Final Dioxus Android host adapter and emulator/device verification.
 2. Runtime SSE/live event streaming over existing runtime/task state.
-3. Live PC-running-task reconciliation beyond task log capture.
-4. Final Android picker/share/Termux device verification.
-5. Dev-server lifecycle, PC-host service/autostart and release/troubleshooting docs.
+3. Final Android picker/share/Termux device verification.
+4. Dev-server lifecycle, PC-host service/autostart and release/troubleshooting docs.
 
 ## Audit conclusion
 

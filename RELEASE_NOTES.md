@@ -1,5 +1,27 @@
 # DeepSeek-Mobile — Release Notes
 
+## Build 2026-05-26 — PC Task Reconciliation
+
+### New
+
+- **PC running-task reconciliation in Tasks panel**: the mobile Tasks panel now syncs active PC-host running tasks through `PcGatewayClient::list_tasks()`, shows them separately from local durable records, reconciles duplicate local/PC task ids in the nav badge count, and can send `StopTask` for active PC tasks.
+
+### Tests
+
+- Full workspace: 128 mobile / 166 core / 2 pc-host tests — all green.
+- Added mobile task-state tests for PC running-task sorting, local/PC active-count reconciliation and clearing PC sync state.
+
+### Build
+
+- `cargo +stable-x86_64-pc-windows-msvc check --workspace --all-targets`: green, with existing dead-code warnings in mobile test-only/native bridge surfaces.
+- `cargo +stable-x86_64-pc-windows-msvc test --workspace`: 296 tests pass.
+
+### Still pending
+
+- Runtime SSE/live event streaming and automatic task updates.
+- Final Android/Dioxus host adapter and device/emulator verification.
+- Final Android/Dioxus host picker/share device verification for project import/export.
+
 ## Build 2026-05-25 — Artifacts, Logs, Runtime API, Termux Workspace & Workspace IO
 
 ### New
@@ -18,7 +40,7 @@
 
 ### Tests
 
-- Full workspace: 125 mobile / 166 core / 2 pc-host tests — all green.
+- Full workspace: 125 mobile / 166 core / 2 pc-host tests — all green for this build.
 - Added Termux workspace state tests for activation, strict path validation and invalid saved-config revalidation.
 - Added workspace import/export tests for ZIP traversal rejection, Windows/absolute path rejection, metadata exclusion and export/reimport roundtrip.
 - Added project transfer state tests for import request state, missing local archive rejection, ZIP extraction, export ZIP creation and default phone workspace/export paths.
@@ -32,6 +54,6 @@
 
 ### Still pending
 
-- Runtime SSE/live event streaming and richer task reconciliation.
+- Runtime SSE/live event streaming and automatic task updates.
 - Final Android/Dioxus host adapter and device/emulator verification.
 - Final Android/Dioxus host picker/share device verification for project import/export.
