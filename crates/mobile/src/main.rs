@@ -33,6 +33,8 @@ mod settings_panel;
 mod settings_state;
 mod snapshots_panel;
 mod snapshots_state;
+mod tasks_panel;
+mod tasks_state;
 mod terminal_panel;
 mod terminal_state;
 
@@ -58,6 +60,7 @@ use project_files_state::ProjectFilesUiState;
 use saved_timeline_loader::load_default_saved_events;
 use settings_state::{load_saved_config, SettingsFormState};
 use snapshots_state::SnapshotsUiState;
+use tasks_state::TasksUiState;
 use terminal_state::TerminalUiState;
 
 fn main() {
@@ -79,6 +82,7 @@ fn app() -> Element {
     let pc_pairing_state = use_signal(PcPairingUiState::default);
     let project_files_state = use_signal(ProjectFilesUiState::default);
     let mut snapshots_state = use_signal(SnapshotsUiState::default);
+    let mut tasks_state = use_signal(TasksUiState::default);
     let mut diagnostics_state = use_signal(DiagnosticsUiState::default);
     let git_state = use_signal(GitUiState::default);
     let mut terminal_state = use_signal(TerminalUiState::default);
@@ -368,6 +372,7 @@ fn app() -> Element {
                         diagnostics_state,
                         git_state,
                         terminal_state,
+                        tasks_state,
                         settings_state,
                         EventHandler::new(move |(approval_id, decision): (String, ReviewDecision)| {
                             let approval_id = approval_id.clone();
@@ -596,7 +601,6 @@ fn app() -> Element {
 
             {bottom_nav_bar(
                 active_section(),
-                approval_cards().len(),
                 EventHandler::new(move |section| {
                     active_section.set(section);
                 })

@@ -15,6 +15,8 @@ use crate::settings_panel::settings_panel;
 use crate::settings_state::SettingsFormState;
 use crate::snapshots_panel::snapshots_panel;
 use crate::snapshots_state::SnapshotsUiState;
+use crate::tasks_panel::tasks_panel;
+use crate::tasks_state::TasksUiState;
 use crate::terminal_panel::terminal_panel;
 use crate::terminal_state::TerminalUiState;
 use deepseek_mobile_core::{ApprovalCardView, ReviewDecision};
@@ -30,6 +32,7 @@ pub fn cockpit_section_panel(
     diagnostics_state: Signal<DiagnosticsUiState>,
     mut git_state: Signal<GitUiState>,
     mut terminal_state: Signal<TerminalUiState>,
+    tasks_state: Signal<TasksUiState>,
     settings_state: Signal<SettingsFormState>,
     on_approval_decision: EventHandler<(String, ReviewDecision)>,
 ) -> Element {
@@ -125,6 +128,7 @@ pub fn cockpit_section_panel(
                 git_state.write().set_commit_message(message);
             }),
         ),
+        CockpitSection::Tasks => tasks_panel(tasks_state),
         CockpitSection::Settings => settings_panel(settings_state),
     }
 }
@@ -154,6 +158,7 @@ mod tests {
         assert_eq!(CockpitSection::Terminal.title(), "Terminal");
         assert_eq!(CockpitSection::Approvals.title(), "Approvals");
         assert_eq!(CockpitSection::Git.title(), "Git & GitHub");
+        assert_eq!(CockpitSection::Tasks.title(), "Tasks");
         assert_eq!(CockpitSection::Settings.title(), "Settings");
     }
 }

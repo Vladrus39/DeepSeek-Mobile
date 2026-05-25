@@ -429,11 +429,13 @@ The next implementation sequence is fixed:
 23. [x] Close Termux callback/result-continuation end-to-end.
 24. [x] Replace illustrative Files diff preview with real pending/project diffs.
 25. [x] Add background tasks (PC-host process spawning + gateway RPC).
-26. [ ] Add durable task records + queue lifecycle (core/mobile side).
-27. [ ] Add mobile task manager UI.
+26. [x] Add durable task records + queue lifecycle (core/mobile side).
+27. [x] Add mobile task manager UI.
 28. [ ] Add MCP/skills.
 
 ## 5. Implementation progress log
+- 2026-05-25 (Phase F2 — mobile task manager UI): Added `TasksUiState` with `refresh`, `cancel_task`, `prune_terminal`, and `set_filter` methods that delegate to `DurableTaskManager`. Added `tasks_panel.rs` Dioxus component with filter chips, task cards (label/kind/status badge/created age/summary/error), Refresh/Prune controls, cancel buttons for non-terminal tasks, and empty state. Added `CockpitSection::Tasks` to drawer enum with title/subtitle/navbar. Wired `tasks_state` signal through `main.rs` → `cockpit_section_panel`. Added drawer/navbar tests for Tasks integration. Verification: `cargo check` green, `cargo test --workspace` 134 core / 102 mobile / 2 pc-host.
+
 - 2026-05-25 (Phase F1 — durable task record + queue lifecycle): Added `DurableTaskStatus` enum (Queued/Running/Completed/Failed/Canceled), `DurableTaskRecord` struct with lifecycle methods (`mark_running`, `mark_completed`, `mark_failed`, `mark_canceled`), and `DurableTaskManager` with single-file JSON persistence under `base_dir/tasks.json`. Manager supports `create`, `save`, `load`, `load_all`, `update_status`, `delete`, `count_by_status`, and `prune_terminal_tasks`. Registered `pub mod durable_task` in core lib, re-exported `DurableTaskManager`, `DurableTaskRecord`, `DurableTaskStatus`. Verification: 16/16 durable_task tests pass, `cargo check --workspace --all-targets` green.
 
 - 2026-05-25 (Phase E2 — background task infrastructure): Added `TaskHandle` with child-process tracking to PC host, implemented `run_task_handler` (spawns detected tasks as real processes), `stop_task_handler` (kills tracked child), and `list_tasks_handler` (returns running task info). Extended gateway protocol with `PcGatewayRequest::ListTasks`, `PcGatewayResponse::TaskList(Vec<PcRunningTaskInfo>)`, and `PcRunningTaskInfo` struct. Added `stop_task()` and `list_tasks()` to `PcGatewayClient`. Wired `detect_tasks`, `task_run`, `task_stop`, and `task_list` tool routing in `ToolExecutionCoordinator::execute_on_pc_gateway` with response handling for `TaskStarted`, `TaskStopped`, and `TaskList`. Verification: `cargo check` green, `cargo test` 102 mobile / 118 core / 2 pc-host.

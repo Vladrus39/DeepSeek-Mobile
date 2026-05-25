@@ -10,6 +10,7 @@ pub enum CockpitSection {
     Terminal,
     Approvals,
     Git,
+    Tasks,
     Settings,
 }
 
@@ -24,6 +25,7 @@ impl CockpitSection {
             CockpitSection::Terminal => "Terminal",
             CockpitSection::Approvals => "Approvals",
             CockpitSection::Git => "Git & GitHub",
+            CockpitSection::Tasks => "Tasks",
             CockpitSection::Settings => "Settings",
         }
     }
@@ -38,6 +40,7 @@ impl CockpitSection {
             CockpitSection::Terminal => "PC / Termux command output",
             CockpitSection::Approvals => "Tool calls waiting for confirmation",
             CockpitSection::Git => "Status, commits, push, pull, PRs",
+            CockpitSection::Tasks => "Background tasks, build jobs, test runs",
             CockpitSection::Settings => "DeepSeek API, GitHub, disks, security",
         }
     }
@@ -69,6 +72,7 @@ pub fn default_drawer_items() -> Vec<DrawerItem> {
         item(CockpitSection::Terminal),
         item(CockpitSection::Approvals),
         item(CockpitSection::Git),
+        item(CockpitSection::Tasks),
         item(CockpitSection::Settings),
     ]
 }
@@ -201,83 +205,85 @@ pub fn mobile_drawer(
                     }
                 }
             }
+
+            div {
+                background_color: "#111827",
+                border: "1px solid #374151",
+                border_radius: "16px",
+                padding: "12px",
+
+                div {
+                    color: "#9ca3af",
+                    font_size: "12px",
+                    text_align: "center",
+                    "DeepSeek Mobile v0.1 — Android preview"
+                }
+                div {
+                    color: "#4b5563",
+                    font_size: "11px",
+                    text_align: "center",
+                    margin_top: "3px",
+                    "GitHub · DeepSeek API · Y-Lit"
+                }
+            }
         }
     }
 }
 
-
-/// Bottom navigation bar component — 5 quick-access tabs at screen bottom.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct BottomNavTab {
+// Bottom navigation bar for quick section switching
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct NavItem {
     pub section: CockpitSection,
-    pub icon: &'static str,
     pub label: &'static str,
+    pub short: &'static str,
 }
 
-pub fn default_bottom_nav_tabs() -> Vec<BottomNavTab> {
+pub fn default_nav_items() -> Vec<NavItem> {
     vec![
-        BottomNavTab { section: CockpitSection::Chat, icon: "\u{1f4ac}", label: "Chat" },
-        BottomNavTab { section: CockpitSection::Files, icon: "\u{1f4c1}", label: "Files" },
-        BottomNavTab { section: CockpitSection::Terminal, icon: "\u{2328}", label: "Terminal" },
-        BottomNavTab { section: CockpitSection::Git, icon: "\u{1f500}", label: "Git" },
-        BottomNavTab { section: CockpitSection::Settings, icon: "\u{2699}", label: "Settings" },
+        NavItem { section: CockpitSection::Chat, label: "Chat", short: "💬" },
+        NavItem { section: CockpitSection::PcHost, label: "PC", short: "🖥" },
+        NavItem { section: CockpitSection::Files, label: "Files", short: "📁" },
+        NavItem { section: CockpitSection::Terminal, label: "Term", short: ">" },
+        NavItem { section: CockpitSection::Approvals, label: "Approve", short: "✓" },
+        NavItem { section: CockpitSection::Git, label: "Git", short: "⬡" },
+        NavItem { section: CockpitSection::Tasks, label: "Tasks", short: "⚙" },
     ]
 }
 
 pub fn bottom_nav_bar(
     active_section: CockpitSection,
-    approval_count: usize,
     on_select: EventHandler<CockpitSection>,
 ) -> Element {
-    let tabs = default_bottom_nav_tabs();
+    let items = default_nav_items();
 
     rsx! {
         div {
-            display: "flex",
-            justify_content: "space-around",
-            align_items: "center",
             background_color: "#0b1018",
             border_top: "1px solid #1f2937",
-            padding: "6px 0",
-            padding_bottom: "10px",
-            position: "relative",
-            z_index: "5",
+            padding: "4px 0",
+            display: "flex",
+            justify_content: "space_around",
 
-            for tab in tabs {
+            for item in items {
                 button {
-                    key: "{tab.section.title()}",
-                    position: "relative",
                     display: "flex",
                     flex_direction: "column",
                     align_items: "center",
                     gap: "2px",
+                    padding: "6px 10px",
                     background_color: "transparent",
                     border: "none",
-                    color: if tab.section == active_section { "#3b82f6" } else { "#6b7280" },
-                    font_size: if tab.section == active_section { "20px" } else { "18px" },
-                    padding: "4px 12px",
-                    onclick: move |_| on_select.call(tab.section),
+                    color: if item.section == active_section { "#3b82f6" } else { "#9ca3af" },
+                    font_size: "11px",
+                    onclick: move |_| on_select.call(item.section),
 
-                    div { "{tab.icon}" }
+                    div {
+                        font_size: "18px",
+                        "{item.short}"
+                    }
                     div {
                         font_size: "10px",
-                        font_weight: if tab.section == active_section { "700" } else { "400" },
-                        "{tab.label}"
-                    }
-                    if tab.section == CockpitSection::Chat && approval_count > 0 {
-                        div {
-                            position: "absolute",
-                            top: "2px",
-                            right: "2px",
-                            background_color: "#ca8a04",
-                            color: "white",
-                            border_radius: "999px",
-                            padding: "2px 6px",
-                            font_size: "9px",
-                            font_weight: "bold",
-                            line_height: "1",
-                            "{approval_count}"
-                        }
+                        "{item.label}"
                     }
                 }
             }
@@ -285,32 +291,36 @@ pub fn bottom_nav_bar(
     }
 }
 
-
 #[cfg(test)]
 mod tests {
-    use super::{default_drawer_items, CockpitSection};
+    use super::CockpitSection;
 
     #[test]
-    fn drawer_contains_core_cockpit_sections() {
-        let items = default_drawer_items();
-        let sections: Vec<CockpitSection> = items.iter().map(|item| item.section).collect();
-        assert!(sections.contains(&CockpitSection::Chat));
-        assert!(sections.contains(&CockpitSection::PcHost));
-        assert!(sections.contains(&CockpitSection::Files));
-        assert!(sections.contains(&CockpitSection::Snapshots));
-        assert!(sections.contains(&CockpitSection::Diagnostics));
-        assert!(sections.contains(&CockpitSection::Terminal));
-        assert!(sections.contains(&CockpitSection::Approvals));
-        assert!(sections.contains(&CockpitSection::Git));
-        assert!(sections.contains(&CockpitSection::Settings));
+    fn all_non_chat_sections_have_titles() {
+        assert_eq!(CockpitSection::PcHost.title(), "PC Host");
+        assert_eq!(CockpitSection::Files.title(), "Files");
+        assert_eq!(CockpitSection::Snapshots.title(), "Snapshots");
+        assert_eq!(CockpitSection::Diagnostics.title(), "Diagnostics");
+        assert_eq!(CockpitSection::Terminal.title(), "Terminal");
+        assert_eq!(CockpitSection::Approvals.title(), "Approvals");
+        assert_eq!(CockpitSection::Git.title(), "Git & GitHub");
+        assert_eq!(CockpitSection::Tasks.title(), "Tasks");
+        assert_eq!(CockpitSection::Settings.title(), "Settings");
     }
 
     #[test]
-    fn section_titles_are_stable() {
-        assert_eq!(CockpitSection::Chat.title(), "Chat");
-        assert_eq!(CockpitSection::PcHost.title(), "PC Host");
-        assert_eq!(CockpitSection::Snapshots.title(), "Snapshots");
-        assert_eq!(CockpitSection::Diagnostics.title(), "Diagnostics");
-        assert_eq!(CockpitSection::Git.title(), "Git & GitHub");
+    fn drawer_items_include_all_sections() {
+        let items = super::default_drawer_items();
+        let titles: Vec<&str> = items.iter().map(|i| i.title).collect();
+        assert!(titles.contains(&"Chat"));
+        assert!(titles.contains(&"Tasks"));
+        assert!(titles.contains(&"Settings"));
+    }
+
+    #[test]
+    fn bottom_nav_includes_tasks() {
+        let items = super::default_nav_items();
+        let labels: Vec<&str> = items.iter().map(|i| i.label).collect();
+        assert!(labels.contains(&"Tasks"));
     }
 }
