@@ -13,7 +13,11 @@
   - ZIP import rejects `..`, absolute paths, Windows drive prefixes and backslash traversal;
   - ZIP export emits portable `/` entry names and excludes `.deepseek-mobile` metadata;
   - missing workspace roots now fail clearly before export.
-- Refreshed local docs to show that durable task artifacts/logs and PC-host runtime task HTTP endpoints are now implemented, while SSE/live task reconciliation and Android import/export UI remain open.
+- Added Files panel project import/export UI over the core ZIP helpers:
+  - Import ZIP queues `DocumentPickerRequest::project_import()` and imports the returned local archive copy into the phone workspace;
+  - Export ZIP writes `.deepseek-mobile/exports/deepseek-mobile-project-*.zip` and queues native share;
+  - Android picker callbacks now route by `DocumentPickerPurpose`, so project archives no longer become chat attachments.
+- Refreshed local docs to show that durable task artifacts/logs, PC-host runtime task HTTP endpoints and project import/export UI are now implemented, while SSE/live task reconciliation and Android host device verification remain open.
 - Audited the local `main` after four new local commits (`PhaseD2` → `PhaseG`) and confirmed the working tree was clean before continuing.
 - Verified the new local state before edits: `cargo check` and `cargo test` were green.
 - Added unified-diff compatibility to `apply_patch` while preserving the existing operation-batch API.
@@ -47,8 +51,9 @@
   - `deepseek-mobile terminal_state::tests`
   - `deepseek-mobile termux_state::tests`
   - `deepseek-mobile-core workspace_io::tests`
+  - `deepseek-mobile project_transfer_state::tests`
 - Full workspace test after this tranche:
-  - mobile: 120
+  - mobile: 125
   - core: 166
   - pc-host: 2
 
@@ -56,11 +61,10 @@
 
 The remaining product gaps are concentrated around production integration and release readiness:
 
-1. final Dioxus Android host adapter and device/emulator verification;
-2. Android import/export UI completion over the new core ZIP helpers;
-3. runtime SSE/live event streaming over the stable runtime/task model;
-4. PC-running-task reconciliation beyond task log capture;
-5. dev-server lifecycle, PC-host service/autostart and release/troubleshooting docs.
+1. final Dioxus Android host adapter and device/emulator verification, including picker/share/Termux flows;
+2. runtime SSE/live event streaming over the stable runtime/task model;
+3. PC-running-task reconciliation beyond task log capture;
+4. dev-server lifecycle, PC-host service/autostart and release/troubleshooting docs.
 
 ## Notes from the audit
 

@@ -1,6 +1,11 @@
+use crate::document_picker::{DocumentPickerRequest, DocumentPickerState};
+use crate::native_bridge::NativeBridgeState;
 use crate::project_diff::{build_text_diff_preview, diff_line_color};
 use crate::project_files::{ProjectEntryKind, ProjectFilePreview, ProjectTreeSnapshot};
 use crate::project_files_state::{FileBrowserBackend, ProjectFilesUiState};
+use crate::project_transfer_state::{
+    default_export_dir, default_phone_workspace_root, ProjectTransferState,
+};
 use deepseek_mobile_core::{ApprovalCardView, PcGatewayClient};
 use dioxus::prelude::*;
 
@@ -15,6 +20,9 @@ pub fn project_files_panel(
     mut state: Signal<ProjectFilesUiState>,
     approval_cards: Vec<ApprovalCardView>,
     pc_gateway_connection: Option<PcFileBrowserConnection>,
+    picker: Signal<DocumentPickerState>,
+    native_bridge: Signal<NativeBridgeState>,
+    transfer_state: Signal<ProjectTransferState>,
 ) -> Element {
     let needs_backend_switch = pc_gateway_connection.is_some() != state().is_pc_backend();
 
@@ -61,6 +69,7 @@ pub fn project_files_panel(
     let selected_path = state().selected_path.clone();
     let last_error = state().last_error.clone();
     let is_pc = state().is_pc_backend();
+    let transfer = transfer_state();
 
     rsx! {
         div {
@@ -74,6 +83,7 @@ pub fn project_files_panel(
             gap: "12px",
 
             {header_card(&snapshot, state, is_pc)}
+            {transfer_card(&transfer, picker, native_bridge, transfer_state, is_pc)}
             if let Some(error) = last_error {
                 div {
                     background_color: "#7f1d1d",
@@ -88,6 +98,116 @@ pub fn project_files_panel(
             {tree_card(&snapshot, selected_path.as_deref(), state, pc_gateway_connection.clone())}
             {file_preview_card(preview.as_ref())}
             {diff_preview_card(&state(), &approval_cards)}
+        }
+    }
+}
+
+fn transfer_card(
+    transfer: &ProjectTransferState,
+    mut picker: Signal<DocumentPickerState>,
+    mut native_bridge: Signal<NativeBridgeState>,
+    mut transfer_state: Signal<ProjectTransferState>,
+    is_pc: bool,
+) -> Element {
+    let status_text = transfer.status_text();
+    let last_error = transfer.last_error.clone();
+    let can_export = transfer.can_export();
+    let local_workspace = default_phone_workspace_root().display().to_string();
+
+    rsx! {
+        div {
+            background_color: "#0f172a",
+            border: "1px solid #334155",
+            border_radius: "14px",
+            padding: "12px",
+            display: "flex",
+            flex_direction: "column",
+            gap: "8px",
+
+            div {
+                display: "flex",
+                justify_content: "space-between",
+                align_items: "center",
+                gap: "8px",
+                div {
+                    div { font_size: "14px", font_weight: "bold", "Project import/export" }
+                    div { color: "#9ca3af", font_size: "11px", "Phone workspace: {local_workspace}" }
+                }
+                div {
+                    display: "flex",
+                    gap: "8px",
+                    flex_wrap: "wrap",
+                    button {
+                        background_color: "#1f2937",
+                        color: "white",
+                        border: "1px solid #4b5563",
+                        border_radius: "999px",
+                        padding: "6px 10px",
+                        font_size: "12px",
+                        onclick: move |_| {
+                            let request = DocumentPickerRequest::project_import();
+                            picker.write().request(request.clone());
+                            native_bridge.write().enqueue_document_picker(request);
+                            transfer_state.write().request_import();
+                        },
+                        "Import ZIP"
+                    }
+                    button {
+                        background_color: if can_export { "#065f46" } else { "#374151" },
+                        color: "white",
+                        border: if can_export { "1px solid #10b981" } else { "1px solid #4b5563" },
+                        border_radius: "999px",
+                        padding: "6px 10px",
+                        font_size: "12px",
+                        disabled: !can_export,
+                        onclick: move |_| {
+                            let mut transfer_signal = transfer_state;
+                            let mut bridge_signal = native_bridge;
+                            spawn(async move {
+                                let mut next_transfer = transfer_signal();
+                                match next_transfer.export_workspace(
+                                    default_phone_workspace_root(),
+                                    default_export_dir(),
+                                ) {
+                                    Ok(report) => {
+                                        let archive_path = report.archive_path.clone();
+                                        next_transfer.mark_share_queued(archive_path.clone());
+                                        transfer_signal.set(next_transfer);
+                                        bridge_signal
+                                            .write()
+                                            .enqueue_share_file(archive_path.display().to_string());
+                                    }
+                                    Err(error) => {
+                                        next_transfer.mark_error(error.to_string());
+                                        transfer_signal.set(next_transfer);
+                                    }
+                                }
+                            });
+                        },
+                        "Export ZIP"
+                    }
+                }
+            }
+
+            div { color: "#cbd5e1", font_size: "12px", "{status_text}" }
+            if is_pc {
+                div {
+                    color: "#fbbf24",
+                    font_size: "11px",
+                    "Note: import/export targets the local phone workspace. Active PC projects stay controlled through PC Host."
+                }
+            }
+            if let Some(error) = last_error {
+                div {
+                    background_color: "#7f1d1d",
+                    border: "1px solid #dc2626",
+                    border_radius: "10px",
+                    padding: "7px 9px",
+                    color: "#fecaca",
+                    font_size: "12px",
+                    "{error}"
+                }
+            }
         }
     }
 }

@@ -43,6 +43,7 @@ pub struct NativeBridgeState {
     pub active_document_picker_request_id: Option<String>,
     pub active_pc_discovery_request_id: Option<String>,
     pub active_termux_request_ids: Vec<String>,
+    pub last_event_id: u64,
 }
 
 pub fn termux_request_from_agent_event(event: &AgentEvent) -> Option<TermuxExecRequest> {
@@ -271,6 +272,7 @@ impl NativeBridgeState {
     }
 
     pub fn accept_event(&mut self, event: NativeMobileEvent) {
+        self.last_event_id = self.last_event_id.saturating_add(1);
         self.last_error = match &event {
             NativeMobileEvent::DocumentPickerFailed(message)
             | NativeMobileEvent::PcGatewayDiscoveryFailed(message)
@@ -410,8 +412,13 @@ mod tests {
     #[test]
     fn bridge_records_native_errors() {
         let mut state = NativeBridgeState::default();
+        assert_eq!(state.last_event_id, 0);
         state.accept_event(NativeMobileEvent::DocumentPickerFailed("permission denied".to_string()));
+        assert_eq!(state.last_event_id, 1);
         assert_eq!(state.last_error.as_deref(), Some("permission denied"));
+        state.accept_event(NativeMobileEvent::FileShared);
+        assert_eq!(state.last_event_id, 2);
+        assert!(state.last_error.is_none());
     }
 
     #[test]

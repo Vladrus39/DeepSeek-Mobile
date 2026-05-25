@@ -11,7 +11,7 @@ DeepSeek-Mobile has moved beyond a prototype. The project now has a real mobile-
 The main remaining work is no longer “port the basics from the TUI.” It is now about **production closure**:
 
 - verify and harden the final Android host adapter;
-- finish Android project import/export UI over the new core ZIP helpers;
+- verify Android project import/export picker/share flow on the final host shell;
 - extend the runtime/task model with SSE/live updates and stronger reconciliation;
 - add release packaging and troubleshooting material.
 
@@ -61,6 +61,7 @@ The main remaining work is no longer “port the basics from the TUI.” It is n
 - Termux result continuation from callback output back into the model turn
 - Termux workspace selector that persists and activates a runtime Termux connection
 - Core workspace ZIP import/export helpers with archive traversal protection
+- Files panel project import/export UI for the local phone workspace
 
 ## Important improvements completed in the latest tranche
 
@@ -76,21 +77,25 @@ The main remaining work is no longer “port the basics from the TUI.” It is n
 
    ZIP import/export now exists in core. Import rejects parent traversal, absolute paths, Windows drive prefixes and backslash traversal. Export emits portable ZIP entry names and excludes `.deepseek-mobile` metadata.
 
-4. **`apply_patch` now accepts unified diffs.**
+4. **Files panel project import/export UI was added.**
+
+   Import ZIP now queues the Android archive picker, uses the returned local sandbox archive copy, imports it into the phone workspace, and refreshes the local Files view. Export ZIP creates a shareable archive under `.deepseek-mobile/exports/` and queues native share.
+
+5. **`apply_patch` now accepts unified diffs.**
 
    The tool still uses the safe operation model internally, but callers can now provide standard unified diff text through `unified_diff` or `patch`. PC-gateway routing normalizes the same input before remote execution.
 
-5. **PC-aware Files routing was hardened.**
+6. **PC-aware Files routing was hardened.**
 
    The Files panel now passes the active `WorkspaceConnection.workspace_id` into PC-gateway file reads/lists instead of accidentally using the display root as the workspace id.
 
-6. **Terminal UI-state persistence was made safer.**
+7. **Terminal UI-state persistence was made safer.**
 
    Saved terminal sessions load only once, save directories are created, restored sessions come back closed, and output truncation reports the real dropped-line count.
 
-7. **Documentation was brought back in sync.**
+8. **Documentation was brought back in sync.**
 
-   README, project status, roadmap, core status, progress log and master plan now reflect completed PC snapshots, tasks, artifacts/logs, runtime task HTTP API, MCP/skills, Termux continuation, Termux workspace activation, remote Files and unified-diff work.
+   README, project status, roadmap, core status, progress log and master plan now reflect completed PC snapshots, tasks, artifacts/logs, runtime task HTTP API, MCP/skills, Termux continuation, Termux workspace activation, project import/export UI, remote Files and unified-diff work.
 
 ## Partial implementations that still need completion
 
@@ -99,7 +104,7 @@ The main remaining work is no longer “port the basics from the TUI.” It is n
 | Android host | Rust/Kotlin bridge contracts and integration notes exist | Final Dioxus host adapter and emulator/device verification |
 | Visual UI verification | Cockpit screens and dynamic chrome exist; code-level checks pass | Real Android render/touch verification through Dioxus CLI and device/emulator |
 | Termux | Native request queue, callback correlation, model continuation and Settings workspace activation exist | Final Android host verification |
-| Android files | Chat attachment ingestion and core ZIP import/export helpers exist | Native project import/export UI flow |
+| Android files | Chat attachment ingestion, core ZIP import/export helpers and Files panel import/export UI exist | Final native picker/share device verification |
 | Terminal | PC-host sessions and persisted mobile UI history exist | Live terminal process resurrection is not claimed; service-level behavior can be improved later |
 | Durable tasks | Core records, queue lifecycle, artifacts/logs, PC task RPCs and mobile UI exist | Live PC-running-task synchronization/reconciliation |
 | MCP/skills | Registry/config/UI/context surfaces exist | Actual external MCP tool execution must be added carefully behind approval/workspace boundaries |
@@ -127,9 +132,9 @@ The main remaining work is no longer “port the basics from the TUI.” It is n
 ## Recommended next execution order
 
 1. Final Dioxus Android host adapter and emulator/device verification.
-2. Android project import/export UI over the new core ZIP helpers.
-3. Runtime SSE/live event streaming over existing runtime/task state.
-4. Live PC-running-task reconciliation beyond task log capture.
+2. Runtime SSE/live event streaming over existing runtime/task state.
+3. Live PC-running-task reconciliation beyond task log capture.
+4. Final Android picker/share/Termux device verification.
 5. Dev-server lifecycle, PC-host service/autostart and release/troubleshooting docs.
 
 ## Audit conclusion

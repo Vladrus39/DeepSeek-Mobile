@@ -22,13 +22,13 @@ Mobile-first **DeepSeek Coding Agent** для Android с опциональны�
 - Runtime HTTP task API on PC-host: task listing and per-task log retrieval
 - Termux workspace selector in Settings: validates absolute Termux paths, persists config and activates the Termux runtime workspace
 - Core ZIP workspace import/export helpers with path-traversal protection and `.deepseek-mobile` metadata exclusion
+- Files panel project import/export UI: Android archive picker import into phone workspace, ZIP export and native share queue
 - Онбординг и сохранение настроек DeepSeek/GitHub
 
 ## Что ещё не доведено до конца
 
 - Финальный Dioxus Android host adapter и ручная device/emulator verification bridge-контрактов
 - Финальная визуальная проверка на Android через Dioxus CLI/emulator/device
-- Android import/export UI completion поверх уже добавленных core ZIP helpers
 - Runtime SSE/live event streaming поверх durable task/runtime модели
 - Более тесная синхронизация task UI с PC-host running tasks
 - Dev-server lifecycle, PC-host autostart/service installer
@@ -58,7 +58,7 @@ cargo +stable-x86_64-pc-windows-msvc test --workspace
 
 - `cargo +stable-x86_64-pc-windows-msvc check --workspace --all-targets` — проходит
 - `cargo +stable-x86_64-pc-windows-msvc test --workspace` — проходит
-- Последний локальный полный прогон: 120 mobile tests, 166 core tests, 2 pc-host tests
+- Последний локальный полный прогон: 125 mobile tests, 166 core tests, 2 pc-host tests
 
 Подробности:
 

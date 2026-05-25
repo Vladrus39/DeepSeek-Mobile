@@ -1,5 +1,6 @@
 use crate::diagnostics_panel::diagnostics_panel;
 use crate::diagnostics_state::DiagnosticsUiState;
+use crate::document_picker::DocumentPickerState;
 use crate::mcp_panel::mcp_panel;
 use crate::mcp_state::McpUiState;
 use crate::mobile_approval_panel::mobile_approval_panel;
@@ -9,6 +10,7 @@ use crate::pc_pairing_panel::pc_pairing_panel;
 use crate::pc_pairing_state::PcPairingUiState;
 use crate::project_files_panel::{project_files_panel, PcFileBrowserConnection};
 use crate::project_files_state::ProjectFilesUiState;
+use crate::project_transfer_state::ProjectTransferState;
 use crate::git_panel::git_panel;
 use crate::git_state::{GitPanelAction, GitUiState};
 use crate::mobile_git_runner::{apply_git_action_result, run_mobile_git_action};
@@ -32,7 +34,9 @@ pub fn cockpit_section_panel(
     approval_cards: Signal<Vec<ApprovalCardView>>,
     pc_pairing_state: Signal<PcPairingUiState>,
     mut native_bridge: Signal<NativeBridgeState>,
+    picker_state: Signal<DocumentPickerState>,
     project_files_state: Signal<ProjectFilesUiState>,
+    project_transfer_state: Signal<ProjectTransferState>,
     snapshots_state: Signal<SnapshotsUiState>,
     diagnostics_state: Signal<DiagnosticsUiState>,
     mut git_state: Signal<GitUiState>,
@@ -57,7 +61,14 @@ pub fn cockpit_section_panel(
                         workspace_root: connection.workspace_root.display().to_string(),
                     })
                 });
-            project_files_panel(project_files_state, approval_cards(), pc_connection)
+            project_files_panel(
+                project_files_state,
+                approval_cards(),
+                pc_connection,
+                picker_state,
+                native_bridge,
+                project_transfer_state,
+            )
         }
         CockpitSection::Snapshots => snapshots_panel(snapshots_state),
         CockpitSection::Diagnostics => diagnostics_panel(&diagnostics_state()),

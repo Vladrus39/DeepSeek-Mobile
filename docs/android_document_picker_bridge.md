@@ -4,6 +4,8 @@ This document defines the native Android side of the DeepSeek Mobile document pi
 
 See also: `docs/android_host_integration.md` for the wider host shell checklist covering picker, PC discovery, and Termux.
 
+The Rust mobile layer exposes a command/callback model. The same picker contract is used for chat attachments and project ZIP import; Rust routes the callback according to `DocumentPickerRequest.purpose`. `ProjectImport` requires a local sandbox copy of the picked archive so Rust can pass it to `workspace_io::import_project`.
+
 The Rust mobile layer exposes a command/callback model:
 
 - command: `AndroidDocumentPickerCommand`
@@ -134,11 +136,15 @@ AndroidDocumentPickerCallback::Cancelled { request_id }
 AndroidDocumentPickerCallback::Failed { request_id, message }
 ```
 
-Then pass the callback into:
+Then pass the callback into the Rust bridge state:
 
 ```text
 NativeBridgeState::accept_android_document_picker_callback(callback)
-route_native_mobile_event(..., returned_event)
 ```
 
-After routing, selected documents are attached to `ChatComposerState`; on Send, `to_core_input_with_ingestion()` reads local text/source files and injects extracted text into the prompt.
+`main.rs` then routes the resulting `NativeMobileEvent` by the pending
+`DocumentPickerRequest.purpose`: chat attachments are added to
+`ChatComposerState`, while project imports are extracted into the local phone
+workspace through `workspace_io::import_project`. The standalone
+`route_native_mobile_event(...)` helper is still kept for lower-level bridge
+tests and simple callback routing paths.

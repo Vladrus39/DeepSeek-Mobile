@@ -167,12 +167,13 @@ Implemented:
 - Termux workspace selector in Settings with persistent runtime activation.
 - Durable task artifacts/log capture and PC-host runtime task HTTP endpoints.
 - Core ZIP workspace import/export helpers.
+- Files panel project import/export UI for local phone workspace archives.
 
 Still needed:
 
 - final Dioxus Android host adapter;
 - device/emulator verification of bridge callbacks;
-- Android project import/export UI flow;
+- final Android picker/share device verification for project import/export;
 - PC Host release package that includes or installs the host binary;
 - optional PC service/autostart installer;
 - runtime SSE/live event streaming;
@@ -183,6 +184,6 @@ Still needed:
 1. Update Android host integration docs to reflect that Rust/mobile Termux continuation is already done, leaving final host adapter/device verification.
 2. Add PC Host bootstrap/release plan: bundled binary first, PATH fallback second, explicit install third.
 3. Implement final Dioxus/native host adapter contract.
-4. Add Android project import/export UI over the core ZIP helpers.
+4. Verify Android project import/export picker/share on device or emulator.
 5. Add runtime SSE/live event streaming only after the host/runtime boundaries are stable.
 6. Add PC-running-task reconciliation and release packaging.

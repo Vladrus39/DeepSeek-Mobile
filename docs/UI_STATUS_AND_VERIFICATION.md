@@ -9,6 +9,7 @@ The mobile UI is no longer a rough mock. It contains the main cockpit surfaces r
 - onboarding and settings, including Termux workspace activation;
 - chat timeline and approval cards;
 - Files, Snapshots, Diagnostics, PC Host, Terminal, Git, Tasks, MCP and Skills panels;
+- Files panel Import ZIP / Export ZIP controls for local phone workspace project transfer;
 - native bridge status banners for Android callbacks;
 - bottom navigation and a drawer for deeper navigation.
 
@@ -61,6 +62,7 @@ Current local blocker for visual device verification:
    - chat send and streaming timeline;
    - approval card review;
    - Files panel local and active-PC browsing;
+   - Files panel project Import ZIP and Export ZIP/native share;
    - PC pairing export/import/discovery status;
    - Termux command callback continuation;
    - terminal open/output/close events;

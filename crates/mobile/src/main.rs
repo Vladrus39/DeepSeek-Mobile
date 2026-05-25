@@ -30,6 +30,7 @@ mod project_diff;
 mod project_files;
 mod project_files_panel;
 mod project_files_state;
+mod project_transfer_state;
 mod saved_timeline_loader;
 mod settings_panel;
 mod settings_state;
@@ -51,7 +52,7 @@ use cockpit_section_panel::cockpit_section_panel;
 use deepseek_mobile_core::{AgentEvent, ApprovalCardView, DurableTaskStatus, ReviewDecision};
 use diagnostics_state::DiagnosticsUiState;
 use dioxus::prelude::*;
-use document_picker::{DocumentPickerRequest, DocumentPickerState};
+use document_picker::{DocumentPickerPurpose, DocumentPickerRequest, DocumentPickerState};
 use git_state::GitUiState;
 use mcp_state::McpUiState;
 use mobile_approval_panel::mobile_approval_panel;
@@ -63,6 +64,7 @@ use native_bridge::{NativeBridgeState, NativeMobileCommand, NativeMobileEvent};
 use onboarding_panel::onboarding_panel;
 use pc_pairing_state::{PcPairingUiState, PcPairingUiStatus};
 use project_files_state::ProjectFilesUiState;
+use project_transfer_state::{default_phone_workspace_root, ProjectTransferState};
 use saved_timeline_loader::load_default_saved_events;
 use settings_state::{load_saved_config, SettingsFormState};
 use skills_state::SkillsUiState;
@@ -142,6 +144,7 @@ fn build_chrome_summary(
         diagnostics_warnings: diagnostics.warning_count(),
         dirty_files: git.changed_files,
         native_waiting: native_bridge.has_pending_commands()
+            || native_bridge.is_waiting_for_document_picker_callback()
             || native_bridge.is_waiting_for_termux_callback()
             || native_bridge.is_waiting_for_pc_discovery_callback(),
     }
@@ -180,6 +183,7 @@ fn app() -> Element {
     let mut active_section = use_signal(|| CockpitSection::Chat);
     let pc_pairing_state = use_signal(PcPairingUiState::default);
     let project_files_state = use_signal(ProjectFilesUiState::default);
+    let project_transfer_state = use_signal(ProjectTransferState::default);
     let mut snapshots_state = use_signal(SnapshotsUiState::default);
     let tasks_state = use_signal(TasksUiState::default);
     let mut diagnostics_state = use_signal(DiagnosticsUiState::default);
@@ -202,6 +206,149 @@ fn app() -> Element {
     // Route native bridge terminal events into terminal UI state
     let terminal_event_bridge = native_bridge;
     let mut terminal_event_state = terminal_state;
+
+    // Route Android picker/share callbacks into either chat attachments or the
+    // local phone project import/export flow, depending on the pending picker
+    // purpose.
+    let project_picker_bridge = native_bridge;
+    let mut project_picker_last_event = use_signal(|| None::<String>);
+    let mut project_picker_state = picker;
+    let mut project_picker_composer = composer;
+    let mut project_picker_timeline = timeline;
+    let mut project_picker_files = project_files_state;
+    let mut project_picker_transfer = project_transfer_state;
+    use_effect(move || {
+        let bridge_snapshot = project_picker_bridge();
+        let event_id = bridge_snapshot.last_event_id;
+        let Some(event) = bridge_snapshot.last_event.clone() else {
+            return;
+        };
+        let event_key = event_id.to_string();
+        if project_picker_last_event()
+            .as_deref()
+            .map(|handled| handled == event_key.as_str())
+            .unwrap_or(false)
+        {
+            return;
+        }
+
+        match event {
+            NativeMobileEvent::DocumentsPicked(documents) => {
+                project_picker_last_event.set(Some(event_key));
+                let purpose = project_picker_state()
+                    .pending_request
+                    .as_ref()
+                    .map(|request| request.purpose.clone())
+                    .unwrap_or(DocumentPickerPurpose::ChatAttachment);
+
+                match purpose {
+                    DocumentPickerPurpose::ProjectImport => {
+                        let mut transfer = project_picker_transfer();
+                        let workspace_root = default_phone_workspace_root();
+                        match transfer.import_documents(&documents, &workspace_root) {
+                            Ok(report) => {
+                                project_picker_transfer.set(transfer);
+
+                                let mut files = project_picker_files();
+                                if !files.is_pc_backend() {
+                                    files.workspace_root =
+                                        report.workspace_root.display().to_string();
+                                    files.loaded = false;
+                                }
+                                project_picker_files.set(files);
+
+                                let mut next_timeline = project_picker_timeline();
+                                push_agent_event(
+                                    &mut next_timeline,
+                                    &AgentEvent::Status(format!(
+                                        "Project archive imported: {}",
+                                        report.archive_name
+                                    )),
+                                );
+                                project_picker_timeline.set(next_timeline);
+                            }
+                            Err(error) => {
+                                transfer.mark_error(error.to_string());
+                                project_picker_transfer.set(transfer);
+                                let mut next_timeline = project_picker_timeline();
+                                push_agent_event(
+                                    &mut next_timeline,
+                                    &AgentEvent::Error(format!("Project import failed: {}", error)),
+                                );
+                                project_picker_timeline.set(next_timeline);
+                            }
+                        }
+                    }
+                    DocumentPickerPurpose::ChatAttachment
+                    | DocumentPickerPurpose::SettingsImport => {
+                        let mut next_composer = project_picker_composer();
+                        let mut next_timeline = project_picker_timeline();
+                        if documents.is_empty() {
+                            push_agent_event(
+                                &mut next_timeline,
+                                &AgentEvent::Status(
+                                    "Document picker returned no files".to_string(),
+                                ),
+                            );
+                        } else {
+                            for document in documents {
+                                next_timeline.push_attachment(format!("{}", document.display_name));
+                                next_composer.add_picked_document(document);
+                            }
+                            push_agent_event(
+                                &mut next_timeline,
+                                &AgentEvent::Status(
+                                    "Android document picker files attached to chat composer"
+                                        .to_string(),
+                                ),
+                            );
+                        }
+                        project_picker_composer.set(next_composer);
+                        project_picker_timeline.set(next_timeline);
+                    }
+                }
+
+                project_picker_state.write().complete();
+            }
+            NativeMobileEvent::DocumentPickerCancelled => {
+                project_picker_last_event.set(Some(event_key));
+                if project_picker_state()
+                    .pending_request
+                    .as_ref()
+                    .map(|request| request.purpose == DocumentPickerPurpose::ProjectImport)
+                    .unwrap_or(false)
+                {
+                    project_picker_transfer.write().mark_import_cancelled();
+                }
+                project_picker_state.write().complete();
+            }
+            NativeMobileEvent::DocumentPickerFailed(error) => {
+                project_picker_last_event.set(Some(event_key));
+                if project_picker_state()
+                    .pending_request
+                    .as_ref()
+                    .map(|request| request.purpose == DocumentPickerPurpose::ProjectImport)
+                    .unwrap_or(false)
+                {
+                    project_picker_transfer.write().mark_error(error.clone());
+                }
+                project_picker_state.write().fail(error);
+            }
+            NativeMobileEvent::FileShared => {
+                project_picker_last_event.set(Some(event_key));
+                if project_picker_transfer().is_sharing() {
+                    project_picker_transfer.write().mark_shared();
+                }
+            }
+            NativeMobileEvent::ShareFailed(error) => {
+                project_picker_last_event.set(Some(event_key));
+                if project_picker_transfer().is_sharing() {
+                    project_picker_transfer.write().mark_error(error);
+                }
+            }
+            _ => {}
+        }
+    });
 
     // Termux result continuation: when a Termux command completes, feed the real
     // result back into the engine so the model can respond to the actual output.
@@ -562,7 +709,9 @@ fn app() -> Element {
                         approval_cards,
                         pc_pairing_state,
                         native_bridge,
+                        picker,
                         project_files_state,
+                        project_transfer_state,
                         snapshots_state,
                         diagnostics_state,
                         git_state,

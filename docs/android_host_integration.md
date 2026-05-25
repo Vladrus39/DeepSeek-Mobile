@@ -34,9 +34,11 @@ crates/mobile/src/native_termux.rs
 crates/mobile/src/native_event_router.rs
 ```
 
-The host shell must repeatedly drain pending native commands from `NativeBridgeState` and dispatch them to Android. Native callbacks must be converted back into Rust callback enums and then passed through `route_native_mobile_event`.
+The host shell must repeatedly drain pending native commands from `NativeBridgeState` and dispatch them to Android. Native callbacks must be converted back into Rust callback enums and delivered to Rust state handling. Chat attachments and project import/export are routed in `main.rs` by `DocumentPickerRequest.purpose`; the standalone `route_native_mobile_event` helper remains useful for lower-level bridge tests and simple callback routing.
 
 ## Document picker flow
+
+The same picker command is used for chat attachments and project ZIP import. Rust distinguishes them through `DocumentPickerRequest.purpose`: `ChatAttachment` goes to the composer, while `ProjectImport` imports the returned local archive copy into the phone workspace.
 
 1. Rust queues `NativeMobileCommand::OpenDocumentPicker`.
 2. Host converts it with `pop_next_android_document_picker_command()`.
@@ -102,6 +104,8 @@ The repository now has the bridge contracts, but the final Android host still ne
 Before marking Android host integration complete:
 
 - Pick one text/source file through Android picker; confirm it is copied into app-private storage and appears in the outgoing prompt.
+- Import one project ZIP through Files → Import ZIP; confirm the archive local copy is extracted into the phone workspace and the Files view refreshes.
+- Export the phone workspace through Files → Export ZIP; confirm Android receives a native share command for the generated `.zip` file.
 - Discover a running PC host over mDNS; confirm the active route is visible and can be persisted as a workspace.
 - Save a valid Termux workspace path in Settings, run a safe Termux command such as `pwd`, and confirm stdout, stderr, exit code, request id correlation and working directory are returned.
 - Send a stale picker/discovery/Termux callback; confirm Rust rejects it and records an error instead of mutating active state.

@@ -63,7 +63,7 @@
 - [ ] Final Dioxus Android host adapter
 - [ ] Device/emulator verification of host bridge callbacks
 - [x] Termux workspace selector
-- [ ] Android import/export UI completion
+- [x] Android import/export UI completion
 
 ## Phase 6 — Product completion 🔄
 

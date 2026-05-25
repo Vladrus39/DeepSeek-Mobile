@@ -317,7 +317,7 @@ Remaining checklist:
 - [x] Close Rust/mobile Termux result continuation through final tool/model output plumbing.
 - [ ] Verify final Android host drain/callback flow on device/emulator.
 - [x] Add Termux workspace selector.
-- [ ] Add Android file import/export UI flow over core ZIP helpers.
+- [x] Add Android file import/export UI flow over core ZIP helpers.
 - [ ] Add PDF/DOCX/OCR ingestion later behind safe limits.
 
 Acceptance criteria:
@@ -447,8 +447,11 @@ The next implementation sequence is fixed:
 30. [x] Add durable task artifacts/log capture and PC-host runtime task HTTP endpoints.
 31. [x] Add Termux workspace selector with runtime activation.
 32. [x] Add core ZIP workspace import/export helpers.
+33. [x] Add Files panel Android project import/export UI.
 
 ## 5. Implementation progress log
+- 2026-05-25 (Phase J — Android project import/export UI): Added `ProjectTransferState` and Files panel controls for local phone workspace import/export. Import queues the Android archive picker with `DocumentPickerPurpose::ProjectImport`, imports the returned local archive copy through `workspace_io::import_project`, refreshes the local Files view, and keeps chat attachments routed separately. Export creates a timestamped ZIP under `.deepseek-mobile/exports/` through `workspace_io::export_project` and queues native share. Added native bridge event sequencing so repeated native callbacks are not dropped by idempotence guards. Verification: `cargo +stable-x86_64-pc-windows-msvc check --workspace --all-targets` green; `cargo +stable-x86_64-pc-windows-msvc test --workspace` passed with 125 mobile / 166 core / 2 pc-host tests.
+
 - 2026-05-25 (Phase I — Termux workspace activation + workspace IO hardening): Audited the user's `artifacts-log-capture-runtime-API` work and kept the durable task artifact/log + PC-host runtime task HTTP API instead of duplicating it. Added a Settings Termux workspace selector that validates absolute Termux paths, persists `termux_workspace.json`, activates a Termux `WorkspaceConnection`, and revalidates saved configs on load. Added `workspace_io` core ZIP import/export helpers with path traversal hardening, Windows/absolute path rejection, portable ZIP names, missing-root errors and `.deepseek-mobile` metadata exclusion. Verification: `cargo +stable-x86_64-pc-windows-msvc check --workspace --all-targets` green; `cargo +stable-x86_64-pc-windows-msvc test --workspace` passed with 120 mobile / 166 core / 2 pc-host tests.
 
 - 2026-05-25 (Phase H — apply_patch unified diff + docs/runtime hardening): Added unified-diff compatibility to `apply_patch` while preserving operation batches; PC-gateway apply_patch now normalizes unified diffs into the same safe operation model before remote execution. Hardened active-PC Files browsing to use the real `WorkspaceConnection.workspace_id`, fixed one-shot terminal UI-state restore and save-directory creation, sorted skills discovery for deterministic Linux CI duplicate-name handling, cleaned fresh warnings in touched code, and refreshed README/status/roadmap/audit docs after auditing the local PhaseD2–PhaseG commits. Verification: targeted patch/terminal tests green; full workspace verification target is 108 mobile / 152 core / 2 pc-host.

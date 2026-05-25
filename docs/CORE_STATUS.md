@@ -7,7 +7,7 @@
 - `cargo +stable-x86_64-pc-windows-msvc check --workspace --all-targets` — green
 - `cargo +stable-x86_64-pc-windows-msvc test --workspace` — green
 - Tests:
-  - mobile: 120
+  - mobile: 125
   - core: 166
   - pc-host: 2
 
@@ -61,6 +61,7 @@
 - Skills panel
 - Bottom navigation and cockpit layout
 - Termux workspace selector in Settings
+- Project import/export controls in Files panel
 
 ### Important wiring completed
 
@@ -92,7 +93,7 @@
 
 - Final Dioxus Android host adapter that drains Rust commands and forwards Kotlin callbacks.
 - Manual emulator/device verification against the final host shell.
-- Android import/export UI completion beyond chat attachment ingestion; core ZIP helpers are already present.
+- Device/emulator verification of picker/share project import/export against the final host shell.
 
 ## PC-host crate
 
@@ -121,7 +122,7 @@
 ## Highest-priority gaps
 
 1. Final Android host adapter + emulator/device verification
-2. Android import/export UI completion
-3. Runtime SSE/live event streaming
-4. PC-running-task synchronization/reconciliation
+2. Runtime SSE/live event streaming
+3. PC-running-task synchronization/reconciliation
+4. Final Android device/emulator verification
 5. Release packaging and troubleshooting docs
