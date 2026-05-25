@@ -1,4 +1,4 @@
-use crate::settings_state::config_file_path;
+use crate::settings_state::save_config;
 use deepseek_mobile_core::config::Config;
 use dioxus::prelude::*;
 
@@ -105,18 +105,9 @@ pub fn onboarding_panel(on_complete: EventHandler<String>) -> Element {
                                 api_key: key.clone(),
                                 ..Config::default()
                             };
-                            let path = config_file_path();
-                            if let Some(parent) = path.parent() {
-                                let _ = std::fs::create_dir_all(parent);
-                            }
-                            match serde_json::to_string_pretty(&config) {
-                                Ok(json) => {
-                                    match std::fs::write(&path, json) {
-                                        Ok(()) => on_complete.call(key),
-                                        Err(e) => validation_error.set(Some(format!("Failed to save: {}", e))),
-                                    }
-                                }
-                                Err(e) => validation_error.set(Some(format!("Serialization failed: {}", e))),
+                            match save_config(&config) {
+                                Ok(()) => on_complete.call(key),
+                                Err(error) => validation_error.set(Some(format!("Failed to save: {}", error))),
                             }
                         } else {
                             validation_error.set(Some("Key must start with 'sk-' and be at least 8 characters.".to_string()));

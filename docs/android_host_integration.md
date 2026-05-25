@@ -2,7 +2,7 @@
 
 This document tracks the boundary between the Rust/Dioxus mobile code and the native Android bridge module.
 
-The repository currently contains bridge contracts and Kotlin adapters, but not the final production Android host shell that drains Rust commands and forwards native callbacks. Until that host exists, this document is the manual integration contract.
+The repository contains bridge contracts, Kotlin adapters, JNI, Rust drain/callback handling and a Dioxus `MainActivity`. **Device/emulator verification** (`dx build android`) is still pending when NDK and `dioxus-cli` are installed — see `tools/android/DOWNLOAD_BUDGET.md`.
 
 ## Bridge module
 
@@ -92,12 +92,21 @@ Important host requirements:
 
 ## What is still not done
 
-The repository now has the bridge contracts, but the final Android host still needs to close these pieces:
+Implemented in-repo now:
 
-- Dioxus/native adapter that drains `NativeBridgeState` commands in the running Android app.
-- Android service or receiver for Termux pending-intent results.
-- Device/emulator verification that the host callback reaches the existing Rust/mobile `continue_termux_result` plumbing.
-- Device/emulator verification of picker, PC discovery and Termux flows against the final host shell.
+- Rust `android_host::drain_next_host_action` serializes the next native command for the Kotlin shell.
+- Rust `android_host::apply_host_callback_json` accepts picker picked/cancel/fail, PC discovery, and Termux callbacks.
+- JNI `com.deepseek.mobile.NativeBridge` forwards poll/deliver to the global native runtime.
+- Kotlin `DeepSeekMobileHostCoordinator` dispatches picker, discovery, share, URL and Termux payloads.
+- `android/MainActivity.kt` (`dev.dioxus.main.MainActivity`) subclasses `WryActivity` for Dioxus builds; reference Gradle app keeps `com.deepseek.mobile.MainActivity`.
+- `TermuxResultReceiver` delivers `termux_completed` JSON back into Rust.
+- Mobile UI syncs JNI/desktop callbacks through `sync_bridge_from_runtime` on each render.
+
+Still required for production:
+
+- Install NDK into `tools/android/sdk/ndk/26.1.10909125/` and `dioxus-cli` (budget: `tools/android/DOWNLOAD_BUDGET.md`).
+- Device/emulator verification with `dx build android` / `dx serve --platform android` using `. .\tools\android\env.ps1`.
+- Confirm Termux `RUN_COMMAND` results reach `continue_termux_result` on hardware.
 
 ## Manual verification checklist
 

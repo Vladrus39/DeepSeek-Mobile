@@ -1,8 +1,19 @@
 # DeepSeek-Mobile — active progress
 
-**Current session:** 2026-05-26
+**Current session:** 2026-05-26 (docs + Android toolchain isolation)
 
-## Completed in the latest tranche
+## Completed in the latest tranche (2026-05-26)
+
+- Closed the Android host Rust/Kotlin/JNI loop:
+  - `android_host::apply_host_callback_json` handles picker picked, PC discovery, Termux;
+  - `dev.dioxus.main.MainActivity` (`WryActivity` + host coordinator poll);
+  - JNI `NativeBridge` + `native_host_runtime` sync in the Dioxus UI loop.
+- Added project-local Android toolchain under `tools/android/` (~255 MB SDK slice copied from system install; no extra download).
+- Documented exact online download budget in `tools/android/DOWNLOAD_BUDGET.md` (~1.0–1.2 GB for APK on a real phone).
+- Core/mobile: encrypted `config_store`, MCP HTTP/stdio client, MCP proxy tools in engine, desktop native host execution, PC-host install scripts.
+- Full workspace tests green: **137 mobile / 170 core / 3 pc-host**.
+
+## Completed in earlier tranches (same sprint)
 
 - Audited the user's latest local/GitHub work after `artifacts-log-capture-runtime-API` and kept it instead of redoing it.
 - Completed the Termux workspace selector slice:
@@ -22,7 +33,7 @@
   - running PC tasks are displayed separately from local durable records;
   - the cockpit task badge counts local and PC active work without double-counting matching ids;
   - active PC tasks can be stopped through `PcGatewayClient::stop_task()`.
-- Refreshed local docs to show that durable task artifacts/logs, PC-host runtime task HTTP endpoints, project import/export UI and manual PC task reconciliation are now implemented, while SSE/live updates and Android host device verification remain open.
+- Refreshed local docs to show that durable task artifacts/logs, PC-host runtime task HTTP endpoints, project import/export UI, PC task SSE subscription and Android host coordinator are implemented; JNI/device verification and release packaging remain open.
 - Audited the local `main` after four new local commits (`PhaseD2` → `PhaseG`) and confirmed the working tree was clean before continuing.
 - Verified the new local state before edits: `cargo check` and `cargo test` were green.
 - Added unified-diff compatibility to `apply_patch` while preserving the existing operation-batch API.
@@ -58,18 +69,16 @@
   - `deepseek-mobile-core workspace_io::tests`
   - `deepseek-mobile project_transfer_state::tests`
   - `deepseek-mobile tasks_state::tests`
-- Full workspace test after this tranche:
-  - mobile: 128
-  - core: 166
-  - pc-host: 2
+- Full workspace test (latest):
+  - mobile: 137
+  - core: 170
+  - pc-host: 3
 
 ## Current focus
 
-The remaining product gaps are concentrated around production integration and release readiness:
-
-1. final Dioxus Android host adapter and device/emulator verification, including picker/share/Termux flows;
-2. runtime SSE/live event streaming over the stable runtime/task model;
-3. dev-server lifecycle, PC-host service/autostart and release/troubleshooting docs.
+1. Device/emulator verification: `dx build android` after NDK + `dioxus-cli` install (see `tools/android/DOWNLOAD_BUDGET.md`).
+2. Signed APK / release packaging and PC-host autostart on real machines.
+3. Long-lived MCP stdio session reuse and hardware verification of MCP proxy tools.
 
 ## Notes from the audit
 

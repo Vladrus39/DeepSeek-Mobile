@@ -32,7 +32,7 @@ The intended v1 visual direction is a dark, dense coding cockpit rather than a c
 - red/yellow for errors, warnings and pending approvals;
 - compact cards and status chips so the phone screen keeps tool state visible without opening multiple menus.
 
-This is functional and coherent, but it is still an engineering UI. The final polish pass should happen on a real Android device or emulator after the Dioxus Android host is wired.
+This is functional and coherent, but it is still an engineering UI. The final polish pass should happen on a real Android device or emulator after `dx`+NDK install (host adapter code is already in-repo).
 
 ## Verification status
 
@@ -50,14 +50,16 @@ Not yet fully verified:
 
 Current local blocker for visual device verification:
 
-- `dx` / Dioxus CLI is not installed in the current Windows environment.
-- Android SDK and JDK are present, but Android Rust targets and Dioxus CLI setup still need to be completed before a real device/emulator UI pass.
+- `dx` / Dioxus CLI is not installed yet (~250–450 MB download + compile).
+- NDK is not installed into `tools/android/sdk/ndk/` yet (~631 MB download).
+- A minimal SDK slice is already copied into this repo (`tools/android/sdk/`, ~255 MB, no internet). JDK 21 is installed.
+
+See **`tools/android/DOWNLOAD_BUDGET.md`** for exact sizes.
 
 ## Required final UI verification before v1
 
-1. Install matching Dioxus CLI for the project Dioxus version.
-2. Add Android Rust targets required by the Dioxus Android build.
-3. Run `dx serve --platform android` against an emulator or device.
+1. Follow `tools/android/DOWNLOAD_BUDGET.md` (NDK → Rust Android targets → `cargo install dioxus-cli`).
+2. `. .\tools\android\env.ps1` then `dx serve --platform android` on emulator or device.
 4. Verify these flows manually:
    - onboarding, settings save and Termux workspace activation;
    - chat send and streaming timeline;

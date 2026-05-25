@@ -63,6 +63,9 @@ pub struct McpServerConfig {
     /// Optional description
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
+    /// Optional static tool list when live MCP discovery is unavailable.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub declared_tools: Vec<McpToolDescriptor>,
 }
 
 fn default_true() -> bool {
@@ -231,6 +234,7 @@ mod tests {
             },
             enabled: true,
             description: None,
+            declared_tools: Vec::new(),
         };
         registry.add_server(config).unwrap();
         assert_eq!(registry.servers.len(), 1);
@@ -250,6 +254,7 @@ mod tests {
             },
             enabled: true,
             description: None,
+            declared_tools: Vec::new(),
         };
         registry.add_server(config.clone()).unwrap();
         assert!(registry.add_server(config).is_err());
@@ -267,6 +272,7 @@ mod tests {
             },
             enabled: true,
             description: None,
+            declared_tools: Vec::new(),
         };
         registry.add_server(config).unwrap();
 
@@ -296,6 +302,7 @@ mod tests {
             },
             enabled: true,
             description: None,
+            declared_tools: Vec::new(),
         };
         registry.add_server(config).unwrap();
         registry.set_status("srv", McpServerStatus::Connected);
@@ -330,6 +337,7 @@ mod tests {
             },
             enabled: true,
             description: Some("Test server".to_string()),
+            declared_tools: Vec::new(),
         })
         .unwrap();
         reg.save(&path).unwrap();

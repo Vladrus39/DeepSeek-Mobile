@@ -99,7 +99,7 @@ Termux shell execution
   -> NativeBridgeState rejects stale callbacks
   -> NativeMobileEvent::TermuxCommandCompleted triggers continue_termux_result
   -> model receives real command output and continues the paused turn
-  -> remaining: final Dioxus Android host adapter + device verification
+  -> in-repo: JNI + coordinator + MainActivity; remaining: NDK + dx install + device verification
 ```
 
 ```text
@@ -311,7 +311,8 @@ Already done:
 Remaining checklist:
 
 - [x] Create final Android host integration instructions or module wiring.
-- [ ] Add final Dioxus/native callback adapter.
+- [x] Add final Dioxus/native callback adapter (JNI + `android_host` JSON + `dev.dioxus.main.MainActivity`).
+- [x] Add project-local Android SDK slice (`tools/android/sdk/`).
 - [x] Add Termux command executor bridge contract.
 - [x] Emit and queue Termux `exec_shell` native requests from the real tool route.
 - [x] Close Rust/mobile Termux result continuation through final tool/model output plumbing.
@@ -354,8 +355,10 @@ Checklist:
 - [x] Add bundled mobile-safe starter skills (discovery from ~/.deepseek/skills, .agents/skills, .claude/skills).
 - [x] Add plugin host model (MCPClientRegistry, McpServerConfig, McpTransport).
 - [x] Add MCP client registry through JSON config file (~/.deepseek-mobile/mcp.json) with stdio and http-sse transports.
+- [x] Add MCP HTTP/stdio client invoke + proxy tools in engine (`mcp_client`, `mcp_proxy`).
 - [x] Add MCP UI for server status and tool list.
 - [x] Add Skills UI panel with enable/disable toggles.
+- [ ] Verify MCP proxy tools on device after `dx` install.
 
 Acceptance criteria:
 
@@ -378,7 +381,7 @@ Checklist:
 - [x] Mobile cockpit chrome shows live API/PC/workspace status and dynamic badges.
 - [ ] Real Android visual verification with Dioxus CLI on emulator/device.
 - [ ] PC-host release package includes matching host binary / explicit installer.
-- [ ] Troubleshooting docs.
+- [x] Troubleshooting docs (`docs/TROUBLESHOOTING.md`, `tools/android/DOWNLOAD_BUDGET.md`).
 
 Acceptance criteria:
 
@@ -403,7 +406,7 @@ Acceptance criteria:
 | PC connectivity | Keep multi-transport, offline-first | Partial: endpoint candidates, failover, health, discovery, reconnect controls, persisted active route and remote-aware Files are implemented |
 | Snapshots/rollback | Keep, mobile-safe file-copy | Done for local and PC-gateway snapshot create/list/restore paths |
 | OS sandbox | Replace/augment with executor policies | Missing |
-| MCP | Keep, PC-first | Partial: config registry and UI status/tool-list surfaces exist; external tool execution pending |
+| MCP | Keep, PC-first | Partial: registry + HTTP/stdio + proxy tools in engine; device verification pending |
 | Skills | Keep after core | Done for local manifest discovery, enable/disable state and context listing |
 | Hooks | Keep after tool parity | Missing |
 | Sub-agents | Later | Missing |
@@ -452,6 +455,8 @@ The next implementation sequence is fixed:
 34. [x] Add mobile PC running-task reconciliation.
 
 ## 5. Implementation progress log
+- 2026-05-26 (Phase L — Android host closure + toolchain isolation): Completed JNI `NativeBridge`, `android_host` callback JSON (picker/PC discovery/Termux), Dioxus `MainActivity` (`WryActivity`), desktop native host drain, encrypted `config_store`, MCP HTTP/stdio client + proxy tools in engine, PC-host install scripts. Added isolated `tools/android/` SDK slice (~255 MB copied locally), `DOWNLOAD_BUDGET.md`, `env.ps1`, and updated project docs. Verification: `cargo test --workspace` 137 mobile / 170 core / 3 pc-host.
+
 - 2026-05-26 (Phase K — PC running-task reconciliation): Added mobile Tasks panel synchronization for active PC-host running tasks through `PcGatewayClient::list_tasks()`, a separate PC running-task card list, `StopTask` controls for active PC processes, and cockpit badge reconciliation so local durable tasks and PC-running tasks with the same id are not double-counted. Added task-state tests for PC task sorting, active-count reconciliation and clearing sync state. Verification: `cargo +stable-x86_64-pc-windows-msvc check --workspace --all-targets` green; `cargo +stable-x86_64-pc-windows-msvc test --workspace` passed with 128 mobile / 166 core / 2 pc-host tests.
 
 - 2026-05-25 (Phase J — Android project import/export UI): Added `ProjectTransferState` and Files panel controls for local phone workspace import/export. Import queues the Android archive picker with `DocumentPickerPurpose::ProjectImport`, imports the returned local archive copy through `workspace_io::import_project`, refreshes the local Files view, and keeps chat attachments routed separately. Export creates a timestamped ZIP under `.deepseek-mobile/exports/` through `workspace_io::export_project` and queues native share. Added native bridge event sequencing so repeated native callbacks are not dropped by idempotence guards. Verification: `cargo +stable-x86_64-pc-windows-msvc check --workspace --all-targets` green; `cargo +stable-x86_64-pc-windows-msvc test --workspace` passed with 125 mobile / 166 core / 2 pc-host tests.

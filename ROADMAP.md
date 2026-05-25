@@ -74,7 +74,7 @@ Three execution modes:
 
 - [x] Executor trait (Executor + CommandRequest/CommandOutput).
 - [x] Local Android executor (file_ops tools on LocalAndroid workspace).
-- [ ] Termux bridge executor (contract defined; not yet wired to real Termux).
+- [x] Termux bridge executor (Rust queue + callback continuation; Android host coordinator + JNI + callback JSON).
 - [x] Remote PC-host executor (PcGatewayClient, PC-host HTTP server).
 - [x] Command output to UI (agent_timeline events).
 - [x] Persist command logs (runtime_store events).
@@ -90,14 +90,16 @@ Three execution modes:
 
 ## Phase 8 — Plugins and integrations
 
-- [ ] MCP-compatible plugin host.
+- [x] MCP config registry, HTTP connect (`tools/list`), declared-tools fallback, mobile UI.
+- [x] MCP stdio spawn + proxy tools in agent registry (`mcp_client`, `mcp_proxy`, engine injection).
+- [ ] MCP stdio session reuse + on-device invoke verification.
 - [x] GitHub tools (github_repo, github_pr, github_issue, github_browse, github_push_file).
 - [x] GitHub API client (GitHubClient with auth, repo info, PR/issues, file push).
 - [x] Git operations (status, diff, commit, push, pull, branch, log, checkout, clone).
 - [x] Auto-commit/push after successful agent turn (auto_commit.rs).
 - [ ] Y-lit deploy tools.
-- [ ] Task queue.
-- [ ] Background jobs.
+- [x] Durable task queue + PC-host background tasks + SSE task events.
+- [ ] Background jobs beyond PC/durable task model.
 - [ ] LSP diagnostics through remote or Termux executor.
 
 ## Current sprint: GitHub integration + production readiness
@@ -112,3 +114,13 @@ Three execution modes:
 - [x] Policy presets (ReadOnly/Developer/Admin) for PC-host security.
 - [x] GitHub settings screen in mobile UI.
 - [*] Integration test with actual GitHub repo (needs real token).
+
+## Phase 9 — Android packaging (in progress)
+
+- [x] Kotlin bridge module (picker, discovery, Termux, share).
+- [x] Rust `android_host` drain + callback JSON + JNI `NativeBridge`.
+- [x] Dioxus `MainActivity` (`dev.dioxus.main`, `WryActivity` subclass).
+- [x] Project-local Android SDK slice (`tools/android/sdk/`, ~255 MB, no internet).
+- [x] Download budget doc (`tools/android/DOWNLOAD_BUDGET.md`).
+- [ ] Install NDK + `dioxus-cli` and `dx build android` on device/emulator.
+- [ ] Signed release APK and store notes.

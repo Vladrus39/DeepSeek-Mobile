@@ -1,8 +1,10 @@
-use crate::mobile_runtime_config::MobileRuntimeConfig;
+use crate::mobile_runtime_config::{default_data_dir, MobileRuntimeConfig};
+use std::collections::HashMap;
+use std::fs;
 use deepseek_mobile_core::{
-    AgentEvent, ApprovalCardView, ApprovalSessionRuntimeStore, Config, MobileEngine, ReviewDecision,
-    RuntimeThreadStore, Session, TokenUsage, TurnContext, TurnStatus, UserChatInput,
-    TermuxExecResult,
+    AgentEvent, ApprovalCardView, ApprovalSessionRuntimeStore, Config,
+    MobileEngine, ReviewDecision, RuntimeThreadStore, Session, SkillRegistry, TokenUsage,
+    TurnContext, TurnStatus, UserChatInput, TermuxExecResult,
 };
 
 #[derive(Clone, Debug, PartialEq)]
@@ -221,11 +223,94 @@ fn build_engine(
         .with_runtime_store(store)
         .with_thread_id(runtime.thread_id.clone());
 
-    if let Some(connection) = runtime.workspace_connection.as_ref() {
-        engine.with_workspace_connection(connection)
+    let skills_context = load_skills_context_for_engine();
+    let mcp_tools = load_mcp_tools_for_engine();
+
+    let engine = if let Some(connection) = runtime.workspace_connection.as_ref() {
+        engine.with_workspace_connection(connection)?
     } else {
-        Ok(engine.with_workspace(runtime.workspace_root.clone()))
+        engine.with_workspace(runtime.workspace_root.clone())
+    };
+
+    Ok(engine
+        .with_skills_context(skills_context)
+        .with_mcp_tools(&mcp_tools))
+}
+
+fn load_mcp_tools_for_engine() -> Vec<deepseek_mobile_core::McpToolDescriptor> {
+    use deepseek_mobile_core::{connect_mcp_server, tools_for_server, McpClientRegistry};
+    let path = default_data_dir().join("mcp.json");
+    let Ok(handle) = tokio::runtime::Handle::try_current() else {
+        return deepseek_mobile_core::McpClientRegistry::load_or_default(&path)
+            .map(|registry| registry.all_tools())
+            .unwrap_or_default();
+    };
+    handle.block_on(async {
+        let mut registry = McpClientRegistry::load_or_default(&path).unwrap_or_default();
+        if registry.all_tools().is_empty() {
+            let configs: Vec<_> = registry
+                .servers
+                .iter()
+                .map(|server| server.config.clone())
+                .collect();
+            for config in configs {
+                if !config.enabled {
+                    continue;
+                }
+                let declared = config.declared_tools.clone();
+                match connect_mcp_server(&config).await {
+                    Ok((status, remote_tools)) => {
+                        let tools = tools_for_server(&config.name, &declared, remote_tools);
+                        registry.set_status(&config.name, status);
+                        registry.set_tools(&config.name, tools);
+                    }
+                    Err(error) => {
+                        if !declared.is_empty() {
+                            let tools = tools_for_server(&config.name, &declared, Vec::new());
+                            registry.set_status(&config.name, deepseek_mobile_core::McpServerStatus::Connected);
+                            registry.set_tools(&config.name, tools);
+                        } else {
+                            registry.set_status(
+                                &config.name,
+                                deepseek_mobile_core::McpServerStatus::Error(error.to_string()),
+                            );
+                        }
+                    }
+                }
+            }
+            let _ = registry.save(&path);
+        }
+        registry.all_tools()
+    })
+}
+
+fn load_skills_context_for_engine() -> Option<String> {
+    let mut registry = SkillRegistry::discover_default().ok()?;
+    let state_path = default_data_dir().join("skills-state.json");
+    if state_path.exists() {
+        if let Ok(bytes) = fs::read_to_string(&state_path) {
+            if let Ok(saved) = serde_json::from_str::<HashMap<String, bool>>(&bytes) {
+                for skill in registry.skills.iter_mut() {
+                    if let Some(enabled) = saved.get(&skill.name) {
+                        skill.enabled = *enabled;
+                    }
+                }
+            } else if let Ok(file) = serde_json::from_str::<SkillsStateFile>(&bytes) {
+                for skill in registry.skills.iter_mut() {
+                    if let Some(enabled) = file.enabled.get(&skill.name) {
+                        skill.enabled = *enabled;
+                    }
+                }
+            }
+        }
     }
+    registry.context_injection()
+}
+
+#[derive(serde::Deserialize)]
+struct SkillsStateFile {
+    #[serde(default)]
+    enabled: HashMap<String, bool>,
 }
 
 #[cfg(test)]

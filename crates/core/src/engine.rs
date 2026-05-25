@@ -24,7 +24,8 @@ use crate::tool_loop::{
     process_model_text_with_tools_and_session_and_pc_gateway, ToolLoopExecutionRecord,
     ToolLoopOutcome,
 };
-use crate::tools::{default_mobile_tool_registry, ToolContext, ToolRegistry};
+use crate::tools::{default_mobile_tool_registry_with_mcp, ToolContext, ToolRegistry};
+use crate::mcp::McpToolDescriptor;
 use crate::turn::{TurnContext, TurnStatus};
 use crate::workspace::{ExecutorKind, Workspace};
 use crate::workspace_connection::WorkspaceConnection;
@@ -70,6 +71,8 @@ pub struct MobileEngine {
     session: Session,
     /// Auto-create workspace snapshot after each successful turn with changes
     auto_snapshot: bool,
+    /// Optional skills context injected into the system prompt.
+    skills_context: Option<String>,
 }
 
 impl MobileEngine {
@@ -80,7 +83,7 @@ impl MobileEngine {
         Self {
             agent: DeepSeekAgent::new(config.clone()),
             config,
-            registry: default_mobile_tool_registry(),
+            registry: default_mobile_tool_registry_with_mcp(&[]),
             execution_mode,
             external_access,
             github_token,
@@ -97,7 +100,18 @@ impl MobileEngine {
             event_observer: None,
             session: Session::new("default"),
             auto_snapshot: true,
+            skills_context: None,
         }
+    }
+
+    pub fn with_skills_context(mut self, skills_context: Option<String>) -> Self {
+        self.skills_context = skills_context.filter(|text| !text.trim().is_empty());
+        self
+    }
+
+    pub fn with_mcp_tools(mut self, descriptors: &[McpToolDescriptor]) -> Self {
+        self.registry = default_mobile_tool_registry_with_mcp(descriptors);
+        self
     }
 
     pub fn with_runtime_store(mut self, store: RuntimeThreadStore) -> Self {
@@ -529,6 +543,13 @@ impl MobileEngine {
                     "Latest post-edit diagnostics from the previous tool execution:\n{}",
                     format_session_diagnostics_context(diagnostics)
                 ),
+            });
+        }
+
+        if let Some(skills) = self.skills_context.as_ref() {
+            messages.push(Message {
+                role: "system".to_string(),
+                content: skills.clone(),
             });
         }
 
@@ -977,6 +998,14 @@ mod tests {
         assert_eq!(context.path.as_deref(), Some("src/main.rs"));
         assert_eq!(context.provider.as_deref(), Some("cargo check"));
         assert_eq!(context.diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn build_messages_includes_skills_context() {
+        let mut engine = MobileEngine::new(Config::default());
+        engine.skills_context = Some("## Active Skills\n\n- demo: test\n\n".to_string());
+        let messages = engine.build_messages_for_turn("hello", "deepseek-v4-flash");
+        assert!(messages.iter().any(|message| message.content.contains("Active Skills")));
     }
 
     #[test]

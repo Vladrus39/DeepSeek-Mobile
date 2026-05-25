@@ -20,14 +20,15 @@ DeepSeek-Mobile is in active development with a coherent working core:
 - core ZIP workspace import/export helpers exist with traversal protection and metadata exclusion;
 - Files panel can import a picked project ZIP into the phone workspace and export/share the phone workspace as ZIP;
 - mobile UI chrome now exposes live API/PC/workspace state and dynamic badges for approvals, diagnostics, dirty Git state, running tasks and native waits;
-- GitHub Actions Rust job installs the Linux GTK/WebKit/pkg-config dependencies required by the Dioxus mobile crate before workspace checks.
+- GitHub Actions Rust job installs the Linux GTK/WebKit/pkg-config dependencies required by the Dioxus mobile crate before workspace checks;
+- isolated Android SDK slice lives under `tools/android/sdk/` (see `tools/android/README.md` and `DOWNLOAD_BUDGET.md`).
 
 ## Verified today
 
 | Area | Current state |
 |---|---|
 | Build | Green |
-| Tests | 128 mobile / 166 core / 2 pc-host |
+| Tests | 135 mobile / 170 core / 3 pc-host |
 | Mobile settings | Saved config is loaded into live turns and approval continuations |
 | GitHub tools | Use token from saved settings first, environment variables second |
 | Pairing | Online discovery promotes an active route; “Open PC workspace” persists it |
@@ -39,22 +40,23 @@ DeepSeek-Mobile is in active development with a coherent working core:
 | Termux workspace | Settings selector validates an absolute Termux path and activates a persisted Termux runtime connection |
 | Workspace import/export | Files panel exposes project ZIP import/export over the core helpers; final Android host picker/share verification remains pending |
 | MCP/skills | Config/manifest registries and mobile UI surfaces exist |
-| Android bridge | Document picker, PC discovery, terminal, share and Termux bridge contracts are present |
+| Android bridge | Kotlin bridges + JNI + `android_host` callbacks + Dioxus `MainActivity`; local SDK in `tools/android/` |
 | Mobile UI | Cockpit screens exist; latest chrome/nav pass compiles; final Android visual verification still pending |
 
 ## Implemented but still partial
 
-- Final Android host adapter is still not verified on device/emulator; Rust/Kotlin contracts exist, but production wiring needs a final pass.
+- Android host: JNI bridge, callback JSON parsing, Dioxus `MainActivity` (`WryActivity` subclass), and Kotlin coordinator are in-repo; device/emulator verification remains.
 - Final visual UI pass is still not verified on device/emulator because the local environment currently lacks Dioxus CLI (`dx`).
 - Durable tasks have records/UI, artifacts/logs, PC-host process start/stop/list/log RPCs and live SSE subscription; mobile UI updates in real-time without manual polling.
-- MCP/skills currently provide registry/config/UI/context surfaces; actual external MCP tool execution must stay behind approval/workspace boundaries when expanded.
+- MCP: HTTP + stdio connect, proxy tools in the registry, and engine injection work; long-lived stdio session reuse and device-side verification remain.
+- Skills context is injected into engine turns; enabled skill state persists in `skills-state.json`.
 - Terminal UI state persists recent sessions/output as closed sessions after restart; live process resurrection is intentionally not claimed.
 
 ## Highest-value remaining work
 
-1. Final Dioxus Android host adapter + device/emulator verification for picker, PC discovery, terminal and Termux callbacks.
-2. Dev-server lifecycle and PC-host autostart/service installer.
-3. Release packaging: Android build/release notes, PC-host binary/service notes and troubleshooting docs.
+1. Install NDK + `dx` (~1.0–1.2 GB download; see `tools/android/DOWNLOAD_BUDGET.md`) and run device/emulator verification.
+2. PC-host autostart/service installer on real machines.
+3. Signed APK, release notes and store-ready packaging.
 
 See `docs/PROJECT_AUDIT.md` for the detailed audit and `docs/MASTER_PLAN.md` for the execution backlog.
 

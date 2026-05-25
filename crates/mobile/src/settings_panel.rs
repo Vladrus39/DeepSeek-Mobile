@@ -1,4 +1,4 @@
-use crate::settings_state::{config_file_path, SettingsFormState};
+use crate::settings_state::{save_config, SettingsFormState};
 use crate::termux_state::TermuxWorkspaceState;
 use deepseek_mobile_core::config::{ExecutionMode, ExternalAccessMode, ModelMode, ThinkingLevel};
 use dioxus::prelude::*;
@@ -463,12 +463,3 @@ fn external_access_key(mode: &ExternalAccessMode) -> String {
     }
 }
 
-// ── persistence ──
-
-fn save_config(config: &deepseek_mobile_core::config::Config) -> Result<(), String> {
-    let path = config_file_path();
-    let json =
-        serde_json::to_string_pretty(config).map_err(|e| format!("Serialization error: {e}"))?;
-    std::fs::write(&path, json).map_err(|e| format!("Could not write config file: {e}"))?;
-    Ok(())
-}

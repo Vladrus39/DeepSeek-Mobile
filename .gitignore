@@ -4,5 +4,12 @@ target/
 *.log
 /dist
 
+# Project-local Android SDK copy (large; reproducible via sync-sdk-from-system.ps1)
+/tools/android/sdk/platform-tools/
+/tools/android/sdk/build-tools/
+/tools/android/sdk/platforms/
+/tools/android/sdk/ndk/**
+!tools/android/sdk/ndk/README.md
+
 # Windows system cache files
 %SystemDrive%/

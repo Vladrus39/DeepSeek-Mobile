@@ -1,7 +1,10 @@
 use deepseek_mobile_core::config::{
     Config, ExecutionMode, ExternalAccessMode, ModelMode, ThinkingLevel,
 };
+use deepseek_mobile_core::ConfigStore;
 use std::path::PathBuf;
+
+use crate::mobile_runtime_config::default_data_dir;
 
 /// In-memory settings form state that mirrors `Config`.
 #[derive(Clone, Debug)]
@@ -74,13 +77,25 @@ impl SettingsFormState {
     }
 }
 
+pub fn config_store() -> ConfigStore {
+    ConfigStore::new(default_data_dir())
+}
+
 pub fn config_file_path() -> PathBuf {
-    let base = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-    base.join(".deepseek-mobile").join("config.json")
+    config_store().config_path()
 }
 
 pub fn load_saved_config() -> Option<Config> {
-    std::fs::read_to_string(config_file_path())
-        .ok()
-        .and_then(|json| serde_json::from_str::<Config>(&json).ok())
+    let store = config_store();
+    if store.config_path().exists() || store.secrets_path().exists() {
+        store.load().ok()
+    } else {
+        None
+    }
+}
+
+pub fn save_config(config: &Config) -> Result<(), String> {
+    config_store()
+        .save(config)
+        .map_err(|error| error.to_string())
 }

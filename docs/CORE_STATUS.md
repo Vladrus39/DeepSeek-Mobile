@@ -78,9 +78,9 @@
 
 ### Still partial
 
-- Native Android host integration is not complete/verified.
+- Android host: Rust drain loop, Kotlin coordinator, JNI `NativeBridge`, callback JSON parsing and Dioxus `MainActivity` are in-repo; **device/emulator verification** and `dx`+NDK install remain.
 - Terminal UI history persists, but live terminal process resurrection after app restart is not claimed.
-- Durable task UI is backed by local records/artifacts/logs and manual PC running-task reconciliation; automatic SSE/live updates remain.
+- MCP: HTTP + stdio connect, proxy tools in registry/engine; long-lived stdio session reuse and on-device MCP invoke verification remain.
 
 ## Android bridge module
 
@@ -93,9 +93,9 @@
 
 ### Still planned
 
-- Final Dioxus Android host adapter that drains Rust commands and forwards Kotlin callbacks.
-- Manual emulator/device verification against the final host shell.
-- Device/emulator verification of picker/share project import/export against the final host shell.
+- Manual emulator/device verification against the final host shell (`dx build android`).
+- Device verification of picker/share project import/export and Termux `continue_termux_result` on hardware.
+- Install project-local NDK into `tools/android/sdk/ndk/` when online (see `tools/android/DOWNLOAD_BUDGET.md`).
 
 ## PC-host crate
 

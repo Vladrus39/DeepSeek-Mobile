@@ -64,6 +64,7 @@ pub fn termux_request_from_agent_event(event: &AgentEvent) -> Option<TermuxExecR
 impl NativeBridgeState {
     pub fn enqueue(&mut self, command: NativeMobileCommand) {
         self.pending_commands.push(command);
+        crate::native_host_runtime::replace(self.clone());
     }
 
     pub fn enqueue_document_picker(&mut self, request: DocumentPickerRequest) {
@@ -282,6 +283,7 @@ impl NativeBridgeState {
             _ => None,
         };
         self.last_event = Some(event);
+        crate::native_host_runtime::replace(self.clone());
     }
 
     pub fn has_pending_commands(&self) -> bool {

@@ -147,6 +147,21 @@ pub fn mcp_panel(mut state: Signal<McpUiState>) -> Element {
                 div {
                     display: "flex",
                     gap: "8px",
+                    align_items: "center",
+                    button {
+                        background_color: "#2563eb",
+                        color: "white",
+                        border: "none",
+                        border_radius: "8px",
+                        padding: "6px 12px",
+                        font_size: "12px",
+                        onclick: move |_| {
+                            spawn(async move {
+                                state.write().connect_enabled_servers().await;
+                            });
+                        },
+                        "Connect"
+                    }
                     if connected > 0 {
                         div { color: "#16a34a", font_size: "12px", "{connected} connected" }
                     }

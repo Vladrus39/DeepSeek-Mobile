@@ -107,8 +107,8 @@ The main remaining work is no longer “port the basics from the TUI.” It is n
 
 | Area | Current reality | What remains |
 |---|---|---|
-| Android host | Rust/Kotlin bridge contracts and integration notes exist | Final Dioxus host adapter and emulator/device verification |
-| Visual UI verification | Cockpit screens and dynamic chrome exist; code-level checks pass | Real Android render/touch verification through Dioxus CLI and device/emulator |
+| Android host | Rust/Kotlin/JNI/coordinator/`MainActivity` in-repo; local SDK in `tools/android/` | `dx`+NDK install and emulator/device verification |
+| Visual UI verification | Cockpit screens and dynamic chrome exist; code-level checks pass | Real Android render/touch verification after `dx`+NDK install (`tools/android/DOWNLOAD_BUDGET.md`) |
 | Termux | Native request queue, callback correlation, model continuation and Settings workspace activation exist | Final Android host verification |
 | Android files | Chat attachment ingestion, core ZIP import/export helpers and Files panel import/export UI exist | Final native picker/share device verification |
 | Terminal | PC-host sessions and persisted mobile UI history exist | Live terminal process resurrection is not claimed; service-level behavior can be improved later |
@@ -137,7 +137,7 @@ The main remaining work is no longer “port the basics from the TUI.” It is n
 
 ## Recommended next execution order
 
-1. Final Dioxus Android host adapter and emulator/device verification.
+1. Emulator/device verification after NDK + `dx` install (host adapter code is in-repo).
 2. Final Android picker/share/Termux device verification.
 3. Dev-server lifecycle, PC-host service/autostart and release/troubleshooting docs.
 

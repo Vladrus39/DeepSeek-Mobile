@@ -7,6 +7,7 @@
 pub mod file_ops;
 pub mod git;
 pub mod github;
+pub mod mcp_proxy;
 pub mod patch;
 pub mod shell;
 pub mod snapshots;
@@ -239,6 +240,14 @@ pub fn default_mobile_tool_registry() -> ToolRegistry {
     registry.register(Box::new(github::GitHubPushFileTool));
     registry.register(Box::new(web::WebFetchTool));
     registry.register(Box::new(web::WebSearchTool));
+    registry
+}
+
+pub fn default_mobile_tool_registry_with_mcp(
+    mcp_tools: &[crate::mcp::McpToolDescriptor],
+) -> ToolRegistry {
+    let mut registry = default_mobile_tool_registry();
+    mcp_proxy::extend_registry_with_mcp(&mut registry, mcp_tools);
     registry
 }
 

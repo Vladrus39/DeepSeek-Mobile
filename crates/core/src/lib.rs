@@ -9,6 +9,8 @@ pub mod auto_commit;
 pub mod approval_session_runtime;
 pub mod chat_input;
 pub mod config;
+pub mod config_store;
+pub mod mcp_client;
 pub mod context;
 pub mod durable_task;
 pub mod engine;
@@ -54,6 +56,10 @@ pub use approval_session::{
 pub use approval_session_runtime::{ApprovalSessionRuntimeRecord, ApprovalSessionRuntimeStore};
 pub use chat_input::{UserAttachmentKind, UserAttachmentRef, UserChatInput};
 pub use config::{Config, ExecutionMode, ExternalAccessMode, ModelMode, ThinkingLevel};
+pub use config_store::{ConfigStore, PublicConfig};
+pub use mcp_client::{
+    connect_mcp_server, invoke_mcp_tool, load_connected_mcp_tools, tools_for_server,
+};
 pub use context::{
     estimate_messages_tokens, estimate_text_tokens, CompressionStrategy, ContextBudget,
     ContextCompressionPlan, ContextManager,

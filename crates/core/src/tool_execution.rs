@@ -119,9 +119,9 @@ impl<'a> ToolExecutionCoordinator<'a> {
     }
 
     pub async fn execute(&self, call: &ToolCallRequest, context: &ToolContext) -> Result<ToolResult> {
-        // Network-only tools (web_fetch, web_search) always run locally
-        // regardless of workspace backend — they make HTTP calls directly.
-        if matches!(call.name.as_str(), "web_fetch" | "web_search") {
+        // Phone-side network tools always run locally, even when the active
+        // workspace is a paired PC project.
+        if runs_on_phone_regardless_of_workspace(&call.name) {
             let result = self.registry.execute(&call.name, call.arguments.clone(), context)?;
             return Ok(result);
         }
@@ -716,6 +716,10 @@ fn optional_str<'a>(input: &'a Value, key: &str) -> Option<&'a str> {
 
 fn optional_u64(input: &Value, key: &str) -> Option<u64> {
     input.get(key).and_then(Value::as_u64)
+}
+
+fn runs_on_phone_regardless_of_workspace(tool_name: &str) -> bool {
+    matches!(tool_name, "web_fetch" | "web_search") || tool_name.starts_with("github_")
 }
 
 fn termux_request_id(call: &ToolCallRequest, command: &str, root: &PathBuf) -> String {

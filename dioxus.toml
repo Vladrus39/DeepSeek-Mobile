@@ -4,8 +4,12 @@ version = "0.1.0"
 
 [android]
 package = "com.deepseek.mobile"
+# Path to custom Kotlin activity (must subclass dev.dioxus.main.WryActivity).
+android_main_activity = "android/MainActivity.kt"
 permissions = [
     "android.permission.INTERNET",
-    "android.permission.READ_EXTERNAL_STORAGE",
-    "android.permission.WRITE_EXTERNAL_STORAGE",
+    "android.permission.ACCESS_NETWORK_STATE",
+    "android.permission.ACCESS_WIFI_STATE",
+    "android.permission.CHANGE_WIFI_MULTICAST_STATE",
+    "com.termux.permission.RUN_COMMAND",
 ]

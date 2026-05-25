@@ -1731,4 +1731,14 @@ mod tests {
     fn normalizes_windows_paths_for_protocol() {
         assert_eq!(normalize_path(Path::new("src\\main.rs")), "src/main.rs");
     }
+
+    #[test]
+    fn policy_preset_readonly_blocks_shell_execution() {
+        use deepseek_mobile_core::{CommandRequest, PolicyPreset};
+        let policy =
+            deepseek_mobile_core::PcGatewaySecurityPolicy::from_preset(PolicyPreset::ReadOnly);
+        let blocked = CommandRequest::new("cargo", vec!["check".to_string()]);
+        assert!(policy.validate_command(&blocked).is_err());
+        assert!(!policy.allows_program("git"));
+    }
 }
