@@ -44,6 +44,9 @@ pub enum AndroidHostAction {
     OpenUrl {
         url: String,
     },
+    LaunchApp {
+        package: String,
+    },
     OpenTerminal {
         workspace_id: String,
     },
@@ -86,6 +89,7 @@ pub fn drain_next_host_action(bridge: &mut NativeBridgeState) -> Option<AndroidH
             mime_type,
         }),
         NativeMobileCommand::OpenUrl { url } => Some(AndroidHostAction::OpenUrl { url }),
+        NativeMobileCommand::LaunchApp { package } => Some(AndroidHostAction::LaunchApp { package }),
         NativeMobileCommand::OpenDocumentPicker(_)
         | NativeMobileCommand::StartPcGatewayDiscovery(_)
         | NativeMobileCommand::RunTermuxCommand(_) => drain_next_host_action(bridge),

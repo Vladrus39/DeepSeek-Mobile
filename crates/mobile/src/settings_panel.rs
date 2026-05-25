@@ -123,6 +123,20 @@ pub fn settings_panel(
                 },
             }
 
+            if matches!(s.external_access, ExternalAccessMode::AllowedByUserGrant) {
+                LabeledField {
+                    label: "Trusted paths (one per line)",
+                    help: "Absolute paths outside the workspace the agent may read/write when grant mode is on (PC paths when paired, phone paths in sandbox).",
+                    value: s.trusted_external_paths.clone(),
+                    password: false,
+                    oninput: move |v: String| {
+                        let mut next = state();
+                        next.trusted_external_paths = v;
+                        state.set(next);
+                    },
+                }
+            }
+
             // ── GitHub Integration ──
             SectionCard { title: "GitHub Integration" }
 

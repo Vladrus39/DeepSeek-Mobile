@@ -97,7 +97,10 @@ pub use pc_gateway_discovery::{
     DEFAULT_PC_GATEWAY_PORT, PC_GATEWAY_MDNS_SERVICE,
 };
 pub use pc_logs::{LogRing, PcGatewayLogEntry, PcGatewayLogs};
-pub use pc_pairing::{PcGatewayPairingBundle, PcPairingLaunchScript, PcPairingPlatform};
+pub use pc_pairing::{
+    discover_pc_host_binaries, PcGatewayPairingBundle, PcHostBinaryBundle, PcPairingLaunchScript,
+    PcPairingPlatform,
+};
 pub use runtime_store::{
     ApprovalDecisionRecord, PendingApprovalRecord, RuntimeEventRecord, RuntimeThreadStore,
     RuntimeTurnStatus, ThreadRecord, TurnItemKind, TurnItemLifecycleStatus, TurnItemRecord,

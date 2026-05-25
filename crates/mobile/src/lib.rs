@@ -700,6 +700,7 @@ fn app() -> Element {
                                             next_snapshots.apply_agent_event(event);
                                             next_diagnostics.apply_agent_event(event);
                                             next_native_bridge.enqueue_termux_command_from_agent_event(event);
+                                            next_native_bridge.enqueue_phone_native_from_agent_event(event);
                                         }
                                         push_agent_event(&mut next_timeline, &AgentEvent::Status(format!("Executed tools: {} | session grants: {}", result.executed_count, result.session_grant_count)));
                                         timeline.set(next_timeline);
@@ -760,6 +761,7 @@ fn app() -> Element {
                                             next_snapshots.apply_agent_event(event);
                                             next_diagnostics.apply_agent_event(event);
                                             next_native_bridge.enqueue_termux_command_from_agent_event(event);
+                                            next_native_bridge.enqueue_phone_native_from_agent_event(event);
                                         }
                                         push_agent_event(&mut next_timeline, &AgentEvent::Status(format!("Executed tools: {} | session grants: {}", result.executed_count, result.session_grant_count)));
                                         timeline.set(next_timeline);
@@ -944,7 +946,9 @@ fn app() -> Element {
 
                                 let mut native_bridge_signal = event_native_bridge;
                                 let mut next_native_bridge = native_bridge_signal();
-                                if next_native_bridge.enqueue_termux_command_from_agent_event(&event) {
+                                if next_native_bridge.enqueue_termux_command_from_agent_event(&event)
+                                    || next_native_bridge.enqueue_phone_native_from_agent_event(&event)
+                                {
                                     native_bridge_signal.set(next_native_bridge);
                                 }
                             }).await {

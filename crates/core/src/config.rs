@@ -28,6 +28,9 @@ pub struct Config {
     pub github_repo: Option<String>,
     pub github_branch: Option<String>,
     pub auto_commit_push: bool,
+    /// Absolute paths on PC/phone allowed when `external_access` is `AllowedByUserGrant`.
+    #[serde(default)]
+    pub trusted_external_paths: Vec<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -67,6 +70,7 @@ impl Default for Config {
             github_repo: None,
             github_branch: None,
             auto_commit_push: false,
+            trusted_external_paths: Vec::new(),
         }
     }
 }

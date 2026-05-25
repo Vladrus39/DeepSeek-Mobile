@@ -60,6 +60,7 @@ pub struct MobileEngine {
     registry: ToolRegistry,
     execution_mode: crate::config::ExecutionMode,
     external_access: ExternalAccessMode,
+    trusted_external_paths: Vec<PathBuf>,
     github_token: Option<String>,
     runtime_store: Option<RuntimeThreadStore>,
     thread_id: String,
@@ -79,6 +80,11 @@ impl MobileEngine {
     pub fn new(config: Config) -> Self {
         let execution_mode = config.execution_mode.clone();
         let external_access = config.external_access.clone();
+        let trusted_external_paths = config
+            .trusted_external_paths
+            .iter()
+            .map(PathBuf::from)
+            .collect();
         let github_token = config.github_token.clone();
         Self {
             agent: DeepSeekAgent::new(config.clone()),
@@ -86,6 +92,7 @@ impl MobileEngine {
             registry: default_mobile_tool_registry_with_mcp(&[]),
             execution_mode,
             external_access,
+            trusted_external_paths,
             github_token,
             runtime_store: None,
             thread_id: "mobile-default-thread".to_string(),
@@ -805,6 +812,7 @@ impl MobileEngine {
             .or(Some(crate::mcp_client::default_mcp_path()));
         ToolContext::new(self.workspace.clone())
             .with_external_access(self.external_access.clone())
+            .with_trusted_external_paths(self.trusted_external_paths.clone())
             .with_github_token(self.github_token.clone())
             .with_mcp_registry_path(mcp_registry_path)
     }

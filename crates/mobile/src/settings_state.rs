@@ -14,6 +14,7 @@ pub struct SettingsFormState {
     pub execution_mode: ExecutionMode,
     pub thinking_level: ThinkingLevel,
     pub external_access: ExternalAccessMode,
+    pub trusted_external_paths: String,
     pub github_token: String,
     pub github_repo: String,
     pub github_branch: String,
@@ -36,6 +37,7 @@ impl SettingsFormState {
             execution_mode: config.execution_mode.clone(),
             thinking_level: config.thinking_level.clone(),
             external_access: config.external_access.clone(),
+            trusted_external_paths: config.trusted_external_paths.join("\n"),
             github_token: config.github_token.clone().unwrap_or_default(),
             github_repo: config.github_repo.clone().unwrap_or_default(),
             github_branch: config.github_branch.clone().unwrap_or_default(),
@@ -57,6 +59,13 @@ impl SettingsFormState {
             execution_mode: self.execution_mode.clone(),
             thinking_level: self.thinking_level.clone(),
             external_access: self.external_access.clone(),
+            trusted_external_paths: self
+                .trusted_external_paths
+                .lines()
+                .map(str::trim)
+                .filter(|line| !line.is_empty())
+                .map(str::to_string)
+                .collect(),
             github_token: if self.github_token.is_empty() {
                 None
             } else {

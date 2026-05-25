@@ -97,6 +97,20 @@ class DeepSeekMobileHostCoordinator(
                 val intent = Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url))
                 activity.startActivity(intent)
             }
+            "launch_app" -> {
+                val packageName = action.packageName ?: return
+                val intent = activity.packageManager.getLaunchIntentForPackage(packageName)
+                if (intent == null) {
+                    deliverCallbackJson(
+                        """{"kind":"launch_app_failed","package":${org.json.JSONObject.quote(packageName)},"message":"no launch intent"}"""
+                    )
+                    return
+                }
+                activity.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                deliverCallbackJson(
+                    """{"kind":"launch_app_started","package":${org.json.JSONObject.quote(packageName)}}"""
+                )
+            }
             else -> Unit
         }
     }
@@ -193,6 +207,7 @@ private data class AndroidHostActionJson(
     val path: String? = null,
     val mimeType: String? = null,
     val url: String? = null,
+    val packageName: String? = null,
 ) {
     companion object {
         fun parse(raw: String): AndroidHostActionJson? {
@@ -213,6 +228,7 @@ private data class AndroidHostActionJson(
                     path = json.optString("path").ifBlank { null },
                     mimeType = json.optString("mime_type").ifBlank { null },
                     url = json.optString("url").ifBlank { null },
+                    packageName = json.optString("package").ifBlank { null },
                 )
             } catch (_: Throwable) {
                 null

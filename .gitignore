@@ -4,6 +4,10 @@ target/
 *.log
 /dist
 
+# PC host binaries copied for offline pairing ZIP (see scripts/build-pc-host-bundles.ps1)
+/tools/pc-host/bin/**/*
+!tools/pc-host/bin/README.md
+
 # Project-local Android SDK copy (large; reproducible via sync-sdk-from-system.ps1)
 /tools/android/sdk/platform-tools/
 /tools/android/sdk/build-tools/

@@ -9,6 +9,7 @@ pub mod git;
 pub mod github;
 pub mod mcp_proxy;
 pub mod patch;
+pub mod phone_bridge;
 pub mod shell;
 pub mod snapshots;
 pub mod web;
@@ -236,6 +237,7 @@ pub fn default_mobile_tool_registry() -> ToolRegistry {
     registry.register(Box::new(file_ops::FileOpsTool));
     registry.register(Box::new(patch::ApplyPatchTool));
     registry.register(Box::new(shell::ShellTool));
+    registry.register(Box::new(phone_bridge::PhoneControlTool));
     registry.register(Box::new(git::GitTool));
     registry.register(Box::new(snapshots::CreateSnapshotTool));
     registry.register(Box::new(snapshots::ListSnapshotsTool));
@@ -284,6 +286,7 @@ mod tests {
         assert!(names.contains(&"edit_file".to_string()));
         assert!(names.contains(&"apply_patch".to_string()));
         assert!(names.contains(&"exec_shell".to_string()));
+        assert!(names.contains(&"phone_control".to_string()));
         assert!(names.contains(&"git".to_string()));
         assert!(names.contains(&"snapshot_create".to_string()));
         assert!(names.contains(&"snapshot_list".to_string()));

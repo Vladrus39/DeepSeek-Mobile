@@ -11,8 +11,8 @@ This is what DeepSeek-Mobile **actually** does today — compared to a desktop I
 | Coding agent on a **project** (files, patch, git, tests via tools) | **Yes** (with PC Host or Termux for shell) |
 | **PC workstation** remote control via pairing | **Yes** (workspace-bound, token auth) |
 | **Phone-only** sandbox editing + Termux shell | **Yes** (Termux needs setup) |
-| Control **entire phone** (all apps, system UI) | **No** |
-| Control **entire PC** (any folder, any app) | **No** — only paired workspace root |
+| Control **entire phone** (all apps, system UI) | **Partial** — `phone_control` (URL, share, launch app by package); not full UI automation |
+| Control **entire PC** (any folder, any app) | **Partial** — paired workspace + optional trusted paths (Settings grant mode); see [EXTENDED_CONTROL_ROADMAP.md](./EXTENDED_CONTROL_ROADMAP.md) |
 | Same as **Cursor on desktop** | **No** — different product shape |
 
 ## By channel

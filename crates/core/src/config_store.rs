@@ -35,6 +35,8 @@ pub struct PublicConfig {
     pub github_repo: Option<String>,
     pub github_branch: Option<String>,
     pub auto_commit_push: bool,
+    #[serde(default)]
+    pub trusted_external_paths: Vec<String>,
 }
 
 impl From<&Config> for PublicConfig {
@@ -49,6 +51,7 @@ impl From<&Config> for PublicConfig {
             github_repo: config.github_repo.clone(),
             github_branch: config.github_branch.clone(),
             auto_commit_push: config.auto_commit_push,
+            trusted_external_paths: config.trusted_external_paths.clone(),
         }
     }
 }
@@ -67,6 +70,7 @@ impl PublicConfig {
             github_repo: self.github_repo,
             github_branch: self.github_branch,
             auto_commit_push: self.auto_commit_push,
+            trusted_external_paths: self.trusted_external_paths,
         }
     }
 }

@@ -2,6 +2,7 @@ use crate::document_picker::{DocumentPickerRequest, PickedDocument};
 use crate::native_document_picker::{AndroidDocumentPickerCallback, AndroidDocumentPickerCommand};
 use crate::native_pc_discovery::{AndroidPcGatewayDiscoveryCallback, AndroidPcGatewayDiscoveryCommand};
 use crate::native_termux::{AndroidTermuxCallback, AndroidTermuxCommand};
+use deepseek_mobile_core::tools::phone_bridge::PhoneNativeRequest;
 use deepseek_mobile_core::{AgentEvent, PcGatewayDiscoveryReport, TermuxExecRequest, TermuxExecResult};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -10,6 +11,7 @@ pub enum NativeMobileCommand {
     StartPcGatewayDiscovery(AndroidPcGatewayDiscoveryCommand),
     ShareFile { path: String, mime_type: Option<String> },
     OpenUrl { url: String },
+    LaunchApp { package: String },
     OpenTerminal { workspace_id: String },
     TerminalInput { session_id: String, input: String },
     CloseTerminal { session_id: String },
@@ -44,6 +46,21 @@ pub struct NativeBridgeState {
     pub active_pc_discovery_request_id: Option<String>,
     pub active_termux_request_ids: Vec<String>,
     pub last_event_id: u64,
+}
+
+pub fn phone_native_request_from_agent_event(event: &AgentEvent) -> Option<PhoneNativeRequest> {
+    let AgentEvent::ToolCallFinished(result) = event else {
+        return None;
+    };
+    let metadata = result.metadata.as_ref()?;
+    if metadata
+        .get("phone_native_pending")
+        .and_then(serde_json::Value::as_bool)
+        != Some(true)
+    {
+        return None;
+    }
+    serde_json::from_value(metadata.get("phone_native_request")?.clone()).ok()
 }
 
 pub fn termux_request_from_agent_event(event: &AgentEvent) -> Option<TermuxExecRequest> {
@@ -112,6 +129,37 @@ impl NativeBridgeState {
             return false;
         };
         self.enqueue_termux_command(request);
+        true
+    }
+
+    pub fn enqueue_phone_native_from_agent_event(&mut self, event: &AgentEvent) -> bool {
+        let Some(request) = phone_native_request_from_agent_event(event) else {
+            return false;
+        };
+        match request.action.as_str() {
+            "open_url" => {
+                let Some(url) = request.url.filter(|url| !url.trim().is_empty()) else {
+                    return false;
+                };
+                self.enqueue(NativeMobileCommand::OpenUrl { url });
+            }
+            "share_file" => {
+                let Some(path) = request.path.filter(|path| !path.trim().is_empty()) else {
+                    return false;
+                };
+                self.enqueue(NativeMobileCommand::ShareFile {
+                    path,
+                    mime_type: request.mime_type,
+                });
+            }
+            "launch_app" => {
+                let Some(package) = request.package.filter(|pkg| !pkg.trim().is_empty()) else {
+                    return false;
+                };
+                self.enqueue(NativeMobileCommand::LaunchApp { package });
+            }
+            _ => return false,
+        }
         true
     }
 

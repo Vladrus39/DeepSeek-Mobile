@@ -1,5 +1,7 @@
 use anyhow::{Context, Result};
-use deepseek_mobile_core::{PcGatewayPairingBundle, PcGatewayTransportMode};
+use deepseek_mobile_core::{
+    discover_pc_host_binaries, PcGatewayPairingBundle, PcGatewayTransportMode,
+};
 use std::path::{Path, PathBuf};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -109,8 +111,9 @@ impl PcPairingManager {
         let safe_gateway_id = sanitize_file_component(&bundle.gateway_id);
         let zip_name = format!("deepseek-pc-host-pairing-{}.zip", safe_gateway_id);
         let zip_path = output_dir.join(zip_name);
+        let host_bins = discover_pc_host_binaries(&[output_dir.to_path_buf()]);
         bundle
-            .write_zip(&zip_path)
+            .write_zip_with_host_binaries(&zip_path, Some(&host_bins))
             .with_context(|| format!("export PC pairing zip to {}", zip_path.display()))?;
 
         Ok(MobilePcPairingExport {

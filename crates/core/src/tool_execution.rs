@@ -722,7 +722,8 @@ fn optional_u64(input: &Value, key: &str) -> Option<u64> {
 }
 
 fn runs_on_phone_regardless_of_workspace(tool_name: &str) -> bool {
-    matches!(tool_name, "web_fetch" | "web_search") || tool_name.starts_with("github_")
+    matches!(tool_name, "web_fetch" | "web_search" | "phone_control")
+        || tool_name.starts_with("github_")
 }
 
 fn local_android_shell_unavailable_result(workspace_id: &str) -> ToolResult {
@@ -906,6 +907,34 @@ mod tests {
         assert!(!result.success);
         assert!(result.content.contains("Termux"));
         assert!(result.content.contains("PC Host"));
+    }
+
+    #[tokio::test]
+    async fn phone_control_runs_on_phone_even_for_pc_workspace() {
+        let registry = crate::tools::default_mobile_tool_registry();
+        let coordinator = ToolExecutionCoordinator::new(&registry);
+        let workspace = crate::workspace::Workspace::new(
+            "pc-ws",
+            "PC",
+            PathBuf::from("C:/work/project"),
+            ExecutorKind::PcGateway,
+        );
+        let context = ToolContext::new(workspace);
+        let call = ToolCallRequest {
+            id: "phone-1".to_string(),
+            name: "phone_control".to_string(),
+            arguments: json!({"action": "open_url", "url": "https://example.com/docs"}),
+            source: ToolCallSource::Manual,
+        };
+        let result = coordinator.execute(&call, &context).await.unwrap();
+        assert!(result.success);
+        let metadata = result.metadata.expect("phone metadata");
+        assert_eq!(
+            metadata
+                .get("phone_native_pending")
+                .and_then(Value::as_bool),
+            Some(true)
+        );
     }
 
     #[tokio::test]
