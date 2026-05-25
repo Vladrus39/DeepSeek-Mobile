@@ -2,7 +2,7 @@
 
 use super::{ApprovalRequirement, ToolCapability, ToolContext, ToolResult, ToolSpec};
 use crate::mcp::McpToolDescriptor;
-use crate::mcp_client::invoke_mcp_tool;
+use crate::mcp_client::{default_mcp_path, invoke_mcp_tool_at_path};
 use anyhow::Result;
 use serde_json::Value;
 
@@ -60,11 +60,25 @@ impl ToolSpec for McpProxyTool {
         ApprovalRequirement::Required
     }
 
-    fn execute(&self, input: Value, _context: &ToolContext) -> Result<ToolResult> {
+    fn execute(&self, input: Value, context: &ToolContext) -> Result<ToolResult> {
+        let registry_path = context
+            .mcp_registry_path
+            .clone()
+            .unwrap_or_else(default_mcp_path);
         let result = if let Ok(handle) = tokio::runtime::Handle::try_current() {
-            handle.block_on(invoke_mcp_tool(&self.server, &self.tool_name, input))
+            handle.block_on(invoke_mcp_tool_at_path(
+                &registry_path,
+                &self.server,
+                &self.tool_name,
+                input,
+            ))
         } else {
-            futures::executor::block_on(invoke_mcp_tool(&self.server, &self.tool_name, input))
+            futures::executor::block_on(invoke_mcp_tool_at_path(
+                &registry_path,
+                &self.server,
+                &self.tool_name,
+                input,
+            ))
         };
         match result {
             Ok(content) => Ok(ToolResult::success(content)),

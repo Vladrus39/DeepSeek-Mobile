@@ -173,13 +173,18 @@ Implemented:
 
 Still needed:
 
-- final Dioxus Android host adapter;
-- device/emulator verification of bridge callbacks;
-- final Android picker/share device verification for project import/export;
-- PC Host release package that includes or installs the host binary;
-- optional PC service/autostart installer;
-- runtime SSE/live event streaming;
-- automatic live task updates over SSE instead of manual sync.
+- device/emulator verification after NDK + `dx` install (`tools/android/DOWNLOAD_BUDGET.md`);
+- final Android picker/share/Termux verification on hardware;
+- PC Host release package that bundles `deepseek-pc-host` for Windows/macOS/Linux;
+- optional PC service/autostart installer.
+
+Implemented in-repo (verification pending):
+
+- Dioxus Android host: JNI, `android_host` callbacks, `MainActivity`, Kotlin coordinator;
+- project-local Android SDK under `tools/android/`;
+- runtime SSE/live task events for PC-host tasks;
+- Health panel, 3-step setup wizard, chat quick actions;
+- Plan mode skips tool execution; LocalAndroid `exec_shell` returns actionable errors.
 
 ## Recommended next implementation order
 

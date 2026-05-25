@@ -127,6 +127,9 @@ impl<'a> ToolExecutionCoordinator<'a> {
         }
 
         match self.route(call, context).target {
+            ToolExecutionTarget::LocalAndroid if call.name == "exec_shell" => {
+                Ok(local_android_shell_unavailable_result(&context.workspace.id))
+            }
             ToolExecutionTarget::Termux if call.name == "exec_shell" => {
                 self.execute_on_termux(call, context).await
             }
@@ -722,6 +725,21 @@ fn runs_on_phone_regardless_of_workspace(tool_name: &str) -> bool {
     matches!(tool_name, "web_fetch" | "web_search") || tool_name.starts_with("github_")
 }
 
+fn local_android_shell_unavailable_result(workspace_id: &str) -> ToolResult {
+    ToolResult::error(format!(
+        "Shell commands cannot run in the phone sandbox workspace '{workspace_id}'. \
+         To run commands on the phone: open Settings, set a valid Termux path \
+         (for example /data/data/com.termux/files/home/project) and save to activate a Termux workspace. \
+         To run commands on a PC project: pair PC Host, export the launcher bundle, start deepseek-pc-host on the PC, \
+         then open that workspace from the PC Host panel."
+    ))
+    .with_metadata(json!({
+        "executor": "local_android",
+        "shell_unavailable": true,
+        "hint": "use_termux_workspace_or_pc_host"
+    }))
+}
+
 fn termux_request_id(call: &ToolCallRequest, command: &str, root: &PathBuf) -> String {
     let raw = if call.id.trim().is_empty() {
         let mut hasher = DefaultHasher::new();
@@ -865,6 +883,29 @@ mod tests {
                 expected_occurrences: Some(1),
             }]
         );
+    }
+
+    #[tokio::test]
+    async fn local_android_exec_shell_returns_actionable_error() {
+        let registry = crate::tools::default_mobile_tool_registry();
+        let coordinator = ToolExecutionCoordinator::new(&registry);
+        let workspace = crate::workspace::Workspace::new(
+            "phone-sandbox",
+            "Phone",
+            PathBuf::from("/tmp/phone-workspace"),
+            ExecutorKind::LocalAndroid,
+        );
+        let context = ToolContext::new(workspace);
+        let call = ToolCallRequest {
+            id: "shell-1".to_string(),
+            name: "exec_shell".to_string(),
+            arguments: json!({"command": "ls"}),
+            source: ToolCallSource::Manual,
+        };
+        let result = coordinator.execute(&call, &context).await.unwrap();
+        assert!(!result.success);
+        assert!(result.content.contains("Termux"));
+        assert!(result.content.contains("PC Host"));
     }
 
     #[tokio::test]

@@ -1,4 +1,6 @@
 use crate::diagnostics_panel::diagnostics_panel;
+use crate::health_panel::health_panel;
+use crate::runtime_health::RuntimeHealthSnapshot;
 use crate::diagnostics_state::DiagnosticsUiState;
 use crate::document_picker::DocumentPickerState;
 use crate::mcp_panel::mcp_panel;
@@ -162,6 +164,13 @@ pub fn cockpit_section_panel(
                 .map(deepseek_mobile_core::PcGatewayClient::new);
             tasks_panel(tasks_state, pc_client)
         }
+        CockpitSection::Health => health_panel(RuntimeHealthSnapshot::collect(
+            &settings_state(),
+            &pc_pairing_state(),
+            &termux_state(),
+            &mcp_state(),
+            &native_bridge(),
+        )),
         CockpitSection::Settings => settings_panel(settings_state, termux_state),
     }
 }

@@ -77,6 +77,7 @@ pub struct ToolContext {
     pub trusted_external_paths: Vec<PathBuf>,
     pub auto_approve: bool,
     pub github_token: Option<String>,
+    pub mcp_registry_path: Option<PathBuf>,
 }
 
 impl ToolContext {
@@ -87,6 +88,7 @@ impl ToolContext {
             trusted_external_paths: Vec::new(),
             auto_approve: false,
             github_token: None,
+            mcp_registry_path: None,
         }
     }
 
@@ -107,6 +109,11 @@ impl ToolContext {
 
     pub fn with_github_token(mut self, github_token: Option<String>) -> Self {
         self.github_token = github_token;
+        self
+    }
+
+    pub fn with_mcp_registry_path(mut self, path: Option<PathBuf>) -> Self {
+        self.mcp_registry_path = path;
         self
     }
 

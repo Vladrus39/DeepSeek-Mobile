@@ -2,6 +2,9 @@ mod android_host;
 #[cfg(not(target_os = "android"))]
 mod desktop_native_host;
 mod host_loop;
+mod health_panel;
+mod runtime_health;
+mod chat_quick_actions;
 #[cfg(target_os = "android")]
 mod jni_bridge;
 mod native_host_runtime;
@@ -56,6 +59,7 @@ use host_loop::{run_host_tick, sync_bridge_from_runtime};
 use agent_timeline::MobileTimelineState;
 use agent_timeline_panel::agent_timeline_panel;
 use chat_attachment::ChatComposerState;
+use chat_quick_actions::chat_quick_actions_bar;
 use cockpit_section_panel::cockpit_section_panel;
 use deepseek_mobile_core::{AgentEvent, ApprovalCardView, ReviewDecision};
 use diagnostics_state::DiagnosticsUiState;
@@ -831,6 +835,13 @@ fn app() -> Element {
                     "{composer().attachment_summary()}"
                 }
             }
+
+            {chat_quick_actions_bar(EventHandler::new(move |prompt: String| {
+                let mut next = composer();
+                next.draft_text = prompt.clone();
+                composer.set(next);
+                input.set(prompt);
+            }))}
 
             div {
                 display: "flex",

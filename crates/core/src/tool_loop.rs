@@ -118,6 +118,16 @@ pub async fn process_model_text_with_tools_and_session_and_pc_gateway(
         ..ToolLoopOutcome::default()
     };
 
+    if execution_mode == crate::config::ExecutionMode::Plan {
+        let skipped = parsed.tool_calls.len();
+        if skipped > 0 {
+            outcome.events.push(AgentEvent::Status(format!(
+                "Plan mode: {skipped} tool call(s) parsed but not executed. Switch to Agent mode in Settings to run tools."
+            )));
+        }
+        return Ok(outcome);
+    }
+
     for call in parsed.tool_calls {
         let approval = approval_request_for_call(&call);
         if session.is_call_allowed_by_session(&approval, &call) || context.auto_approve {
@@ -537,6 +547,38 @@ mod tests {
             json!({"operation":"diff"}),
             ToolCallSource::Manual,
         )));
+    }
+
+    #[tokio::test]
+    async fn plan_mode_skips_tool_execution() {
+        use super::process_model_text_with_tools_and_session_and_pc_gateway;
+        use crate::approval_session::ApprovalSessionPolicy;
+        use crate::events::AgentEvent;
+        use crate::turn::TurnContext;
+
+        let registry = crate::tools::default_mobile_tool_registry();
+        let workspace = Workspace::new("w1", "Test", "/tmp/w", ExecutorKind::LocalAndroid);
+        let context = ToolContext::new(workspace);
+        let mut turn = TurnContext::new(8);
+        let mut session = ApprovalSessionPolicy::new();
+        let text = r#"{"tool":"read_file","args":{"path":"main.rs"}}"#;
+        let outcome = process_model_text_with_tools_and_session_and_pc_gateway(
+            text.to_string(),
+            &registry,
+            &context,
+            &mut turn,
+            &mut session,
+            None,
+            crate::config::ExecutionMode::Plan,
+        )
+        .await
+        .unwrap();
+        assert!(outcome.executed.is_empty());
+        assert!(outcome.pending_approvals.is_empty());
+        assert!(outcome
+            .events
+            .iter()
+            .any(|event| matches!(event, AgentEvent::Status(_))));
     }
 
     #[test]

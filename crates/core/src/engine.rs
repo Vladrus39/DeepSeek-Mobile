@@ -799,9 +799,14 @@ impl MobileEngine {
     }
 
     fn tool_context(&self) -> ToolContext {
+        let mcp_registry_path = std::env::var("DEEPSEEK_MOBILE_DATA_DIR")
+            .ok()
+            .map(|dir| std::path::PathBuf::from(dir).join("mcp.json"))
+            .or(Some(crate::mcp_client::default_mcp_path()));
         ToolContext::new(self.workspace.clone())
             .with_external_access(self.external_access.clone())
             .with_github_token(self.github_token.clone())
+            .with_mcp_registry_path(mcp_registry_path)
     }
 
     fn capture_latest_diagnostics(&mut self, records: &[ToolLoopExecutionRecord]) {

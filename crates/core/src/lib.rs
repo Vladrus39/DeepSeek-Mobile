@@ -58,7 +58,8 @@ pub use chat_input::{UserAttachmentKind, UserAttachmentRef, UserChatInput};
 pub use config::{Config, ExecutionMode, ExternalAccessMode, ModelMode, ThinkingLevel};
 pub use config_store::{ConfigStore, PublicConfig};
 pub use mcp_client::{
-    connect_mcp_server, invoke_mcp_tool, load_connected_mcp_tools, tools_for_server,
+    connect_mcp_server, default_mcp_path, invoke_mcp_tool, invoke_mcp_tool_at_path,
+    load_connected_mcp_tools, tools_for_server,
 };
 pub use context::{
     estimate_messages_tokens, estimate_text_tokens, CompressionStrategy, ContextBudget,

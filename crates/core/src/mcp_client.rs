@@ -78,12 +78,47 @@ pub async fn connect_mcp_server(
     }
 }
 
-/// Invoke an MCP tool on a connected server.
+/// Invoke an MCP tool on a connected server (loads registry from the default path).
 pub async fn invoke_mcp_tool(server: &str, tool_name: &str, arguments: Value) -> Result<String> {
-    if let Some(response) = invoke_stdio_tool(server, tool_name, arguments.clone())? {
-        return Ok(response);
+    invoke_mcp_tool_at_path(&default_mcp_path(), server, tool_name, arguments).await
+}
+
+/// Invoke an MCP tool using the MCP registry file at `registry_path`.
+pub async fn invoke_mcp_tool_at_path(
+    registry_path: &std::path::Path,
+    server: &str,
+    tool_name: &str,
+    arguments: Value,
+) -> Result<String> {
+    let registry = crate::mcp::McpClientRegistry::load_or_default(registry_path)?;
+    let config = registry
+        .servers
+        .iter()
+        .find(|entry| entry.config.name == server)
+        .map(|entry| entry.config.clone())
+        .ok_or_else(|| anyhow!("MCP server '{server}' is not configured"))?;
+
+    if !config.enabled {
+        return Err(anyhow!("MCP server '{server}' is disabled"));
     }
-    invoke_http_tool(server, tool_name, arguments).await
+
+    match &config.transport {
+        McpTransport::Stdio { .. } => {
+            let response = task::spawn_blocking({
+                let server = server.to_string();
+                let tool_name = tool_name.to_string();
+                let arguments = arguments.clone();
+                let config = config.clone();
+                move || invoke_stdio_tool_with_config(&config, &tool_name, arguments)
+            })
+            .await
+            .context("stdio MCP invoke task failed")??;
+            Ok(response)
+        }
+        McpTransport::HttpSse { url, headers } => {
+            invoke_http_tool_with_config(url, headers, tool_name, arguments).await
+        }
+    }
 }
 
 fn connect_stdio_sync(
@@ -193,11 +228,20 @@ async fn invoke_http_tool(server: &str, tool_name: &str, arguments: Value) -> Re
     let McpTransport::HttpSse { url, headers } = config.transport else {
         return Err(anyhow!("server '{}' is not HTTP MCP", server));
     };
+    invoke_http_tool_with_config(&url, &headers, tool_name, arguments).await
+}
+
+async fn invoke_http_tool_with_config(
+    url: &str,
+    headers: &HashMap<String, String>,
+    tool_name: &str,
+    arguments: Value,
+) -> Result<String> {
     let client = Client::builder()
         .timeout(Duration::from_secs(60))
         .build()
         .context("build MCP HTTP client")?;
-    let endpoint = mcp_endpoint(&url);
+    let endpoint = mcp_endpoint(url);
     let body = json!({
         "jsonrpc": "2.0",
         "id": 1,
@@ -216,6 +260,72 @@ async fn invoke_http_tool(server: &str, tool_name: &str, arguments: Value) -> Re
         return Err(anyhow!("MCP tools/call error: {}", error.message));
     }
     Ok(serde_json::to_string_pretty(&response.result.unwrap_or(Value::Null))?)
+}
+
+fn invoke_stdio_tool_with_config(
+    config: &McpServerConfig,
+    tool_name: &str,
+    arguments: Value,
+) -> Result<String> {
+    if let Some(response) = invoke_stdio_tool(&config.name, tool_name, arguments.clone())? {
+        return Ok(response);
+    }
+    let McpTransport::Stdio { command, args, env } = config.transport.clone() else {
+        return Err(anyhow!("server '{}' is not stdio MCP", config.name));
+    };
+    invoke_stdio_tool_ephemeral(&command, &args, &env, tool_name, arguments)
+}
+
+fn invoke_stdio_tool_ephemeral(
+    command: &str,
+    args: &[String],
+    env: &HashMap<String, String>,
+    tool_name: &str,
+    arguments: Value,
+) -> Result<String> {
+    let mut child = Command::new(command);
+    child.args(args);
+    for (key, value) in env {
+        child.env(key, value);
+    }
+    child.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null());
+    let mut child = child.spawn().with_context(|| format!("spawn MCP stdio server {command}"))?;
+    let mut stdin = child.stdin.take().ok_or_else(|| anyhow!("stdio stdin unavailable"))?;
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| anyhow!("stdio stdout unavailable"))?;
+    let mut reader = BufReader::new(stdout);
+
+    let mut next_id = 1u64;
+    write_json_rpc(
+        &mut stdin,
+        next_id,
+        "initialize",
+        json!({
+            "protocolVersion": "2024-11-05",
+            "capabilities": {},
+            "clientInfo": {"name": "deepseek-mobile", "version": "0.1.0"}
+        }),
+    )?;
+    let _ = read_json_rpc(&mut reader, next_id)?;
+    next_id += 1;
+    write_json_rpc(
+        &mut stdin,
+        next_id,
+        "tools/call",
+        json!({
+            "name": tool_name,
+            "arguments": arguments
+        }),
+    )?;
+    let response = read_json_rpc(&mut reader, next_id)?;
+    if response.get("error").is_some() {
+        return Err(anyhow!("MCP tools/call error: {}", response));
+    }
+    Ok(serde_json::to_string_pretty(
+        &response.get("result").cloned().unwrap_or(response),
+    )?)
 }
 
 async fn list_tools_http(
@@ -323,7 +433,7 @@ fn mcp_endpoint(base_url: &str) -> String {
     }
 }
 
-fn default_mcp_path() -> std::path::PathBuf {
+pub fn default_mcp_path() -> std::path::PathBuf {
     std::env::var("DEEPSEEK_MOBILE_DATA_DIR")
         .map(std::path::PathBuf::from)
         .unwrap_or_else(|_| std::path::PathBuf::from(".deepseek-mobile"))

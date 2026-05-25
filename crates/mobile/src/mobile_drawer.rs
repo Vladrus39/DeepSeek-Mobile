@@ -13,6 +13,7 @@ pub enum CockpitSection {
     Skills,
     Git,
     Tasks,
+    Health,
     Settings,
 }
 
@@ -30,6 +31,7 @@ impl CockpitSection {
             CockpitSection::Skills => "Skills",
             CockpitSection::Git => "Git & GitHub",
             CockpitSection::Tasks => "Tasks",
+            CockpitSection::Health => "Health",
             CockpitSection::Settings => "Settings",
         }
     }
@@ -47,6 +49,7 @@ impl CockpitSection {
             CockpitSection::Skills => "Skill bundles: enable/disable",
             CockpitSection::Git => "Status, commits, push, pull, PRs",
             CockpitSection::Tasks => "Background tasks, build jobs, test runs",
+            CockpitSection::Health => "API, PC, Termux, MCP and bridge status",
             CockpitSection::Settings => "DeepSeek API, GitHub, disks, security",
         }
     }
@@ -174,6 +177,7 @@ pub fn default_drawer_items() -> Vec<DrawerItem> {
         item(CockpitSection::Skills),
         item(CockpitSection::Git),
         item(CockpitSection::Tasks),
+        item(CockpitSection::Health),
         item(CockpitSection::Settings),
     ]
 }
