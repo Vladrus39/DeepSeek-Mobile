@@ -59,6 +59,7 @@ struct PcHostConfig {
     auth_token: Option<String>,
     workspace: PcWorkspaceGrant,
     workspace_root: PathBuf,
+    trusted_paths: Vec<PathBuf>,
     security_policy: PcGatewaySecurityPolicy,
 }
 
@@ -117,6 +118,11 @@ impl PcHostConfig {
             })
             .unwrap_or(PolicyPreset::Developer);
 
+        let trusted_paths = env::var("DEEPSEEK_PC_HOST_TRUSTED_PATHS")
+            .ok()
+            .map(|raw| parse_trusted_paths(&raw))
+            .unwrap_or_default();
+
         let workspace = PcWorkspaceGrant::new(
             workspace_id,
             workspace_root
@@ -134,6 +140,7 @@ impl PcHostConfig {
             auth_token,
             workspace,
             workspace_root,
+            trusted_paths,
             security_policy: PcGatewaySecurityPolicy::from_preset(preset),
         })
     }
@@ -167,12 +174,12 @@ impl PcHostConfig {
             return Err(anyhow!("path is blocked by gateway policy: {}", path));
         }
 
-        let relative = Path::new(path);
-        if relative.is_absolute() {
-            return Err(anyhow!("absolute paths are not accepted through gateway requests"));
+        let candidate = PathBuf::from(path);
+        if candidate.is_absolute() {
+            return Ok(candidate);
         }
 
-        for component in relative.components() {
+        for component in candidate.components() {
             match component {
                 Component::Normal(_) | Component::CurDir => {}
                 Component::ParentDir => return Err(anyhow!("parent path segments are not accepted: {}", path)),
@@ -182,10 +189,10 @@ impl PcHostConfig {
             }
         }
 
-        Ok(self.workspace_root.join(relative))
+        Ok(self.workspace_root.join(candidate))
     }
 
-    async fn ensure_path_inside_workspace(&self, path: &Path) -> Result<PathBuf> {
+    async fn ensure_path_allowed(&self, path: &Path) -> Result<PathBuf> {
         let canonical = if path.exists() {
             path.canonicalize()
                 .with_context(|| format!("canonicalize {}", path.display()))?
@@ -199,25 +206,51 @@ impl PcHostConfig {
             canonical_parent.join(path.file_name().ok_or_else(|| anyhow!("path has no file name"))?)
         };
 
-        if !canonical.starts_with(&self.workspace_root) {
-            return Err(anyhow!("path escapes granted workspace: {}", canonical.display()));
+        if canonical.starts_with(&self.workspace_root) {
+            return Ok(canonical);
         }
-        Ok(canonical)
+        for trusted in &self.trusted_paths {
+            if canonical.starts_with(trusted) {
+                return Ok(canonical);
+            }
+        }
+        Err(anyhow!(
+            "path is outside workspace and trusted grants: {}",
+            canonical.display()
+        ))
     }
 
-    async fn ensure_parent_inside_workspace(&self, path: &Path) -> Result<()> {
+    async fn ensure_parent_allowed(&self, path: &Path) -> Result<()> {
         let parent = path
             .parent()
             .ok_or_else(|| anyhow!("path has no parent: {}", path.display()))?;
         let existing_parent = nearest_existing_parent(parent)?;
-        let canonical_parent = existing_parent
-            .canonicalize()
-            .with_context(|| format!("canonicalize existing parent {}", existing_parent.display()))?;
-        if !canonical_parent.starts_with(&self.workspace_root) {
-            return Err(anyhow!("parent path escapes granted workspace: {}", canonical_parent.display()));
-        }
+        self.ensure_path_allowed(&existing_parent).await?;
         Ok(())
     }
+
+    fn gateway_relative_path(&self, absolute: &Path) -> String {
+        if let Ok(rel) = absolute.strip_prefix(&self.workspace_root) {
+            return rel.to_string_lossy().replace('\\', "/");
+        }
+        for trusted in &self.trusted_paths {
+            if let Ok(rel) = absolute.strip_prefix(trusted) {
+                return format!(
+                    "@trusted/{}",
+                    rel.to_string_lossy().replace('\\', "/")
+                );
+            }
+        }
+        absolute.to_string_lossy().replace('\\', "/")
+    }
+}
+
+fn parse_trusted_paths(raw: &str) -> Vec<PathBuf> {
+    raw.split('|')
+        .map(str::trim)
+        .filter(|segment| !segment.is_empty())
+        .filter_map(|segment| PathBuf::from(segment).canonicalize().ok())
+        .collect()
 }
 
 #[tokio::main]
@@ -328,7 +361,7 @@ async fn exec_stream_handler(
                 return Err((StatusCode::BAD_REQUEST, "absolute paths not accepted".to_string()));
             }
             match state.config.resolve_workspace_path(&body.workspace_id, &dir.to_string_lossy()) {
-                Ok(resolved) => match state.config.ensure_path_inside_workspace(&resolved).await {
+                Ok(resolved) => match state.config.ensure_path_allowed(&resolved).await {
                     Ok(dir) => dir,
                     Err(e) => return Err((StatusCode::FORBIDDEN, e.to_string())),
                 },
@@ -486,6 +519,9 @@ async fn handle_gateway_request(state: &PcHostState, request: PcGatewayRequest) 
         PcGatewayRequest::RunTask { task_id } => run_task_handler(state, &task_id).await,
         PcGatewayRequest::StopTask { task_id } => stop_task_handler(state, &task_id).await,
         PcGatewayRequest::ListTasks => list_tasks_handler(state).await,
+        PcGatewayRequest::OpenPath { workspace_id, path } => {
+            open_path_in_os(&state.config, &workspace_id, &path).await
+        }
         unsupported => Ok(PcGatewayResponse::Error(PcGatewayError::new(
             "unsupported_request",
             format!("request is not implemented by this PC host build: {:?}", unsupported),
@@ -493,9 +529,49 @@ async fn handle_gateway_request(state: &PcHostState, request: PcGatewayRequest) 
     }
 }
 
+async fn open_path_in_os(config: &PcHostConfig, workspace_id: &str, path: &str) -> Result<PcGatewayResponse> {
+    let requested = config.resolve_workspace_path(workspace_id, path)?;
+    let allowed = config.ensure_path_allowed(&requested).await?;
+    launch_path_in_os_shell(&allowed)?;
+    let display = config.gateway_relative_path(&allowed);
+    Ok(PcGatewayResponse::PathOpened { path: display })
+}
+
+fn launch_path_in_os_shell(path: &Path) -> Result<()> {
+    #[cfg(windows)]
+    {
+        std::process::Command::new("explorer")
+            .arg(path)
+            .spawn()
+            .with_context(|| format!("open {} in Explorer", path.display()))?;
+        return Ok(());
+    }
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .arg(path)
+            .spawn()
+            .with_context(|| format!("open {} with macOS open", path.display()))?;
+        return Ok(());
+    }
+    #[cfg(target_os = "linux")]
+    {
+        std::process::Command::new("xdg-open")
+            .arg(path)
+            .spawn()
+            .with_context(|| format!("open {} with xdg-open", path.display()))?;
+        return Ok(());
+    }
+    #[cfg(not(any(windows, target_os = "macos", target_os = "linux")))]
+    {
+        let _ = path;
+        Err(anyhow!("open_path is not supported on this OS"))
+    }
+}
+
 async fn list_dir(config: &PcHostConfig, workspace_id: &str, path: &str) -> Result<PcGatewayResponse> {
     let path = config.resolve_workspace_path(workspace_id, path)?;
-    let path = config.ensure_path_inside_workspace(&path).await?;
+    let path = config.ensure_path_allowed(&path).await?;
     let mut entries = fs::read_dir(&path)
         .await
         .with_context(|| format!("read dir {}", path.display()))?;
@@ -503,11 +579,7 @@ async fn list_dir(config: &PcHostConfig, workspace_id: &str, path: &str) -> Resu
     while let Some(entry) = entries.next_entry().await? {
         let metadata = entry.metadata().await?;
         let absolute = entry.path();
-        let relative = absolute
-            .strip_prefix(&config.workspace_root)
-            .unwrap_or(&absolute)
-            .to_string_lossy()
-            .replace('\\', "/");
+        let relative = config.gateway_relative_path(&absolute);
         out.push(PcGatewayDirEntry {
             path: relative,
             is_dir: metadata.is_dir(),
@@ -520,7 +592,7 @@ async fn list_dir(config: &PcHostConfig, workspace_id: &str, path: &str) -> Resu
 
 async fn read_file(config: &PcHostConfig, workspace_id: &str, path: &str) -> Result<PcGatewayResponse> {
     let requested = config.resolve_workspace_path(workspace_id, path)?;
-    let path = config.ensure_path_inside_workspace(&requested).await?;
+    let path = config.ensure_path_allowed(&requested).await?;
     let content = fs::read_to_string(&path)
         .await
         .with_context(|| format!("read file {}", path.display()))?;
@@ -539,13 +611,13 @@ async fn write_file(
     content: &str,
 ) -> Result<PcGatewayResponse> {
     let requested = config.resolve_workspace_path(workspace_id, path)?;
-    config.ensure_parent_inside_workspace(&requested).await?;
+    config.ensure_parent_allowed(&requested).await?;
     if let Some(parent) = requested.parent() {
         fs::create_dir_all(parent)
             .await
             .with_context(|| format!("create parent dir {}", parent.display()))?;
     }
-    let path = config.ensure_path_inside_workspace(&requested).await?;
+    let path = config.ensure_path_allowed(&requested).await?;
     fs::write(&path, content)
         .await
         .with_context(|| format!("write file {}", path.display()))?;
@@ -562,7 +634,7 @@ async fn write_file(
 
 async fn delete_file(config: &PcHostConfig, workspace_id: &str, path: &str) -> Result<PcGatewayResponse> {
     let requested = config.resolve_workspace_path(workspace_id, path)?;
-    let path = config.ensure_path_inside_workspace(&requested).await?;
+    let path = config.ensure_path_allowed(&requested).await?;
     let metadata = fs::metadata(&path)
         .await
         .with_context(|| format!("metadata for delete {}", path.display()))?;
@@ -600,7 +672,7 @@ async fn execute_command(
             }
             let dir_text = dir.to_string_lossy();
             let requested = config.resolve_workspace_path(workspace_id, &dir_text)?;
-            config.ensure_path_inside_workspace(&requested).await?
+            config.ensure_path_allowed(&requested).await?
         }
         None => config.workspace_root.clone(),
     };
@@ -742,7 +814,7 @@ async fn open_terminal(state: &PcHostState, workspace_id: &str, cwd: Option<&str
     let working_dir = match cwd {
         Some(dir) => {
             let resolved = config.resolve_workspace_path(workspace_id, dir)?;
-            config.ensure_path_inside_workspace(&resolved).await?
+            config.ensure_path_allowed(&resolved).await?
         }
         None => config.workspace_root.clone(),
     };
@@ -907,7 +979,7 @@ async fn diagnostics(config: &PcHostConfig, workspace_id: &str, path: Option<&st
     }
     let requested_path = if let Some(path) = path {
         let requested = config.resolve_workspace_path(workspace_id, path)?;
-        let checked = config.ensure_path_inside_workspace(&requested).await?;
+        let checked = config.ensure_path_allowed(&requested).await?;
         Some(checked.strip_prefix(&config.workspace_root).unwrap_or(&checked).to_path_buf())
     } else {
         None
@@ -1685,6 +1757,7 @@ fn request_operation_name(request: &PcGatewayRequest) -> String {
         PcGatewayRequest::SnapshotCreate { .. } => "snapshot_create".to_string(),
         PcGatewayRequest::SnapshotRestore { .. } => "snapshot_restore".to_string(),
         PcGatewayRequest::SnapshotList { .. } => "snapshot_list".to_string(),
+        PcGatewayRequest::OpenPath { .. } => "open_path".to_string(),
     }
 }
 

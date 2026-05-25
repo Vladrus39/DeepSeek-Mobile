@@ -162,6 +162,14 @@ impl PcGatewayClient {
         .await
     }
 
+    pub async fn open_path(&self, workspace_id: impl Into<String>, path: impl Into<String>) -> Result<PcGatewayResponse> {
+        self.send(PcGatewayRequest::OpenPath {
+            workspace_id: workspace_id.into(),
+            path: path.into(),
+        })
+        .await
+    }
+
     pub async fn execute_command(
         &self,
         workspace_id: impl Into<String>,

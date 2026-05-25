@@ -580,6 +580,8 @@ pub enum PcGatewayRequest {
     SnapshotCreate { workspace_id: String, reason: String },
     SnapshotRestore { workspace_id: String, snapshot_id: String },
     SnapshotList { workspace_id: String },
+    /// Open a file or folder in the OS shell (explorer / xdg-open / open).
+    OpenPath { workspace_id: String, path: String },
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -615,6 +617,7 @@ pub enum PcGatewayResponse {
     SnapshotRecord(WorkspaceSnapshotRecord),
     SnapshotList(Vec<WorkspaceSnapshotRecord>),
     SnapshotRestoreReport(WorkspaceRestoreReport),
+    PathOpened { path: String },
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]

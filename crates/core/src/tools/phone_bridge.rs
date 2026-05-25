@@ -51,6 +51,16 @@ impl PhoneNativeRequest {
             mime_type: None,
         }
     }
+
+    pub fn open_settings() -> Self {
+        Self {
+            action: "open_settings".to_string(),
+            url: None,
+            path: None,
+            package: None,
+            mime_type: None,
+        }
+    }
 }
 
 pub struct PhoneControlTool;
@@ -70,7 +80,7 @@ impl ToolSpec for PhoneControlTool {
             "properties": {
                 "action": {
                     "type": "string",
-                    "enum": ["open_url", "share_file", "launch_app"],
+                    "enum": ["open_url", "share_file", "launch_app", "open_settings"],
                     "description": "Native action to perform on the phone."
                 },
                 "url": { "type": "string", "description": "HTTP/HTTPS or intent URL (open_url)." },
@@ -117,6 +127,7 @@ impl ToolSpec for PhoneControlTool {
                 }
                 PhoneNativeRequest::launch_app(package)
             }
+            "open_settings" => PhoneNativeRequest::open_settings(),
             other => return Err(anyhow!("unsupported phone_control action: {}", other)),
         };
 

@@ -1,4 +1,5 @@
 use crate::settings_state::save_config;
+use crate::termux_state::TermuxWorkspaceState;
 use deepseek_mobile_core::config::Config;
 use dioxus::prelude::*;
 
@@ -13,6 +14,7 @@ enum OnboardingStep {
 pub fn onboarding_panel(on_complete: EventHandler<String>) -> Element {
     let mut step = use_signal(|| OnboardingStep::Api);
     let mut api_key_input = use_signal(String::new);
+    let mut termux_path_input = use_signal(|| "/data/data/com.termux/files/home/project".to_string());
     let mut validation_error = use_signal(|| None::<String>);
 
     rsx! {
@@ -102,12 +104,26 @@ pub fn onboarding_panel(on_complete: EventHandler<String>) -> Element {
                     OnboardingStep::Workspaces => rsx! {
                         div { font_weight: "bold", "Execution backends" }
                         {capability_card("Phone sandbox", "Edit files inside the app workspace. Shell commands need Termux or PC.", true)}
-                        {capability_card("Termux (phone shell)", "After setup: Settings → Termux path like /data/data/com.termux/files/home/project", false)}
+                        {capability_card("Termux (phone shell)", "Install Termux, enable RUN_COMMAND in termux.properties, grant permission in Android settings.", false)}
+                        div {
+                            color: "#9ca3af",
+                            font_size: "11px",
+                            "Optional Termux project path (absolute):"
+                        }
+                        input {
+                            background_color: "#1f2937",
+                            color: "white",
+                            padding: "12px",
+                            border: "1px solid #4b5563",
+                            border_radius: "12px",
+                            value: "{termux_path_input}",
+                            oninput: move |e| termux_path_input.set(e.value()),
+                        }
                         {capability_card("PC Host (recommended pro)", "Pairing ZIP → start deepseek-pc-host on PC → full git/tests/build on your machine", false)}
                         div {
                             color: "#6b7280",
                             font_size: "11px",
-                            "This app is a coding agent cockpit — not remote control of the entire phone or PC."
+                            "Coding agent cockpit — extended control via Termux, PC Host, and phone_control (not full UI automation)."
                         }
                         button {
                             background_color: "#3b82f6",
@@ -141,7 +157,18 @@ pub fn onboarding_panel(on_complete: EventHandler<String>) -> Element {
                                     ..Config::default()
                                 };
                                 match save_config(&config) {
-                                    Ok(()) => on_complete.call(key),
+                                    Ok(()) => {
+                                        let path = termux_path_input().trim().to_string();
+                                        if !path.is_empty() {
+                                            let mut termux = TermuxWorkspaceState::default();
+                                            termux.set_path(path);
+                                            termux.set_label("Termux Project");
+                                            if termux.is_valid() {
+                                                let _ = termux.save_to_base_dir(crate::mobile_runtime_config::default_data_dir());
+                                            }
+                                        }
+                                        on_complete.call(key);
+                                    }
                                     Err(error) => validation_error.set(Some(format!("Failed to save: {}", error))),
                                 }
                             },

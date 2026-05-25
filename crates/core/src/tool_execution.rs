@@ -130,6 +130,11 @@ impl<'a> ToolExecutionCoordinator<'a> {
             ToolExecutionTarget::LocalAndroid if call.name == "exec_shell" => {
                 Ok(local_android_shell_unavailable_result(&context.workspace.id))
             }
+            ToolExecutionTarget::LocalAndroid | ToolExecutionTarget::Termux
+                if call.name == "open_path" =>
+            {
+                Ok(local_open_path_unavailable_result(&context.workspace.id))
+            }
             ToolExecutionTarget::Termux if call.name == "exec_shell" => {
                 self.execute_on_termux(call, context).await
             }
@@ -208,6 +213,10 @@ impl<'a> ToolExecutionCoordinator<'a> {
             "list_dir" => {
                 let path = optional_str(&call.arguments, "path").unwrap_or(".");
                 gateway_response_to_tool_result(client.list_dir(workspace_id, path).await?)
+            }
+            "open_path" => {
+                let path = required_str(&call.arguments, "path")?;
+                gateway_response_to_tool_result(client.open_path(workspace_id, path).await?)
             }
             "edit_file" => self.execute_remote_edit_file(client, workspace_id, &call.arguments).await,
             "apply_patch" => self.execute_remote_apply_patch(client, workspace_id, &call.arguments).await,
@@ -701,6 +710,10 @@ fn gateway_response_to_tool_result(response: PcGatewayResponse) -> Result<ToolRe
             Ok(ToolResult::success(serde_json::to_string_pretty(&tasks)?)
                 .with_metadata(serde_json::to_value(tasks)?))
         }
+        PcGatewayResponse::PathOpened { path } => Ok(
+            ToolResult::success(format!("Opened in system file manager: {}", path))
+                .with_metadata(json!({"path": path, "opened_in_os": true})),
+        ),
         PcGatewayResponse::Error(error) => Ok(ToolResult::error(format!("{}: {}", error.code, error.message))),
         _ => Ok(ToolResult::success("unhandled PC gateway response variant".to_string())),
     }
@@ -724,6 +737,17 @@ fn optional_u64(input: &Value, key: &str) -> Option<u64> {
 fn runs_on_phone_regardless_of_workspace(tool_name: &str) -> bool {
     matches!(tool_name, "web_fetch" | "web_search" | "phone_control")
         || tool_name.starts_with("github_")
+}
+
+fn local_open_path_unavailable_result(workspace_id: &str) -> ToolResult {
+    ToolResult::error(format!(
+        "open_path cannot run in phone workspace '{workspace_id}'. Pair PC Host and select the PC project workspace, or use phone_control open_url for links."
+    ))
+    .with_metadata(json!({
+        "executor": "local_android",
+        "open_path_unavailable": true,
+        "hint": "use_pc_host_workspace"
+    }))
 }
 
 fn local_android_shell_unavailable_result(workspace_id: &str) -> ToolResult {

@@ -17,6 +17,7 @@ pub struct MobilePcPairingRequest {
     pub expected_base_url: Option<String>,
     pub expires_at_unix: Option<u64>,
     pub auto_start: bool,
+    pub trusted_paths: Vec<String>,
 }
 
 impl MobilePcPairingRequest {
@@ -41,7 +42,13 @@ impl MobilePcPairingRequest {
             expected_base_url: None,
             expires_at_unix: None,
             auto_start: true,
+            trusted_paths: Vec::new(),
         }
+    }
+
+    pub fn with_trusted_paths(mut self, paths: Vec<String>) -> Self {
+        self.trusted_paths = paths;
+        self
     }
 
     pub fn with_bind_addr(mut self, bind_addr: impl Into<String>) -> Self {
@@ -98,6 +105,9 @@ impl PcPairingManager {
         }
         if let Some(expires_at_unix) = request.expires_at_unix {
             bundle = bundle.with_expiry(expires_at_unix);
+        }
+        if !request.trusted_paths.is_empty() {
+            bundle = bundle.with_trusted_paths(request.trusted_paths);
         }
         bundle
     }

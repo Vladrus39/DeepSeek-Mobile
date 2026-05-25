@@ -136,6 +136,9 @@ pub struct PcGatewayPairingBundle {
     pub transport_mode: PcGatewayTransportMode,
     pub expires_at_unix: Option<u64>,
     pub auto_start: bool,
+    /// Extra absolute paths the PC host may access (synced from phone Settings).
+    #[serde(default)]
+    pub trusted_paths: Vec<String>,
 }
 
 impl PcGatewayPairingBundle {
@@ -162,7 +165,13 @@ impl PcGatewayPairingBundle {
             transport_mode: PcGatewayTransportMode::LocalNetworkHttp,
             expires_at_unix: None,
             auto_start: true,
+            trusted_paths: Vec::new(),
         }
+    }
+
+    pub fn with_trusted_paths(mut self, paths: Vec<String>) -> Self {
+        self.trusted_paths = paths;
+        self
     }
 
     pub fn with_bind_addr(mut self, bind_addr: impl Into<String>) -> Self {
@@ -190,7 +199,7 @@ impl PcGatewayPairingBundle {
     }
 
     pub fn env_file(&self) -> String {
-        format!(
+        let mut out = format!(
             "DEEPSEEK_PC_HOST_BIND={}\nDEEPSEEK_PC_HOST_ID={}\nDEEPSEEK_PC_HOST_LABEL={}\nDEEPSEEK_PC_HOST_WORKSPACE={}\nDEEPSEEK_PC_HOST_WORKSPACE_ID={}\nDEEPSEEK_PC_HOST_TOKEN={}\nDEEPSEEK_PC_HOST_DEVICE_ID={}\nDEEPSEEK_PC_HOST_DEVICE_LABEL={}\n",
             self.bind_addr,
             self.gateway_id,
@@ -200,7 +209,14 @@ impl PcGatewayPairingBundle {
             self.auth_token,
             self.device_id,
             self.device_label,
-        )
+        );
+        if !self.trusted_paths.is_empty() {
+            out.push_str(&format!(
+                "DEEPSEEK_PC_HOST_TRUSTED_PATHS={}\n",
+                self.trusted_paths.join("|")
+            ));
+        }
+        out
     }
 
     pub fn readme(&self, host_binaries_included: bool) -> String {

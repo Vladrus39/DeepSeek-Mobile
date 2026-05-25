@@ -97,6 +97,11 @@ class DeepSeekMobileHostCoordinator(
                 val intent = Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url))
                 activity.startActivity(intent)
             }
+            "open_system_settings" -> {
+                val intent = Intent(android.provider.Settings.ACTION_SETTINGS)
+                activity.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                deliverCallbackJson("""{"kind":"settings_opened"}""")
+            }
             "launch_app" -> {
                 val packageName = action.packageName ?: return
                 val intent = activity.packageManager.getLaunchIntentForPackage(packageName)

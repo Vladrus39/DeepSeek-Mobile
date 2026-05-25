@@ -74,6 +74,21 @@ pub fn health_panel(snapshot: RuntimeHealthSnapshot) -> Element {
                 }
             }
 
+            div {
+                background_color: "#111827",
+                border: "1px solid #374151",
+                border_radius: "14px",
+                padding: "12px",
+                display: "flex",
+                flex_direction: "column",
+                gap: "6px",
+
+                div { font_weight: "bold", font_size: "13px", "PC gateway URLs" }
+                for hint in snapshot.network_hints {
+                    div { color: "#9ca3af", font_size: "11px", "{hint}" }
+                }
+            }
+
             if !snapshot.recommendations.is_empty() {
                 div {
                     background_color: "#111827",

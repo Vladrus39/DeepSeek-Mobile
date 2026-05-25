@@ -40,17 +40,17 @@ flowchart LR
 - **`phone_control` tool:** `open_url`, `share_file`, `launch_app` → metadata → Android `NativeBridge` drain.
 - **Settings trusted paths** (one per line) when External access = **Allowed by user grant** — wired into `ToolContext::resolve_path`.
 
-## Phase 2 — PC breadth (4–8 weeks)
+## Phase 2 — PC breadth (in progress)
 
-1. **pc-host RPC:** `list_dir` outside workspace when path is in server-side allowlist synced from phone settings.
-2. **Open on PC:** `open_path` (explorer / xdg-open) scoped to workspace + grants.
-3. **Persistent shell sessions** on pc-host (SSE already used for tasks — extend for terminal).
-4. **mDNS + Tailscale** documented presets in Health panel.
+1. **pc-host trusted paths** — `DEEPSEEK_PC_HOST_TRUSTED_PATHS` in pairing env; absolute paths allowed when under workspace or grant list. **Shipped.**
+2. **Open on PC** — `open_path` tool + `PcGatewayRequest::OpenPath` (Explorer / xdg-open / open). **Shipped.**
+3. **Persistent shell sessions** on pc-host (SSE already used for tasks — extend for terminal). *Next.*
+4. **mDNS + Tailscale** URL hints in Health panel. **Shipped (manual URLs).**
 
-## Phase 3 — Phone breadth (6–12 weeks)
+## Phase 3 — Phone breadth (in progress)
 
-1. **Termux:** document + wizard for `termux.properties` / permissions; queue status in Health.
-2. **Intents:** `phone_control` actions `open_settings`, `send_notification` (with user approval).
+1. **Termux** — onboarding path field + Settings; Health recommendations. **Shipped (wizard slice).**
+2. **Intents:** `phone_control` `open_settings` + `launch_app`. **Shipped** (`send_notification` next).
 3. **Optional Shizuku / ADB** (power users): separate opt-in module, never default — high risk, store policy.
 4. **Accessibility service** (last resort): read-only UI tree for automation — requires explicit consent and Play policy review.
 

@@ -12,6 +12,7 @@ pub enum NativeMobileCommand {
     ShareFile { path: String, mime_type: Option<String> },
     OpenUrl { url: String },
     LaunchApp { package: String },
+    OpenSystemSettings,
     OpenTerminal { workspace_id: String },
     TerminalInput { session_id: String, input: String },
     CloseTerminal { session_id: String },
@@ -157,6 +158,9 @@ impl NativeBridgeState {
                     return false;
                 };
                 self.enqueue(NativeMobileCommand::LaunchApp { package });
+            }
+            "open_settings" => {
+                self.enqueue(NativeMobileCommand::OpenSystemSettings);
             }
             _ => return false,
         }

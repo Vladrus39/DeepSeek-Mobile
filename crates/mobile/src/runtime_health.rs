@@ -21,6 +21,7 @@ pub struct RuntimeHealthSnapshot {
     pub native_pending: bool,
     pub native_last_error: Option<String>,
     pub recommendations: Vec<String>,
+    pub network_hints: Vec<String>,
 }
 
 impl RuntimeHealthSnapshot {
@@ -87,6 +88,13 @@ impl RuntimeHealthSnapshot {
             recommendations.push("Plan mode is on — tools will not run until you switch to Agent mode.".to_string());
         }
 
+        let network_hints = vec![
+            "LAN: http://<pc-lan-ip>:8787 (same Wi‑Fi as phone)".to_string(),
+            "Loopback on PC only: http://127.0.0.1:8787".to_string(),
+            "Tailscale: http://<machine>.ts.net:8787 when MagicDNS is on".to_string(),
+            "Pairing bundle sets DEEPSEEK_PC_HOST_* — re-export after changing trusted paths.".to_string(),
+        ];
+
         Self {
             api_configured,
             execution_mode: settings.execution_mode.clone(),
@@ -100,6 +108,7 @@ impl RuntimeHealthSnapshot {
             native_pending,
             native_last_error: bridge.last_error.clone(),
             recommendations,
+            network_hints,
         }
     }
 

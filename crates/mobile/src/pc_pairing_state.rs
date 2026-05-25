@@ -84,10 +84,15 @@ impl PcPairingUiState {
     }
 
     pub fn export_zip(&mut self, output_dir: impl AsRef<Path>) -> Option<PathBuf> {
-        let Some(request) = self.request.clone() else {
+        let Some(mut request) = self.request.clone() else {
             self.set_error("PC pairing request is not configured");
             return None;
         };
+        if let Some(config) = crate::settings_state::load_saved_config() {
+            if !config.trusted_external_paths.is_empty() {
+                request.trusted_paths = config.trusted_external_paths;
+            }
+        }
 
         match PcPairingManager::export_zip(request, output_dir) {
             Ok(export) => {

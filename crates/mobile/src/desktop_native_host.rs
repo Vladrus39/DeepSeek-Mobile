@@ -81,6 +81,9 @@ pub fn try_execute(action: &AndroidHostAction, bridge: &mut NativeBridgeState) -
         AndroidHostAction::LaunchApp { package } => Some(format!(
             "launch_app is Android-only (package={package})"
         )),
+        AndroidHostAction::OpenSystemSettings => Some(
+            "open_system_settings is Android-only".to_string(),
+        ),
         AndroidHostAction::OpenTerminal { .. }
         | AndroidHostAction::TerminalInput { .. }
         | AndroidHostAction::CloseTerminal { .. } => Some(
