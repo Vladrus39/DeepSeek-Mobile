@@ -15,6 +15,9 @@ use crate::auto_commit::auto_commit_and_push;
 use crate::config::{Config, ExternalAccessMode};
 use crate::context::{estimate_messages_tokens, ContextBudget, ContextManager};
 use crate::events::AgentEvent;
+use crate::large_output::{
+    format_tool_results_message, route_tool_result_for_model, DEFAULT_MAX_TOOL_RESULT_CHARS,
+};
 use crate::model_router::ModelRouter;
 use crate::pc_gateway_client::PcGatewayClient;
 use crate::runtime_store::{RuntimeThreadStore, TurnRecord};
@@ -24,8 +27,11 @@ use crate::tool_loop::{
     process_model_text_with_tools_and_session_and_pc_gateway, ToolLoopExecutionRecord,
     ToolLoopOutcome,
 };
-use crate::tools::{default_mobile_tool_registry_with_mcp, ToolContext, ToolRegistry};
+
+/// Maximum model↔tool round-trips per user turn (TUI-style agent loop).
+const MAX_TOOL_FOLLOWUP_ITERATIONS: usize = 8;
 use crate::mcp::McpToolDescriptor;
+use crate::tools::{default_mobile_tool_registry_with_mcp, ToolContext, ToolRegistry};
 use crate::turn::{TurnContext, TurnStatus};
 use crate::workspace::{ExecutorKind, Workspace};
 use crate::workspace_connection::WorkspaceConnection;
@@ -45,6 +51,8 @@ pub struct EngineTurnResult {
 #[derive(Clone, Debug, PartialEq)]
 pub struct EngineApprovalContinuationResult {
     pub events: Vec<AgentEvent>,
+    pub final_text: Option<String>,
+    pub approval_cards: Vec<ApprovalCardView>,
     pub executed: Vec<ToolLoopExecutionRecord>,
     pub session_grants_created: Vec<crate::approval_session::ApprovalSessionGrant>,
 }
@@ -261,7 +269,11 @@ impl MobileEngine {
             &mut events,
             AgentEvent::Status(format!(
                 "MobileEngine {} turn started (model: {})",
-                if streaming { "streaming" } else { "non-streaming" },
+                if streaming {
+                    "streaming"
+                } else {
+                    "non-streaming"
+                },
                 model_name,
             )),
         )?;
@@ -308,6 +320,21 @@ impl MobileEngine {
         )
         .await?;
 
+        for event in outcome.events.iter().cloned() {
+            self.push_event(&mut events, event)?;
+        }
+
+        let (outcome, answer) = self
+            .run_tool_followup_loop(
+                answer,
+                outcome,
+                &mut turn,
+                &mut events,
+                streaming,
+                &model_name,
+            )
+            .await?;
+
         // Detect pending Termux requests before capturing diagnostics
         let has_pending_termux = !outcome.pending_termux_requests.is_empty();
         if has_pending_termux {
@@ -317,9 +344,6 @@ impl MobileEngine {
         self.capture_latest_diagnostics(&outcome.executed);
 
         self.store_pending_approvals(&turn, &outcome)?;
-        for event in outcome.events.iter().cloned() {
-            self.push_event(&mut events, event)?;
-        }
 
         if outcome.has_pending_approvals() {
             turn.status = TurnStatus::WaitingForApproval;
@@ -336,39 +360,46 @@ impl MobileEngine {
         {
             // PC gateway snapshot path
             if let Some(ref client) = self.pc_gateway {
-                let _ = client.create_snapshot(&self.workspace.id, &format!(
+                let _ = client
+                    .create_snapshot(
+                        &self.workspace.id,
+                        &format!(
+                            "post-turn auto snapshot after {} tools",
+                            outcome.executed.len()
+                        ),
+                    )
+                    .await;
+            } else {
+                let store_root = self
+                    .workspace
+                    .root
+                    .join(".deepseek-mobile")
+                    .join("snapshots");
+                let service = crate::snapshots::WorkspaceSnapshotService::new(
+                    self.workspace.clone(),
+                    store_root,
+                );
+                match service.create_snapshot(format!(
                     "post-turn auto snapshot after {} tools",
                     outcome.executed.len()
-                )).await;
-            } else {
-            let store_root = self
-                .workspace
-                .root
-                .join(".deepseek-mobile")
-                .join("snapshots");
-            let service =
-                crate::snapshots::WorkspaceSnapshotService::new(self.workspace.clone(), store_root);
-            match service.create_snapshot(format!(
-                "post-turn auto snapshot after {} tools",
-                outcome.executed.len()
-            )) {
-                Ok(snapshot) => {
-                    self.push_event(
-                        &mut events,
-                        AgentEvent::Status(format!(
-                            "Auto-snapshot created: {} files, {} bytes",
-                            snapshot.file_count, snapshot.total_bytes,
-                        )),
-                    )?;
+                )) {
+                    Ok(snapshot) => {
+                        self.push_event(
+                            &mut events,
+                            AgentEvent::Status(format!(
+                                "Auto-snapshot created: {} files, {} bytes",
+                                snapshot.file_count, snapshot.total_bytes,
+                            )),
+                        )?;
+                    }
+                    Err(error) => {
+                        // Non-fatal: log but don't fail the turn
+                        self.push_event(
+                            &mut events,
+                            AgentEvent::Status(format!("Auto-snapshot skipped: {}", error)),
+                        )?;
+                    }
                 }
-                Err(error) => {
-                    // Non-fatal: log but don't fail the turn
-                    self.push_event(
-                        &mut events,
-                        AgentEvent::Status(format!("Auto-snapshot skipped: {}", error)),
-                    )?;
-                }
-            }
             } // close pc_gateway else block
         }
 
@@ -378,11 +409,7 @@ impl MobileEngine {
             && !outcome.executed.is_empty()
         {
             if let Some(repo) = self.config.github_repo.as_deref() {
-                let branch = self
-                    .config
-                    .github_branch
-                    .as_deref()
-                    .unwrap_or("main");
+                let branch = self.config.github_branch.as_deref().unwrap_or("main");
                 let commit_msg = crate::auto_commit::commit_message_from_input(&user_input);
                 match auto_commit_and_push(&self.workspace.root, repo, branch, &commit_msg) {
                     Ok(Some(sha)) => {
@@ -527,9 +554,15 @@ impl MobileEngine {
             role: "system".to_string(),
             content: "You are a helpful coding assistant with access to tools for \
                       reading, writing, editing files, running shell commands, \
-                      and managing git repositories. You are running inside \
-                      DeepSeek-Mobile — a full coding agent on Android with \
-                      PC-host execution capabilities."
+                      git, snapshots, MCP tools, workspace_overview, and file_summary. You run \
+                      inside DeepSeek-Mobile on Android: the primary execution \
+                      surface is the user's Termux workspace (full shell/build). \
+                      The app sandbox is for light file edits when Termux is not \
+                      configured. An optional PC Host can offload very large repos \
+                      or desktop-only toolchains — use it only when the user has \
+                      paired it. Prefer workspace_overview before wide refactors. \
+                      Large command output may be spilled to `.deepseek-mobile/tool-output/`; \
+                      use read_file to inspect the full file."
                 .to_string(),
         }];
 
@@ -581,14 +614,35 @@ impl MobileEngine {
         &mut self,
         approval_id: &str,
         decision: ReviewDecision,
+        turn: TurnContext,
+    ) -> Result<EngineApprovalContinuationResult> {
+        self.continue_stored_approval_with_streaming(approval_id, decision, turn, true)
+            .await
+    }
+
+    pub async fn continue_stored_approval_with_streaming(
+        &mut self,
+        approval_id: &str,
+        decision: ReviewDecision,
         mut turn: TurnContext,
+        streaming: bool,
     ) -> Result<EngineApprovalContinuationResult> {
         let Some(store) = self.runtime_store.clone() else {
             anyhow::bail!("runtime store is required to continue stored approval");
         };
         let pending_record = store.load_pending_approval(approval_id)?;
+        let tool_name = pending_record.pending.call.name.clone();
+        let mut events = Vec::new();
+        self.push_event(
+            &mut events,
+            AgentEvent::Status(format!(
+                "Continuing turn after approval decision: {:?}",
+                decision
+            )),
+        )?;
+
         let context = self.tool_context();
-        let outcome = continue_pending_tool_approval_with_session_and_pc_gateway(
+        let mut outcome = continue_pending_tool_approval_with_session_and_pc_gateway(
             pending_record.pending,
             decision.clone(),
             &self.registry,
@@ -598,7 +652,79 @@ impl MobileEngine {
             self.pc_gateway.as_ref(),
         )
         .await?;
+
+        for event in outcome.events.iter().cloned() {
+            self.push_event(&mut events, event)?;
+        }
+
+        let model_name = self.resolve_model_for_hint("approval continuation");
+        let mut final_answer = self.last_assistant_message_from_session();
+
+        match &decision {
+            ReviewDecision::Denied => {
+                self.session.push_message(
+                    "user",
+                    &format!(
+                        "[Approval denied for tool `{tool_name}`. Respond to the user without running it.]"
+                    ),
+                );
+                final_answer = self
+                    .collect_model_answer("approval denied", &mut events, streaming, &model_name)
+                    .await?;
+                self.session.push_message("assistant", &final_answer);
+                turn.complete();
+            }
+            ReviewDecision::Abort => {
+                turn.cancel();
+            }
+            ReviewDecision::Approved | ReviewDecision::ApprovedForSession => {
+                if !outcome.pending_termux_requests.is_empty() {
+                    self.store_pending_termux(&turn, &outcome)?;
+                    turn.wait_for_termux();
+                } else if !outcome.executed.is_empty() {
+                    let (followup_outcome, followup_answer) = self
+                        .run_tool_followup_loop(
+                            final_answer,
+                            outcome,
+                            &mut turn,
+                            &mut events,
+                            streaming,
+                            &model_name,
+                        )
+                        .await?;
+                    outcome = followup_outcome;
+                    final_answer = followup_answer;
+                } else {
+                    self.session.push_message(
+                        "user",
+                        &format!(
+                            "[Tool `{tool_name}` was approved but produced no output. Continue the turn.]"
+                        ),
+                    );
+                    final_answer = self
+                        .collect_model_answer(
+                            "approval continued",
+                            &mut events,
+                            streaming,
+                            &model_name,
+                        )
+                        .await?;
+                    self.session.push_message("assistant", &final_answer);
+                }
+            }
+        }
+
         self.capture_latest_diagnostics(&outcome.executed);
+        self.store_pending_approvals(&turn, &outcome)?;
+
+        let has_pending_termux = !outcome.pending_termux_requests.is_empty();
+        if outcome.has_pending_approvals() {
+            turn.status = TurnStatus::WaitingForApproval;
+        } else if has_pending_termux {
+            turn.wait_for_termux();
+        } else if turn.status != TurnStatus::Cancelled {
+            turn.complete();
+        }
 
         store.save_decision(&crate::tool_loop::decision_record(
             pending_record.thread_id.clone(),
@@ -609,11 +735,44 @@ impl MobileEngine {
         store.remove_pending_approval(approval_id)?;
         self.persist_turn(&turn)?;
 
+        let approval_cards = self.pending_approval_cards_for_current_thread()?;
+
+        self.push_event(
+            &mut events,
+            AgentEvent::TurnFinished {
+                turn_id: turn.id.clone(),
+                status: turn.status.clone(),
+                usage: turn.usage.clone(),
+                error: turn.error.clone(),
+            },
+        )?;
+
         Ok(EngineApprovalContinuationResult {
-            events: outcome.events,
+            events,
+            final_text: outcome.final_text.or(Some(final_answer)),
+            approval_cards,
             executed: outcome.executed,
             session_grants_created: outcome.session_grants_created,
         })
+    }
+
+    fn resolve_model_for_hint(&self, hint: &str) -> String {
+        let estimated_tokens =
+            estimate_messages_tokens(&self.session.messages) + hint.chars().count() / 4 + 500;
+        let router = ModelRouter::new(self.config.clone());
+        router
+            .route_prompt(hint.to_string(), estimated_tokens)
+            .model
+    }
+
+    fn last_assistant_message_from_session(&self) -> String {
+        self.session
+            .messages
+            .iter()
+            .rev()
+            .find(|message| message.role == "assistant")
+            .map(|message| message.content.clone())
+            .unwrap_or_default()
     }
 
     pub fn pending_approval_cards_for_current_thread(&self) -> Result<Vec<ApprovalCardView>> {
@@ -733,12 +892,16 @@ impl MobileEngine {
         )
         .await?;
 
-        self.capture_latest_diagnostics(&outcome.executed);
-        self.store_pending_approvals(&turn, &outcome)?;
-
         for event in outcome.events.iter().cloned() {
             self.push_event(&mut events, event)?;
         }
+
+        let (outcome, answer) = self
+            .run_tool_followup_loop(answer, outcome, &mut turn, &mut events, true, &model_name)
+            .await?;
+
+        self.capture_latest_diagnostics(&outcome.executed);
+        self.store_pending_approvals(&turn, &outcome)?;
 
         // Check for nested pending termux
         let has_pending_termux = !outcome.pending_termux_requests.is_empty();
@@ -758,27 +921,41 @@ impl MobileEngine {
         store.remove_pending_termux(&termux_result.request_id)?;
 
         // Auto-snapshot if enabled and turn completed
-        if self.auto_snapshot && !outcome.executed.is_empty() && turn.status == TurnStatus::Completed {
-            let store_root = self.workspace.root.join(".deepseek-mobile").join("snapshots");
-            let service = crate::snapshots::WorkspaceSnapshotService::new(self.workspace.clone(), store_root);
+        if self.auto_snapshot
+            && !outcome.executed.is_empty()
+            && turn.status == TurnStatus::Completed
+        {
+            let store_root = self
+                .workspace
+                .root
+                .join(".deepseek-mobile")
+                .join("snapshots");
+            let service =
+                crate::snapshots::WorkspaceSnapshotService::new(self.workspace.clone(), store_root);
             if let Ok(snapshot) = service.create_snapshot(format!(
                 "post-termux-continuation snapshot after {} tools",
                 outcome.executed.len()
             )) {
-                let _ = self.push_event(&mut events, AgentEvent::Status(format!(
-                    "Auto-snapshot created: {} files, {} bytes",
-                    snapshot.file_count, snapshot.total_bytes,
-                )));
+                let _ = self.push_event(
+                    &mut events,
+                    AgentEvent::Status(format!(
+                        "Auto-snapshot created: {} files, {} bytes",
+                        snapshot.file_count, snapshot.total_bytes,
+                    )),
+                );
             }
         }
 
         self.persist_turn(&turn)?;
-        self.push_event(&mut events, AgentEvent::TurnFinished {
-            turn_id: turn.id.clone(),
-            status: turn.status.clone(),
-            usage: turn.usage.clone(),
-            error: turn.error.clone(),
-        })?;
+        self.push_event(
+            &mut events,
+            AgentEvent::TurnFinished {
+                turn_id: turn.id.clone(),
+                status: turn.status.clone(),
+                usage: turn.usage.clone(),
+                error: turn.error.clone(),
+            },
+        )?;
         self.push_event(&mut events, AgentEvent::Finished)?;
 
         Ok(EngineTurnResult {
@@ -787,6 +964,91 @@ impl MobileEngine {
             approval_cards: outcome.approval_cards,
             executed: outcome.executed,
         })
+    }
+
+    async fn run_tool_followup_loop(
+        &mut self,
+        mut last_assistant_text: String,
+        mut outcome: ToolLoopOutcome,
+        turn: &mut TurnContext,
+        events: &mut Vec<AgentEvent>,
+        streaming: bool,
+        model_name: &str,
+    ) -> Result<(ToolLoopOutcome, String)> {
+        let mut merged_executed = outcome.executed.clone();
+        let mut followup_round = 0usize;
+
+        loop {
+            if outcome.executed.is_empty() {
+                break;
+            }
+
+            self.inject_tool_results_into_session(&outcome.executed)?;
+
+            if outcome.has_pending_approvals() || !outcome.pending_termux_requests.is_empty() {
+                break;
+            }
+
+            if followup_round >= MAX_TOOL_FOLLOWUP_ITERATIONS {
+                self.push_event(
+                    events,
+                    AgentEvent::Status(format!(
+                        "Tool follow-up stopped after {MAX_TOOL_FOLLOWUP_ITERATIONS} rounds (safety cap)"
+                    )),
+                )?;
+                break;
+            }
+            followup_round += 1;
+
+            let prompt = "Continue based on the tool results above. Call more tools if needed; otherwise answer the user.".to_string();
+            self.session.push_message("user", &prompt);
+
+            let followup_answer = self
+                .collect_model_answer(&prompt, events, streaming, model_name)
+                .await?;
+            self.session.push_message("assistant", &followup_answer);
+            last_assistant_text = followup_answer.clone();
+
+            let context = self.tool_context();
+            outcome = process_model_text_with_tools_and_session_and_pc_gateway(
+                followup_answer,
+                &self.registry,
+                &context,
+                turn,
+                &mut self.approval_session,
+                self.pc_gateway.as_ref(),
+                self.execution_mode.clone(),
+            )
+            .await?;
+
+            merged_executed.extend(outcome.executed.clone());
+            for event in outcome.events.iter().cloned() {
+                self.push_event(events, event)?;
+            }
+        }
+
+        outcome.executed = merged_executed;
+        Ok((outcome, last_assistant_text))
+    }
+
+    fn inject_tool_results_into_session(
+        &mut self,
+        executed: &[ToolLoopExecutionRecord],
+    ) -> Result<()> {
+        for record in executed {
+            let Some(result) = record.result.as_ref() else {
+                continue;
+            };
+            let routed = route_tool_result_for_model(
+                &record.tool_name,
+                result,
+                &self.workspace,
+                DEFAULT_MAX_TOOL_RESULT_CHARS,
+            )?;
+            let message = format_tool_results_message(&record.tool_name, &routed);
+            self.session.push_message("user", &message);
+        }
+        Ok(())
     }
 
     fn push_event(&self, events: &mut Vec<AgentEvent>, event: AgentEvent) -> Result<()> {
@@ -898,7 +1160,10 @@ fn format_termux_tool_result(
     let mut content = format!(
         "The `{}` command completed with exit code {}.",
         tool_name,
-        result.exit_code.map(|c| c.to_string()).unwrap_or_else(|| "unknown".to_string())
+        result
+            .exit_code
+            .map(|c| c.to_string())
+            .unwrap_or_else(|| "unknown".to_string())
     );
     if result.timed_out {
         content.push_str("\nThe command timed out.");
@@ -1018,7 +1283,9 @@ mod tests {
         let mut engine = MobileEngine::new(Config::default());
         engine.skills_context = Some("## Active Skills\n\n- demo: test\n\n".to_string());
         let messages = engine.build_messages_for_turn("hello", "deepseek-v4-flash");
-        assert!(messages.iter().any(|message| message.content.contains("Active Skills")));
+        assert!(messages
+            .iter()
+            .any(|message| message.content.contains("Active Skills")));
     }
 
     #[test]

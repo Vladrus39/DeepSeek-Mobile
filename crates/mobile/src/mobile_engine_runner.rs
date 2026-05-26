@@ -1,11 +1,11 @@
 use crate::mobile_runtime_config::{default_data_dir, MobileRuntimeConfig};
+use deepseek_mobile_core::{
+    AgentEvent, ApprovalCardView, ApprovalSessionRuntimeStore, Config, MobileEngine,
+    ReviewDecision, RuntimeThreadStore, Session, SkillRegistry, TermuxExecResult, TokenUsage,
+    TurnContext, TurnStatus, UserChatInput,
+};
 use std::collections::HashMap;
 use std::fs;
-use deepseek_mobile_core::{
-    AgentEvent, ApprovalCardView, ApprovalSessionRuntimeStore, Config,
-    MobileEngine, ReviewDecision, RuntimeThreadStore, Session, SkillRegistry, TokenUsage,
-    TurnContext, TurnStatus, UserChatInput, TermuxExecResult,
-};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct MobileTurnUiResult {
@@ -27,6 +27,7 @@ impl MobileTurnUiResult {
 #[derive(Clone, Debug, PartialEq)]
 pub struct MobileApprovalContinuationUiResult {
     pub events: Vec<AgentEvent>,
+    pub final_text: Option<String>,
     pub executed_count: usize,
     pub session_grant_count: usize,
     pub remaining_approval_cards: Vec<ApprovalCardView>,
@@ -38,7 +39,10 @@ impl MobileApprovalContinuationUiResult {
     }
 }
 
-pub async fn run_mobile_turn(config: Config, input: UserChatInput) -> anyhow::Result<MobileTurnUiResult> {
+pub async fn run_mobile_turn(
+    config: Config,
+    input: UserChatInput,
+) -> anyhow::Result<MobileTurnUiResult> {
     run_mobile_turn_with_runtime(config, input, MobileRuntimeConfig::default()).await
 }
 
@@ -77,7 +81,8 @@ where
     F: Fn(AgentEvent) + 'static,
 {
     let store = RuntimeThreadStore::open(runtime.runtime_store_root.clone())?;
-    let approval_session_store = ApprovalSessionRuntimeStore::new(runtime.runtime_store_root.clone());
+    let approval_session_store =
+        ApprovalSessionRuntimeStore::new(runtime.runtime_store_root.clone());
     let approval_session = approval_session_store.load(&runtime.thread_id)?;
 
     // Load or create session with conversation history
@@ -106,7 +111,9 @@ where
     })
 }
 
-pub fn load_mobile_approval_cards(runtime: MobileRuntimeConfig) -> anyhow::Result<Vec<ApprovalCardView>> {
+pub fn load_mobile_approval_cards(
+    runtime: MobileRuntimeConfig,
+) -> anyhow::Result<Vec<ApprovalCardView>> {
     let store = RuntimeThreadStore::open(runtime.runtime_store_root.clone())?;
     let engine = build_engine(Config::default(), &runtime, store)?;
     engine.pending_approval_cards_for_current_thread()
@@ -121,7 +128,14 @@ pub async fn continue_mobile_approval(
     approval_id: String,
     decision: ReviewDecision,
 ) -> anyhow::Result<MobileApprovalContinuationUiResult> {
-    continue_mobile_approval_with_runtime(config, approval_id, decision, MobileRuntimeConfig::default()).await
+    continue_mobile_approval_with_runtime_and_observer(
+        config,
+        approval_id,
+        decision,
+        MobileRuntimeConfig::default(),
+        |_| {},
+    )
+    .await
 }
 
 pub async fn continue_mobile_approval_with_runtime(
@@ -130,8 +144,29 @@ pub async fn continue_mobile_approval_with_runtime(
     decision: ReviewDecision,
     runtime: MobileRuntimeConfig,
 ) -> anyhow::Result<MobileApprovalContinuationUiResult> {
+    continue_mobile_approval_with_runtime_and_observer(
+        config,
+        approval_id,
+        decision,
+        runtime,
+        |_| {},
+    )
+    .await
+}
+
+pub async fn continue_mobile_approval_with_runtime_and_observer<F>(
+    config: Config,
+    approval_id: String,
+    decision: ReviewDecision,
+    runtime: MobileRuntimeConfig,
+    on_event: F,
+) -> anyhow::Result<MobileApprovalContinuationUiResult>
+where
+    F: Fn(AgentEvent) + 'static,
+{
     let store = RuntimeThreadStore::open(runtime.runtime_store_root.clone())?;
-    let approval_session_store = ApprovalSessionRuntimeStore::new(runtime.runtime_store_root.clone());
+    let approval_session_store =
+        ApprovalSessionRuntimeStore::new(runtime.runtime_store_root.clone());
     let approval_session = approval_session_store.load(&runtime.thread_id)?;
     let pending = store.load_pending_approval(&approval_id)?;
     let turn_record = store.load_turn(&pending.turn_id)?;
@@ -154,7 +189,8 @@ pub async fn continue_mobile_approval_with_runtime(
 
     let mut engine = build_engine(config, &runtime, store)?
         .with_approval_session(approval_session)
-        .with_session(session);
+        .with_session(session)
+        .with_event_observer(on_event);
 
     let result = engine
         .continue_stored_approval(&approval_id, decision, turn)
@@ -163,13 +199,13 @@ pub async fn continue_mobile_approval_with_runtime(
 
     // Persist session history after continuation
     engine.session().save_to_file(&session_path)?;
-    let remaining_approval_cards = engine.pending_approval_cards_for_current_thread()?;
 
     Ok(MobileApprovalContinuationUiResult {
         events: result.events,
+        final_text: result.final_text,
         executed_count: result.executed.len(),
         session_grant_count: result.session_grants_created.len(),
-        remaining_approval_cards,
+        remaining_approval_cards: result.approval_cards,
     })
 }
 
@@ -178,7 +214,12 @@ pub async fn continue_mobile_termux_result(
     config: Config,
     termux_result: TermuxExecResult,
 ) -> anyhow::Result<MobileTurnUiResult> {
-    continue_mobile_termux_result_with_runtime(config, termux_result, MobileRuntimeConfig::default()).await
+    continue_mobile_termux_result_with_runtime(
+        config,
+        termux_result,
+        MobileRuntimeConfig::default(),
+    )
+    .await
 }
 
 /// Continue a turn that was paused waiting for a Termux command result,
@@ -189,7 +230,8 @@ pub async fn continue_mobile_termux_result_with_runtime(
     runtime: MobileRuntimeConfig,
 ) -> anyhow::Result<MobileTurnUiResult> {
     let store = RuntimeThreadStore::open(runtime.runtime_store_root.clone())?;
-    let approval_session_store = ApprovalSessionRuntimeStore::new(runtime.runtime_store_root.clone());
+    let approval_session_store =
+        ApprovalSessionRuntimeStore::new(runtime.runtime_store_root.clone());
     let approval_session = approval_session_store.load(&runtime.thread_id)?;
     let session_path = runtime.session_file_path();
     let session = Session::load_or_new(&runtime.thread_id, &session_path)?;
@@ -267,7 +309,10 @@ fn load_mcp_tools_for_engine() -> Vec<deepseek_mobile_core::McpToolDescriptor> {
                     Err(error) => {
                         if !declared.is_empty() {
                             let tools = tools_for_server(&config.name, &declared, Vec::new());
-                            registry.set_status(&config.name, deepseek_mobile_core::McpServerStatus::Connected);
+                            registry.set_status(
+                                &config.name,
+                                deepseek_mobile_core::McpServerStatus::Connected,
+                            );
                             registry.set_tools(&config.name, tools);
                         } else {
                             registry.set_status(
@@ -349,6 +394,7 @@ mod tests {
     fn continuation_result_reports_remaining_approvals() {
         let result = MobileApprovalContinuationUiResult {
             events: Vec::new(),
+            final_text: None,
             executed_count: 0,
             session_grant_count: 0,
             remaining_approval_cards: Vec::new(),

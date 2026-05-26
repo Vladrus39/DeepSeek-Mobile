@@ -4,14 +4,14 @@
 
 ## One sentence
 
-**DeepSeek-Mobile is a full DeepSeek coding agent on Android** — the same agent runtime as DeepSeek-TUI, with the phone as the only required device; **Termux is the primary execution backend** for real projects; **PC Host is optional** for very large repos or when the phone toolchain is not enough.
+**DeepSeek-Mobile is a full DeepSeek coding agent on Android** — a TUI-like agent workflow with the phone as the only required device; **Termux is the primary execution backend** for real projects; **PC Host is optional** for very large repos or when the phone toolchain is not enough.
 
 ## What we are building
 
 | Layer | Role |
 |-------|------|
 | **Android app** | Cockpit: chat, approvals, timeline, files, settings, health |
-| **Core (`deepseek-mobile-core`)** | Agent, tools, tool loop, snapshots, git, MCP — shared with TUI port |
+| **Core (`deepseek-mobile-core`)** | Agent, tools, tool loop, snapshots, git, MCP — TUI-parity runtime direction |
 | **Termux** | **Default “full agent” executor** on phone: shell, git, build, tests in a real project directory |
 | **Local sandbox** | Lite mode: edits, ZIP import/export, planning — not a substitute for shell |
 | **PC Host (optional)** | Remote workstation when the project outgrows the phone or you want desktop toolchains without installing them in Termux |
@@ -31,7 +31,8 @@
 | Shell / git / tests | **Yes via Termux workspace** |
 | Snapshots, diagnostics, GitHub | Yes |
 | MCP / skills | Partial (stdio on-device still maturing) |
-| Large-output routing, LSP UI | Planned (see ROADMAP) |
+| Large-output routing, repo overview | Yes |
+| LSP UI / symbol search | Planned (see ROADMAP) |
 
 ## User-facing labels
 

@@ -17,6 +17,7 @@ pub mod engine;
 pub mod events;
 pub mod executor;
 pub mod github;
+pub mod large_output;
 pub mod mcp;
 pub mod model_router;
 pub mod pc_gateway;
@@ -76,6 +77,10 @@ pub use executor::{
 };
 pub use github::{GitHubBranch, GitHubClient, GitHubCommitResult, GitHubContentEntry, GitHubFileContent,
     GitHubIssue, GitHubPullRequest, GitHubRepo, GitHubRepoInfo};
+pub use large_output::{
+    format_tool_results_message, route_tool_result_for_model, RoutedToolOutput,
+    DEFAULT_MAX_TOOL_RESULT_CHARS,
+};
 pub use mcp::{McpClientRegistry, McpServerConfig, McpServerState, McpServerStatus, McpToolDescriptor, McpTransport};
 pub use model_router::{ModelRouter, RouteDecision, TaskProfile};
 pub use pc_gateway::{

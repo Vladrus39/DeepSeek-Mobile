@@ -1,25 +1,23 @@
-mod android_host;
-#[cfg(not(target_os = "android"))]
-mod desktop_native_host;
-mod host_loop;
-mod health_panel;
-mod runtime_health;
-mod chat_quick_actions;
-#[cfg(target_os = "android")]
-mod jni_bridge;
-mod native_host_runtime;
 mod agent_event_adapter;
 mod agent_timeline;
 mod agent_timeline_panel;
+mod android_host;
 mod approval_diff_preview;
 mod attachment_ingestion;
 mod chat_attachment;
+mod chat_quick_actions;
 mod cockpit_section_panel;
+#[cfg(not(target_os = "android"))]
+mod desktop_native_host;
 mod diagnostics_panel;
 mod diagnostics_state;
 mod document_picker;
 mod git_panel;
 mod git_state;
+mod health_panel;
+mod host_loop;
+#[cfg(target_os = "android")]
+mod jni_bridge;
 mod mcp_panel;
 mod mcp_state;
 mod mobile_approval_panel;
@@ -30,6 +28,7 @@ mod mobile_runtime_config;
 mod native_bridge;
 mod native_document_picker;
 mod native_event_router;
+mod native_host_runtime;
 mod native_pc_discovery;
 mod native_termux;
 mod onboarding_panel;
@@ -41,6 +40,7 @@ mod project_files;
 mod project_files_panel;
 mod project_files_state;
 mod project_transfer_state;
+mod runtime_health;
 mod saved_timeline_loader;
 mod settings_panel;
 mod settings_state;
@@ -55,7 +55,6 @@ mod terminal_state;
 mod termux_state;
 
 use agent_event_adapter::push_agent_event;
-use host_loop::{run_host_tick, sync_bridge_from_runtime};
 use agent_timeline::MobileTimelineState;
 use agent_timeline_panel::agent_timeline_panel;
 use chat_attachment::ChatComposerState;
@@ -66,11 +65,13 @@ use diagnostics_state::DiagnosticsUiState;
 use dioxus::prelude::*;
 use document_picker::{DocumentPickerPurpose, DocumentPickerRequest, DocumentPickerState};
 use git_state::GitUiState;
+use host_loop::{run_host_tick, sync_bridge_from_runtime};
 use mcp_state::McpUiState;
 use mobile_approval_panel::mobile_approval_panel;
 use mobile_drawer::{bottom_nav_bar, mobile_drawer, CockpitSection, MobileChromeSummary};
 use mobile_engine_runner::{
-    continue_mobile_approval, load_default_mobile_approval_cards, run_mobile_turn_streaming,
+    continue_mobile_approval_with_runtime_and_observer, load_default_mobile_approval_cards,
+    run_mobile_turn_streaming, MobileApprovalContinuationUiResult,
 };
 use native_bridge::{NativeBridgeState, NativeMobileCommand, NativeMobileEvent};
 use onboarding_panel::onboarding_panel;
@@ -88,6 +89,67 @@ use termux_state::TermuxWorkspaceState;
 /// Launch the Dioxus mobile cockpit (desktop and Android).
 pub fn launch() {
     dioxus::launch(app);
+}
+
+fn apply_approval_continuation_ui(
+    result: &MobileApprovalContinuationUiResult,
+    timeline: &mut MobileTimelineState,
+    _snapshots: &mut SnapshotsUiState,
+    _diagnostics: &mut DiagnosticsUiState,
+    _native_bridge: &mut NativeBridgeState,
+    approval_cards: &mut Vec<ApprovalCardView>,
+    messages: &mut Vec<(String, String)>,
+) {
+    // Streaming approval continuation events are applied by the observer while
+    // the continuation is running. Do not replay `result.events` here, or the
+    // timeline/snapshots/native queues will duplicate every event.
+    push_agent_event(
+        timeline,
+        &AgentEvent::Status("Approval continuation finished".to_string()),
+    );
+    if let Some(final_text) = result.final_text.clone() {
+        messages.push(("assistant".to_string(), final_text));
+    }
+    *approval_cards = result.remaining_approval_cards.clone();
+}
+
+#[cfg(test)]
+mod approval_continuation_ui_tests {
+    use super::*;
+
+    #[test]
+    fn finalizer_does_not_replay_streamed_events() {
+        let result = MobileApprovalContinuationUiResult {
+            events: vec![AgentEvent::Status("already streamed".to_string())],
+            final_text: Some("done".to_string()),
+            executed_count: 0,
+            session_grant_count: 0,
+            remaining_approval_cards: Vec::new(),
+        };
+        let mut timeline = MobileTimelineState::default();
+        let mut snapshots = SnapshotsUiState::default();
+        let mut diagnostics = DiagnosticsUiState::default();
+        let mut native_bridge = NativeBridgeState::default();
+        let mut approval_cards = Vec::new();
+        let mut messages = Vec::new();
+
+        apply_approval_continuation_ui(
+            &result,
+            &mut timeline,
+            &mut snapshots,
+            &mut diagnostics,
+            &mut native_bridge,
+            &mut approval_cards,
+            &mut messages,
+        );
+
+        assert_eq!(timeline.items.len(), 1);
+        assert_eq!(timeline.items[0].body, "Approval continuation finished");
+        assert_eq!(
+            messages,
+            vec![("assistant".to_string(), "done".to_string())]
+        );
+    }
 }
 
 fn build_chrome_summary(
@@ -688,30 +750,85 @@ fn app() -> Element {
                             let config = settings_state().to_config();
                             is_loading.set(true);
                             spawn(async move {
-                                match continue_mobile_approval(config, approval_id.clone(), decision.clone()).await {
-                                    Ok(result) => {
-                                        let mut next_timeline = timeline();
-                                        push_agent_event(&mut next_timeline, &AgentEvent::Status(format!("Approval decision applied: {:?}", decision)));
-                                        let mut next_snapshots = snapshots_state();
-                                        let mut next_diagnostics = diagnostics_state();
-                                        let mut next_native_bridge = native_bridge();
-                                        for event in &result.events {
-                                            push_agent_event(&mut next_timeline, event);
-                                            next_snapshots.apply_agent_event(event);
-                                            next_diagnostics.apply_agent_event(event);
-                                            next_native_bridge.enqueue_termux_command_from_agent_event(event);
-                                            next_native_bridge.enqueue_phone_native_from_agent_event(event);
+                                let event_timeline = timeline;
+                                let event_snapshots = snapshots_state;
+                                let event_diagnostics = diagnostics_state;
+                                let event_native_bridge = native_bridge;
+                                let event_approval_cards = approval_cards;
+                                let event_messages = messages;
+                                match continue_mobile_approval_with_runtime_and_observer(
+                                    config,
+                                    approval_id.clone(),
+                                    decision.clone(),
+                                    crate::mobile_runtime_config::MobileRuntimeConfig::default(),
+                                    move |event| {
+                                        let mut timeline_signal = event_timeline;
+                                        let mut next_timeline = timeline_signal();
+                                        push_agent_event(&mut next_timeline, &event);
+                                        timeline_signal.set(next_timeline);
+
+                                        let mut snapshots_signal = event_snapshots;
+                                        let mut next_snapshots = snapshots_signal();
+                                        next_snapshots.apply_agent_event(&event);
+                                        snapshots_signal.set(next_snapshots);
+
+                                        let mut diagnostics_signal = event_diagnostics;
+                                        let mut next_diagnostics = diagnostics_signal();
+                                        next_diagnostics.apply_agent_event(&event);
+                                        diagnostics_signal.set(next_diagnostics);
+
+                                        let mut native_bridge_signal = event_native_bridge;
+                                        let mut next_native_bridge = native_bridge_signal();
+                                        let queued_termux = next_native_bridge
+                                            .enqueue_termux_command_from_agent_event(&event);
+                                        let queued_phone = next_native_bridge
+                                            .enqueue_phone_native_from_agent_event(&event);
+                                        if queued_termux || queued_phone {
+                                            native_bridge_signal.set(next_native_bridge);
                                         }
-                                        push_agent_event(&mut next_timeline, &AgentEvent::Status(format!("Executed tools: {} | session grants: {}", result.executed_count, result.session_grant_count)));
+                                    },
+                                )
+                                .await
+                                {
+                                    Ok(result) => {
+                                        let mut next_timeline = event_timeline();
+                                        let mut next_snapshots = event_snapshots();
+                                        let mut next_diagnostics = event_diagnostics();
+                                        let mut next_native_bridge = event_native_bridge();
+                                        let mut next_messages = event_messages();
+                                        let mut next_cards = event_approval_cards();
+                                        apply_approval_continuation_ui(
+                                            &result,
+                                            &mut next_timeline,
+                                            &mut next_snapshots,
+                                            &mut next_diagnostics,
+                                            &mut next_native_bridge,
+                                            &mut next_cards,
+                                            &mut next_messages,
+                                        );
+                                        push_agent_event(
+                                            &mut next_timeline,
+                                            &AgentEvent::Status(format!(
+                                                "Executed tools: {} | session grants: {}",
+                                                result.executed_count, result.session_grant_count
+                                            )),
+                                        );
                                         timeline.set(next_timeline);
                                         snapshots_state.set(next_snapshots);
                                         diagnostics_state.set(next_diagnostics);
                                         native_bridge.set(next_native_bridge);
-                                        approval_cards.set(result.remaining_approval_cards);
+                                        messages.set(next_messages);
+                                        approval_cards.set(next_cards);
                                     }
                                     Err(error) => {
-                                        let mut next_timeline = timeline();
-                                        push_agent_event(&mut next_timeline, &AgentEvent::Error(format!("Approval continuation failed: {}", error)));
+                                        let mut next_timeline = event_timeline();
+                                        push_agent_event(
+                                            &mut next_timeline,
+                                            &AgentEvent::Error(format!(
+                                                "Approval continuation failed: {}",
+                                                error
+                                            )),
+                                        );
                                         timeline.set(next_timeline);
                                     }
                                 }
@@ -749,30 +866,85 @@ fn app() -> Element {
                             let config = settings_state().to_config();
                             is_loading.set(true);
                             spawn(async move {
-                                match continue_mobile_approval(config, approval_id.clone(), decision.clone()).await {
-                                    Ok(result) => {
-                                        let mut next_timeline = timeline();
-                                        push_agent_event(&mut next_timeline, &AgentEvent::Status(format!("Approval decision applied: {:?}", decision)));
-                                        let mut next_snapshots = snapshots_state();
-                                        let mut next_diagnostics = diagnostics_state();
-                                        let mut next_native_bridge = native_bridge();
-                                        for event in &result.events {
-                                            push_agent_event(&mut next_timeline, event);
-                                            next_snapshots.apply_agent_event(event);
-                                            next_diagnostics.apply_agent_event(event);
-                                            next_native_bridge.enqueue_termux_command_from_agent_event(event);
-                                            next_native_bridge.enqueue_phone_native_from_agent_event(event);
+                                let event_timeline = timeline;
+                                let event_snapshots = snapshots_state;
+                                let event_diagnostics = diagnostics_state;
+                                let event_native_bridge = native_bridge;
+                                let event_approval_cards = approval_cards;
+                                let event_messages = messages;
+                                match continue_mobile_approval_with_runtime_and_observer(
+                                    config,
+                                    approval_id.clone(),
+                                    decision.clone(),
+                                    crate::mobile_runtime_config::MobileRuntimeConfig::default(),
+                                    move |event| {
+                                        let mut timeline_signal = event_timeline;
+                                        let mut next_timeline = timeline_signal();
+                                        push_agent_event(&mut next_timeline, &event);
+                                        timeline_signal.set(next_timeline);
+
+                                        let mut snapshots_signal = event_snapshots;
+                                        let mut next_snapshots = snapshots_signal();
+                                        next_snapshots.apply_agent_event(&event);
+                                        snapshots_signal.set(next_snapshots);
+
+                                        let mut diagnostics_signal = event_diagnostics;
+                                        let mut next_diagnostics = diagnostics_signal();
+                                        next_diagnostics.apply_agent_event(&event);
+                                        diagnostics_signal.set(next_diagnostics);
+
+                                        let mut native_bridge_signal = event_native_bridge;
+                                        let mut next_native_bridge = native_bridge_signal();
+                                        let queued_termux = next_native_bridge
+                                            .enqueue_termux_command_from_agent_event(&event);
+                                        let queued_phone = next_native_bridge
+                                            .enqueue_phone_native_from_agent_event(&event);
+                                        if queued_termux || queued_phone {
+                                            native_bridge_signal.set(next_native_bridge);
                                         }
-                                        push_agent_event(&mut next_timeline, &AgentEvent::Status(format!("Executed tools: {} | session grants: {}", result.executed_count, result.session_grant_count)));
+                                    },
+                                )
+                                .await
+                                {
+                                    Ok(result) => {
+                                        let mut next_timeline = event_timeline();
+                                        let mut next_snapshots = event_snapshots();
+                                        let mut next_diagnostics = event_diagnostics();
+                                        let mut next_native_bridge = event_native_bridge();
+                                        let mut next_messages = event_messages();
+                                        let mut next_cards = event_approval_cards();
+                                        apply_approval_continuation_ui(
+                                            &result,
+                                            &mut next_timeline,
+                                            &mut next_snapshots,
+                                            &mut next_diagnostics,
+                                            &mut next_native_bridge,
+                                            &mut next_cards,
+                                            &mut next_messages,
+                                        );
+                                        push_agent_event(
+                                            &mut next_timeline,
+                                            &AgentEvent::Status(format!(
+                                                "Executed tools: {} | session grants: {}",
+                                                result.executed_count, result.session_grant_count
+                                            )),
+                                        );
                                         timeline.set(next_timeline);
                                         snapshots_state.set(next_snapshots);
                                         diagnostics_state.set(next_diagnostics);
                                         native_bridge.set(next_native_bridge);
-                                        approval_cards.set(result.remaining_approval_cards);
+                                        messages.set(next_messages);
+                                        approval_cards.set(next_cards);
                                     }
                                     Err(error) => {
-                                        let mut next_timeline = timeline();
-                                        push_agent_event(&mut next_timeline, &AgentEvent::Error(format!("Approval continuation failed: {}", error)));
+                                        let mut next_timeline = event_timeline();
+                                        push_agent_event(
+                                            &mut next_timeline,
+                                            &AgentEvent::Error(format!(
+                                                "Approval continuation failed: {}",
+                                                error
+                                            )),
+                                        );
                                         timeline.set(next_timeline);
                                     }
                                 }

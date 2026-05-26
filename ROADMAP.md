@@ -2,7 +2,7 @@
 
 ## Vision
 
-DeepSeek-Mobile is a **full coding agent on Android** (phone-first), porting the DeepSeek-TUI runtime to Dioxus + native bridges. The phone is the cockpit; the model runs in the cloud; the Rust core manages turns, tools and approvals.
+DeepSeek-Mobile is a **full coding agent on Android** (phone-first), bringing a DeepSeek-TUI-like agent workflow to Dioxus + native bridges. The phone is the cockpit; the model runs in the cloud; the Rust core manages turns, tools and approvals.
 
 **Primary executor on device:** Termux (real shell/git/build in a project directory).  
 **Lite mode:** local app sandbox (files/patch without shell).  
@@ -86,7 +86,10 @@ Execution modes (priority):
 ## Phase 7 — Large project support
 
 - [x] Project index (workspace_files + workspace_diagnostics task detection).
-- [ ] File summaries (planned).
+- [x] Large-output routing (spill to `.deepseek-mobile/tool-output/`, preview in model context).
+- [x] `workspace_overview` tool (layout + extension counts + largest files).
+- [x] Multi-round tool follow-up loop in `MobileEngine` (model sees tool results, up to 8 rounds).
+- [x] File summaries (`file_summary` tool for README/manifests/roadmap).
 - [ ] Symbol search hooks (planned).
 - [x] Test/build diagnostics (PC-host `cargo check --message-format=json`, cargo/npm/pytest task detection).
 - [x] Snapshot/rollback (WorkspaceSnapshotService, snapshot_create/list/restore tools).

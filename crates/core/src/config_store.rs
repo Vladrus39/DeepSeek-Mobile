@@ -57,7 +57,7 @@ impl From<&Config> for PublicConfig {
 }
 
 impl PublicConfig {
-    pub fn into_config(self, secrets: AppSecrets) -> Config {
+    fn into_config(self, secrets: AppSecrets) -> Config {
         Config {
             api_key: secrets.api_key,
             model: self.model,

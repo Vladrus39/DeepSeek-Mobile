@@ -96,8 +96,7 @@ pub fn load_active_workspace_connection_from_base_dir(
     base_dir: impl AsRef<Path>,
 ) -> Result<Option<WorkspaceConnection>> {
     let store = workspace_connection_store_for_base_dir(base_dir);
-    let manager = store.load_or_default()?;
-    Ok(manager.active().cloned())
+    store.resolve_active_or_by_policy()
 }
 
 pub fn activate_default_workspace_connection(connection: WorkspaceConnection) -> Result<()> {

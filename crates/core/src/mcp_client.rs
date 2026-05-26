@@ -105,7 +105,6 @@ pub async fn invoke_mcp_tool_at_path(
     match &config.transport {
         McpTransport::Stdio { .. } => {
             let response = task::spawn_blocking({
-                let server = server.to_string();
                 let tool_name = tool_name.to_string();
                 let arguments = arguments.clone();
                 let config = config.clone();
@@ -214,21 +213,6 @@ fn invoke_stdio_tool(server: &str, tool_name: &str, arguments: Value) -> Result<
     Ok(Some(serde_json::to_string_pretty(
         &response.get("result").cloned().unwrap_or(response),
     )?))
-}
-
-async fn invoke_http_tool(server: &str, tool_name: &str, arguments: Value) -> Result<String> {
-    let registry = crate::mcp::McpClientRegistry::load_or_default(&default_mcp_path())?;
-    let config = registry
-        .servers
-        .iter()
-        .find(|entry| entry.config.name == server)
-        .ok_or_else(|| anyhow!("unknown MCP server '{}'", server))?
-        .config
-        .clone();
-    let McpTransport::HttpSse { url, headers } = config.transport else {
-        return Err(anyhow!("server '{}' is not HTTP MCP", server));
-    };
-    invoke_http_tool_with_config(&url, &headers, tool_name, arguments).await
 }
 
 async fn invoke_http_tool_with_config(

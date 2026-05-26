@@ -17,6 +17,11 @@ DeepSeek-Mobile is in active development with a coherent working core:
 - PC-host exposes a runtime HTTP task API for listing running tasks and reading per-task logs;
 - mobile Tasks panel now subscribes to live PC-host task events via SSE (`stream_task_events`) and reconciles running tasks in real-time;
 - Termux workspace selection is available in Settings and activates a persisted Termux runtime workspace;
+- after tool execution the engine re-queries the model with routed results (multi-round agent loop, cap 8);
+- approval continuation re-queries the model with streaming events and `final_text` in chat;
+- oversized tool output spills to `.deepseek-mobile/tool-output/` with a preview in-session;
+- `workspace_overview` and `file_summary` tools for repo orientation;
+- startup resolves `PreferTermux` when no active connection;
 - core ZIP workspace import/export helpers exist with traversal protection and metadata exclusion;
 - Files panel can import a picked project ZIP into the phone workspace and export/share the phone workspace as ZIP;
 - mobile UI chrome now exposes live API/PC/workspace state and dynamic badges for approvals, diagnostics, dirty Git state, running tasks and native waits;
@@ -28,7 +33,7 @@ DeepSeek-Mobile is in active development with a coherent working core:
 | Area | Current state |
 |---|---|
 | Build | Green |
-| Tests | 135 mobile / 170 core / 3 pc-host |
+| Tests | 140 mobile / 178 core / 3 pc-host |
 | Mobile settings | Saved config is loaded into live turns and approval continuations |
 | GitHub tools | Use token from saved settings first, environment variables second |
 | Pairing | Online discovery promotes an active route; “Open PC workspace” persists it |

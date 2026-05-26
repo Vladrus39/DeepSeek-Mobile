@@ -1,6 +1,6 @@
 # DeepSeek-Mobile
 
-Mobile-first **DeepSeek Coding Agent** для Android — **полноценный агент на телефоне** (тот же runtime, что DeepSeek-TUI), с **Termux** как основным executor для реальных проектов. **PC Host опционален** — для очень больших репозиториев, когда удобнее доводить работу на рабочей станции.
+Mobile-first **DeepSeek Coding Agent** для Android — **полноценный агент на телефоне** в TUI-подобной модели работы, с **Termux** как основным executor для реальных проектов. **PC Host опционален** — для очень больших репозиториев, когда удобнее доводить работу на рабочей станции.
 
 Каноническая формулировка продукта: [`docs/PRODUCT_POSITIONING.md`](docs/PRODUCT_POSITIONING.md).
 
@@ -42,7 +42,7 @@ Mobile-first **DeepSeek Coding Agent** для Android — **полноценны
 
 - JNI-связка Dioxus Android activity с `NativeBridgeBindings` и device/emulator verification
 - Финальная визуальная проверка на Android через Dioxus CLI/emulator/device
-- Полноценный MCP stdio spawn и вызов MCP tools в tool loop
+- MCP stdio session reuse и on-device verification MCP tools
 - Dev-server lifecycle, PC-host autostart/service installer
 - Android/PC-host release packaging (signed APK/installer)
 
@@ -73,7 +73,7 @@ cargo +stable-x86_64-pc-windows-msvc test --workspace
 
 - `cargo +stable-x86_64-pc-windows-msvc check --workspace --all-targets` — проходит
 - `cargo +stable-x86_64-pc-windows-msvc test --workspace` — проходит
-- Последний локальный полный прогон: 137 mobile / 170 core / 3 pc-host tests
+- Последний локальный полный прогон: 140 mobile / 178 core / 3 pc-host tests
 - Android SDK для этого репо: `tools/android/` (изолированно от `D:\Project V`)
 
 Подробности:

@@ -1421,7 +1421,7 @@ async fn run_task_handler(state: &PcHostState, task_id: &str) -> Result<PcGatewa
 
 async fn stop_task_handler(state: &PcHostState, task_id: &str) -> Result<PcGatewayResponse> {
     let mut handles = state.tasks.lock().await;
-    let Some(mut handle) = handles.remove(task_id) else {
+    let Some(handle) = handles.remove(task_id) else {
         return Ok(PcGatewayResponse::Error(PcGatewayError::new(
             "task_not_running",
             format!("task '{}' is not running", task_id),
@@ -1539,7 +1539,7 @@ async fn runtime_task_events_handler(
     let task_events = state.task_events.clone();
     tokio::spawn(async move {
         let rx_opt = {
-            let mut lock = task_events.lock().await;
+            let lock = task_events.lock().await;
             lock.as_ref().map(|sender| sender.subscribe())
         };
 

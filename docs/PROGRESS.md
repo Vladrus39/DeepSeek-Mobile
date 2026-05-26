@@ -11,7 +11,7 @@
 - Added project-local Android toolchain under `tools/android/` (~255 MB SDK slice copied from system install; no extra download).
 - Documented exact online download budget in `tools/android/DOWNLOAD_BUDGET.md` (~1.0–1.2 GB for APK on a real phone).
 - Core/mobile: encrypted `config_store`, MCP HTTP/stdio client, MCP proxy tools in engine, desktop native host execution, PC-host install scripts.
-- Full workspace tests green: **137 mobile / 170 core / 3 pc-host**.
+- Full workspace tests green: **140 mobile / 178 core / 3 pc-host**.
 
 ## Completed in earlier tranches (same sprint)
 

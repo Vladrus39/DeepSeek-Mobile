@@ -52,8 +52,8 @@ impl WorkspaceConnectionStore {
 
         let raw = fs::read_to_string(&self.path)
             .with_context(|| format!("read {}", self.path.display()))?;
-        let file: WorkspaceConnectionStoreFile = serde_json::from_str(&raw)
-            .with_context(|| format!("parse {}", self.path.display()))?;
+        let file: WorkspaceConnectionStoreFile =
+            serde_json::from_str(&raw).with_context(|| format!("parse {}", self.path.display()))?;
 
         if file.schema_version > CURRENT_CONNECTION_STORE_VERSION {
             anyhow::bail!(
@@ -64,6 +64,26 @@ impl WorkspaceConnectionStore {
         }
 
         Ok(file.manager)
+    }
+
+    /// Return the active connection if usable; otherwise pick one via `selection_policy`.
+    pub fn resolve_active_or_by_policy(
+        &self,
+    ) -> Result<Option<crate::workspace_connection::WorkspaceConnection>> {
+        let mut manager = self.load_or_default()?;
+        if manager
+            .active()
+            .is_some_and(|connection| connection.is_usable())
+        {
+            return Ok(manager.active().cloned());
+        }
+        for workspace_id in ["termux-default", "default", "sandbox"] {
+            if manager.choose_by_policy(workspace_id).is_some() {
+                self.save(&manager)?;
+                return Ok(manager.active().cloned());
+            }
+        }
+        Ok(manager.active().cloned())
     }
 
     pub fn save(&self, manager: &WorkspaceConnectionManager) -> Result<()> {
@@ -102,8 +122,46 @@ mod tests {
     fn creates_default_manual_store() {
         let store = store("default");
         let manager = store.load_or_default().unwrap();
-        assert_eq!(manager.selection_policy, WorkspaceSelectionPolicy::PreferTermux);
+        assert_eq!(
+            manager.selection_policy,
+            WorkspaceSelectionPolicy::PreferTermux
+        );
         assert!(store.path().exists());
+        let _ = fs::remove_file(store.path());
+    }
+
+    #[test]
+    fn resolve_prefers_termux_when_policy_and_no_active() {
+        use crate::workspace_connection::{
+            WorkspaceBackendKind, WorkspaceConnection, WorkspaceConnectionManager,
+            WorkspaceSelectionPolicy,
+        };
+        let store = store("resolve_termux");
+        let mut manager = WorkspaceConnectionManager::new()
+            .with_selection_policy(WorkspaceSelectionPolicy::PreferTermux);
+        manager.add_or_update(WorkspaceConnection::local_android(
+            "local",
+            "Sandbox",
+            "termux-default",
+            "Project",
+            "/data/user/0/app/files/workspace",
+        ));
+        manager.add_or_update(
+            WorkspaceConnection::termux(
+                "termux",
+                "Termux",
+                "termux-default",
+                "Project",
+                "/data/data/com.termux/files/home/project",
+            )
+            .with_status(crate::workspace_connection::WorkspaceConnectionStatus::Online),
+        );
+        manager.active_connection_id = None;
+        store.save(&manager).unwrap();
+
+        let resolved = store.resolve_active_or_by_policy().unwrap().unwrap();
+        assert_eq!(resolved.id, "termux");
+        assert_eq!(resolved.backend, WorkspaceBackendKind::Termux);
         let _ = fs::remove_file(store.path());
     }
 
@@ -123,7 +181,10 @@ mod tests {
         store.save(&manager).unwrap();
 
         let loaded = store.load_or_default().unwrap();
-        assert_eq!(loaded.selection_policy, WorkspaceSelectionPolicy::PreferLocal);
+        assert_eq!(
+            loaded.selection_policy,
+            WorkspaceSelectionPolicy::PreferLocal
+        );
         assert_eq!(loaded.active().unwrap().id, "local");
         let _ = fs::remove_file(store.path());
     }

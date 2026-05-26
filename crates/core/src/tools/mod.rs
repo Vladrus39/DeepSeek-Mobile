@@ -5,15 +5,17 @@
 //! approval requirements and a workspace-aware execution context.
 
 pub mod file_ops;
+pub mod file_summary;
 pub mod git;
 pub mod github;
 pub mod mcp_proxy;
-pub mod patch;
 pub mod open_path;
+pub mod patch;
 pub mod phone_bridge;
 pub mod shell;
 pub mod snapshots;
 pub mod web;
+pub mod workspace_overview;
 
 use crate::config::ExternalAccessMode;
 use crate::workspace::Workspace;
@@ -251,6 +253,8 @@ pub fn default_mobile_tool_registry() -> ToolRegistry {
     registry.register(Box::new(github::GitHubPushFileTool));
     registry.register(Box::new(web::WebFetchTool));
     registry.register(Box::new(web::WebSearchTool));
+    registry.register(Box::new(workspace_overview::WorkspaceOverviewTool));
+    registry.register(Box::new(file_summary::FileSummaryTool));
     registry
 }
 
@@ -300,5 +304,7 @@ mod tests {
         assert!(names.contains(&"github_browse".to_string()));
         assert!(names.contains(&"web_fetch".to_string()));
         assert!(names.contains(&"web_search".to_string()));
+        assert!(names.contains(&"workspace_overview".to_string()));
+        assert!(names.contains(&"file_summary".to_string()));
     }
 }
