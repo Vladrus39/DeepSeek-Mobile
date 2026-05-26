@@ -9,6 +9,7 @@ target/
 !tools/pc-host/bin/README.md
 
 # Project-local Android SDK copy (large; reproducible via sync-sdk-from-system.ps1)
+/tools/android/downloads/
 /tools/android/sdk/platform-tools/
 /tools/android/sdk/build-tools/
 /tools/android/sdk/platforms/
