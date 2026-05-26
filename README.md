@@ -5,6 +5,7 @@ Mobile-first **DeepSeek Coding Agent** for Android: the phone is the main cockpi
 Canonical product stance: [`docs/PRODUCT_POSITIONING.md`](docs/PRODUCT_POSITIONING.md).
 Current factual checkpoint: [`docs/CURRENT_STATE.md`](docs/CURRENT_STATE.md).
 Real device setup: [`docs/DEVICE_SETUP.md`](docs/DEVICE_SETUP.md) (`.env` debug prefill, Termux path, smoke tests).
+Windows PC install/update: [`docs/INSTALL_PC_WINDOWS.md`](docs/INSTALL_PC_WINDOWS.md).
 
 ## Current state — 2026-05-26
 
@@ -76,6 +77,41 @@ PC pairing is not file sync. It grants the phone access to a PC Host workspace. 
 
 ## Quick start
 
+### Windows PC install or update — one command
+
+Open PowerShell as Administrator and run:
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass -Force; $u='https://raw.githubusercontent.com/Vladrus39/DeepSeek-Mobile/main/scripts/setup-pc-windows.ps1'; $s="$env:TEMP\setup-pc-windows.ps1"; Invoke-WebRequest $u -OutFile $s; powershell -ExecutionPolicy Bypass -File $s
+```
+
+The same command is used later to update an existing installation to the latest `main` branch. It keeps the existing `.env` file and does not overwrite local secrets.
+
+Faster update without full tests:
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass -Force; $u='https://raw.githubusercontent.com/Vladrus39/DeepSeek-Mobile/main/scripts/setup-pc-windows.ps1'; $s="$env:TEMP\setup-pc-windows.ps1"; Invoke-WebRequest $u -OutFile $s; powershell -ExecutionPolicy Bypass -File $s -SkipTests
+```
+
+Run the desktop UI after setup:
+
+```powershell
+cd $HOME\DeepSeek-Mobile
+cargo run -p deepseek-mobile
+```
+
+Run PC Host after setup:
+
+```powershell
+cd $HOME\DeepSeek-Mobile
+$env:DEEPSEEK_PC_HOST_BIND='127.0.0.1:8787'
+$env:DEEPSEEK_PC_HOST_WORKSPACE=$PWD
+$env:DEEPSEEK_PC_HOST_TOKEN='123456789'
+cargo run -p deepseek-pc-host
+```
+
+### Android debug APK build
+
 ```powershell
 git clone https://github.com/Vladrus39/DeepSeek-Mobile.git
 cd DeepSeek-Mobile
@@ -105,6 +141,7 @@ See:
 
 - [`docs/CURRENT_STATE.md`](docs/CURRENT_STATE.md) — current checkpoint and remaining work.
 - [`docs/DEVICE_SETUP.md`](docs/DEVICE_SETUP.md) — real phone setup and smoke tests.
+- [`docs/INSTALL_PC_WINDOWS.md`](docs/INSTALL_PC_WINDOWS.md) — one-command Windows PC install/update and PC Host startup.
 - [`PROJECT_STATUS.md`](PROJECT_STATUS.md) — compact project status.
 - [`docs/PROJECT_AUDIT.md`](docs/PROJECT_AUDIT.md) — deeper audit.
 - [`docs/PROGRESS.md`](docs/PROGRESS.md) — chronological progress log.
