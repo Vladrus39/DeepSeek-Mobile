@@ -9,6 +9,7 @@ pub mod auto_commit;
 pub mod approval_session_runtime;
 pub mod chat_input;
 pub mod config;
+pub mod config_bootstrap;
 pub mod config_store;
 pub mod mcp_client;
 pub mod context;
@@ -57,6 +58,7 @@ pub use approval_session::{
 pub use approval_session_runtime::{ApprovalSessionRuntimeRecord, ApprovalSessionRuntimeStore};
 pub use chat_input::{UserAttachmentKind, UserAttachmentRef, UserChatInput};
 pub use config::{Config, ExecutionMode, ExternalAccessMode, ModelMode, ThinkingLevel};
+pub use config_bootstrap::apply_dev_api_key_bootstrap;
 pub use config_store::{ConfigStore, PublicConfig};
 pub use mcp_client::{
     connect_mcp_server, default_mcp_path, invoke_mcp_tool, invoke_mcp_tool_at_path,

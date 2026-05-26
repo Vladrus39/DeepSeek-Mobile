@@ -2,120 +2,118 @@
 
 **Audit refreshed:** 2026-05-26
 
-**Reference project:** `Hmbown/DeepSeek-TUI`
+Reference project: `Hmbown/DeepSeek-TUI`.
 
 ## Executive summary
 
-DeepSeek-Mobile has moved beyond a prototype. The project now has a real mobile-first runtime, functioning PC gateway, approvals, snapshots, diagnostics, persisted settings, Git/GitHub tooling, durable task records, task UI, MCP/skills registry surfaces, and a mostly complete cockpit UI.
+DeepSeek-Mobile is now past the previous Android startup blocker. The debug Dioxus APK builds, installs and launches on a physical Android phone. The UI renders and the crash buffer is clean after smoke launch. The latest hardware run reaches the one-screen setup with API/Agent ready and Termux path still pending; with completed setup/saved workspace state, the app opens into the main cockpit with `API OK`.
 
-The main remaining work is no longer “port the basics from the TUI.” It is now about **production closure**:
+The project has a coherent phone-first architecture:
 
-- verify and harden the final Android host adapter;
-- verify Android project import/export picker/share flow on the final host shell;
-- extend the runtime/task model with SSE/live updates;
-- add release packaging and troubleshooting material.
+- Rust core agent/runtime;
+- Dioxus mobile cockpit;
+- native Android bridge module;
+- Termux execution path as the intended phone-native full-agent backend;
+- optional PC Host for large repos and desktop toolchains.
+
+The main remaining work is production closure, not foundation work:
+
+1. manual native Android end-to-end flow verification;
+2. signed Android release packaging;
+3. PC Host release/service packaging;
+4. MCP stdio/external tool execution hardening.
 
 ## What is solidly implemented
 
 ### Runtime and safety
 
-- DeepSeek streaming with reasoning deltas
-- Session/runtime persistence
-- Approval storage and continuation
-- Workspace boundaries and tool capability gating
-- Saved mobile settings applied to real turns and approval continuations
-- GitHub token propagation from saved settings into the tool context
-- Model routing and context fitting wired into turn orchestration
+- DeepSeek streaming with reasoning deltas.
+- Session/runtime persistence.
+- Approval storage and continuation.
+- Workspace boundaries and tool capability gating.
+- Saved mobile settings applied to real turns and approval continuations.
+- GitHub token propagation from saved settings into the tool context.
+- Model routing and context fitting in turn orchestration.
 
 ### Tools and editing
 
-- File read/write/edit/delete/copy/move/list
-- `apply_patch` operation batches and unified-diff input
-- Shell, git, web, GitHub tools
-- Snapshot create/list/restore
-- Pre-tool and post-turn snapshot hooks
-- Auto-commit/push lifecycle when enabled
+- File read/write/edit/delete/copy/move/list.
+- `apply_patch` operation batches and unified-diff input.
+- Shell, git, web and GitHub tools.
+- Snapshot create/list/restore.
+- Pre-tool and post-turn snapshot hooks.
+- Auto-commit/push lifecycle when enabled.
+- Large tool-output spill to `.deepseek-mobile/tool-output/`.
+- `workspace_overview` and `file_summary` orientation tools.
 
 ### PC execution path
 
-- Authenticated PC-host gateway
-- Endpoint candidate planning, health scoring, and failover
-- Pairing ZIP generation
-- mDNS discovery
-- Command streaming
-- Git operations
-- Terminal sessions
-- Host logs and health
-- PC snapshot RPC routing
-- Background task start/stop/list RPC routing
-- Mobile PC running-task reconciliation through the Tasks panel
-- Rust / TypeScript / Python diagnostics
+- Authenticated PC Host gateway.
+- Endpoint candidate planning, health scoring and failover.
+- Pairing ZIP generation.
+- mDNS discovery.
+- Command streaming.
+- Git operations.
+- Terminal sessions.
+- Host logs and health.
+- PC snapshot RPC routing.
+- Background task start/stop/list RPC routing.
+- Mobile PC running-task reconciliation through the Tasks panel.
+- Rust / TypeScript / Python diagnostics.
 
 ### Mobile surfaces
 
-- Chat timeline and approval cards
-- Onboarding/settings
-- Files with real tree/preview, real pending diffs, and active-PC-aware browsing
-- Snapshots, diagnostics, terminal, PC host, Git, tasks, MCP, and Skills panels
-- Global mobile chrome with live API/PC status, active workspace summary and dynamic badges for approvals, diagnostics, dirty Git state, running tasks and native waits
-- Native bridge contracts for document picker, discovery, terminal, sharing, and Termux `RUN_COMMAND` execution
-- Termux result continuation from callback output back into the model turn
-- Termux workspace selector that persists and activates a runtime Termux connection
-- Core workspace ZIP import/export helpers with archive traversal protection
-- Files panel project import/export UI for the local phone workspace
-- Tasks panel PC running-task sync and stop controls
+- Chat timeline and approval cards.
+- Onboarding/settings.
+- Files with real tree/preview, real pending diffs and active-PC-aware browsing.
+- Snapshots, diagnostics, terminal, PC Host, Git, tasks, MCP and Skills panels.
+- Global mobile chrome with live API/PC status, active workspace summary and dynamic badges.
+- Native bridge contracts for document picker, discovery, terminal, sharing and Termux `RUN_COMMAND`.
+- Termux result continuation from callback output back into the model turn.
+- Termux workspace selector that persists and activates a runtime Termux connection.
+- Core workspace ZIP import/export helpers with archive traversal protection.
+- Files panel project import/export UI for the local phone workspace.
+- Tasks panel PC running-task sync and stop controls.
 
-## Important improvements completed in the latest tranche
+### Android packaging/startup
 
-1. **Later-phase local commits were audited before continuing.**
+- Dioxus Android host activity is present.
+- Kotlin bridge module is packaged into Dioxus builds through `manganis`.
+- JNI exports match the Kotlin bridge package.
+- Native bridge loads `libmain.so` correctly for Dioxus.
+- Custom manifest prevents the observed startup/config-change crash.
+- Android adaptive launcher icon resources are present.
+- Android data directory is initialized under app-private storage before Dioxus UI startup.
+- Debug `.env` API-key prefill is available for hardware testing and disabled for release builds.
+- MCP startup no longer blocks an active Tokio runtime during render.
+- `reqwest` uses rustls for Android compatibility.
 
-   The local branch already contained durable tasks, task UI, PC snapshot routing, remote-aware Files, MCP/skills UI and terminal persistence work. The audit avoided duplicating those features.
+## Latest checkpoint fixes
 
-2. **Termux workspace selection now activates a real backend.**
-
-   The Settings panel now validates an absolute Termux path, persists it, and activates a `WorkspaceConnection` so future turns can route execution through Termux. Saved configs are revalidated on load instead of being trusted blindly.
-
-3. **Core workspace import/export helpers were added and hardened.**
-
-   ZIP import/export now exists in core. Import rejects parent traversal, absolute paths, Windows drive prefixes and backslash traversal. Export emits portable ZIP entry names and excludes `.deepseek-mobile` metadata.
-
-4. **Files panel project import/export UI was added.**
-
-   Import ZIP now queues the Android archive picker, uses the returned local sandbox archive copy, imports it into the phone workspace, and refreshes the local Files view. Export ZIP creates a shareable archive under `.deepseek-mobile/exports/` and queues native share.
-
-5. **`apply_patch` now accepts unified diffs.**
-
-   The tool still uses the safe operation model internally, but callers can now provide standard unified diff text through `unified_diff` or `patch`. PC-gateway routing normalizes the same input before remote execution.
-
-6. **PC-aware Files routing was hardened.**
-
-   The Files panel now passes the active `WorkspaceConnection.workspace_id` into PC-gateway file reads/lists instead of accidentally using the display root as the workspace id.
-
-7. **Terminal UI-state persistence was made safer.**
-
-   Saved terminal sessions load only once, save directories are created, restored sessions come back closed, and output truncation reports the real dropped-line count.
-
-8. **PC running-task reconciliation was wired into the mobile UI.**
-
-   The Tasks panel now calls the active PC Host `ListTasks` route, displays PC-running work separately from local durable records, reconciles duplicate ids for cockpit badges, and can send `StopTask` for active PC processes.
-
-9. **Documentation was brought back in sync.**
-
-   README, project status, roadmap, core status, progress log and master plan now reflect completed PC snapshots, tasks, artifacts/logs, runtime task HTTP API, PC task reconciliation, MCP/skills, Termux continuation, Termux workspace activation, project import/export UI, remote Files and unified-diff work.
+| Issue | Fix |
+|---|---|
+| APK crashed looking for `libdeepseek_mobile.so` | Load Dioxus `libmain.so` first |
+| JNI callbacks did not match Kotlin package | Exports renamed to `Java_com_deepseek_mobile_bridge_NativeBridge_*` |
+| Activity restart caused native mutex crash | Custom manifest handles full config changes including `assetsPaths` |
+| Android OpenSSL dependency risk | Workspace `reqwest` switched to `rustls-tls` |
+| Bridge module missing from generated Dioxus APK | Added `manganis::ffi("../../android/bridge")` metadata |
+| App-private data path not initialized for Android | JNI initializes `<filesDir>/deepseek-mobile/` before UI startup |
+| Debug device testing required manual key paste every reinstall | Optional debug `.env` prefill; release builds ignore it |
+| Main cockpit panicked after API bootstrap | Removed runtime `block_on` from synchronous MCP tool loading |
+| Missing app icon/favicon | Added adaptive icon resources and SVG favicon |
 
 ## Partial implementations that still need completion
 
 | Area | Current reality | What remains |
 |---|---|---|
-| Android host | Rust/Kotlin/JNI/coordinator/`MainActivity` in-repo; local SDK in `tools/android/` | `dx`+NDK install and emulator/device verification |
-| Visual UI verification | Cockpit screens and dynamic chrome exist; code-level checks pass | Real Android render/touch verification after `dx`+NDK install (`tools/android/DOWNLOAD_BUDGET.md`) |
-| Termux | Native request queue, callback correlation, model continuation and Settings workspace activation exist | Final Android host verification |
-| Android files | Chat attachment ingestion, core ZIP import/export helpers and Files panel import/export UI exist | Final native picker/share device verification |
-| Terminal | PC-host sessions and persisted mobile UI history exist | Live terminal process resurrection is not claimed; service-level behavior can be improved later |
-| Durable tasks | Core records, queue lifecycle, artifacts/logs, PC task RPCs, mobile UI and live SSE subscription exist | — |
-| MCP/skills | Registry/config/UI/context surfaces exist | Actual external MCP tool execution must be added carefully behind approval/workspace boundaries |
-| Runtime API | PC-host HTTP task list/log endpoints + SSE/live event streaming exist | — |
-| Packaging | Development flow works | Android release notes, PC-host binary/service notes and troubleshooting docs |
+| Android host | APK builds and launch smoke passes on hardware | Full picker/share/Termux/PC-discovery manual checklist |
+| Visual UI | Cockpit/onboarding render path verified | Full touch-flow walkthrough and polish |
+| Termux | Native request queue, callback correlation and model continuation exist | Permission/setup test with real Termux and safe command |
+| Android files | Chat attachment, import/export and share plumbing exist | Hardware picker/share verification |
+| Terminal | PC-host sessions and persisted mobile UI history exist | Live process resurrection after restart is not claimed |
+| Durable tasks | Records, queue lifecycle, artifacts/logs, RPCs, UI and SSE subscription exist | No major known gap |
+| MCP/skills | Registry/config/UI/context and proxy surfaces exist | Long-lived stdio reuse and external execution behind approvals |
+| Packaging | Debug Android build works | Signed APK/AAB and PC Host release packaging |
 
 ## Comparison with DeepSeek-TUI
 
@@ -125,22 +123,24 @@ The main remaining work is no longer “port the basics from the TUI.” It is n
 | Approval workflow | Done |
 | File editing | Done |
 | Patch application | Done, including unified diff compatibility |
-| Shell execution | PC-host done; Termux Rust/mobile continuation done; final Android host verification pending |
+| Shell execution | PC Host done; Termux bridge built; Termux hardware callback verification pending |
 | Git tooling | Core, PC routing, mobile panel actions and auto-commit lifecycle done |
 | Web/GitHub tools | Done in core |
 | Diagnostics | Providers and model reinjection done |
 | Snapshots | Local and PC-gateway paths done |
-| Runtime API | Done: PC-host task list/log HTTP endpoints + SSE/live events |
-| Durable tasks | Done: records/queue/UI/RPC/artifacts/logs and live SSE task-event subscription |
+| Runtime API | PC Host task list/log HTTP endpoints plus SSE/live events done |
+| Durable tasks | Records/queue/UI/RPC/artifacts/logs and live task-event subscription done |
 | MCP/skills/plugins | Partial: registry/config/UI/context surfaces done; external tool execution pending |
-| Android-native execution | Partial: contracts done, final host adapter pending |
+| Android-native execution | Startup/build verified; deeper native flows pending |
 
 ## Recommended next execution order
 
-1. Emulator/device verification after NDK + `dx` install (host adapter code is in-repo).
-2. Final Android picker/share/Termux device verification.
-3. Dev-server lifecycle, PC-host service/autostart and release/troubleshooting docs.
+1. Run the native Android manual verification checklist on the connected phone.
+2. Fix any issues found in picker/import/export/share/Termux/PC-discovery flows.
+3. Add release signing and produce signed APK/AAB.
+4. Package PC Host binaries and optional service/autostart installer.
+5. Finish MCP stdio session reuse and external MCP execution behind approvals.
 
 ## Audit conclusion
 
-The project is architecturally coherent. The main risk is now **capability drift**: implemented subsystems can become misleading if docs/UI claim more than the runtime really verifies. The right strategy is to keep closing vertical slices with tests, documentation and GitHub synchronization at each stable checkpoint.
+The architecture is still aligned with the initial goal: phone-first coding agent, Termux as the main phone executor, optional PC Host for scale. The project has not drifted into “PC required.” The remaining risk is claiming full production readiness before the deeper native flows are verified on hardware.

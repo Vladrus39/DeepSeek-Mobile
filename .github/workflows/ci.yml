@@ -59,3 +59,11 @@ jobs:
           grep -q "com.termux.permission.RUN_COMMAND" android/bridge/src/main/AndroidManifest.xml
           test -f android/bridge/src/main/kotlin/com/deepseek/mobile/bridge/DeepSeekMobileHostCoordinator.kt
           grep -q "NativeBridgeBindings" android/bridge/src/main/kotlin/com/deepseek/mobile/bridge/DeepSeekMobileHostCoordinator.kt
+          test -f android/bridge/src/main/kotlin/com/deepseek/mobile/bridge/NativeBridge.kt
+          grep -q 'System.loadLibrary("main")' android/bridge/src/main/kotlin/com/deepseek/mobile/bridge/NativeBridge.kt
+          grep -q 'initMobileDataDir' android/bridge/src/main/kotlin/com/deepseek/mobile/bridge/NativeBridge.kt
+          test -f android/bridge/src/main/kotlin/com/deepseek/mobile/bridge/TermuxResultReceiver.kt
+          test -f android/AndroidManifest.xml
+          grep -q 'assetsPaths' android/AndroidManifest.xml
+          grep -q '@mipmap/deepseek_launcher' android/AndroidManifest.xml
+          test -f android/bridge/src/main/res/mipmap-anydpi-v26/deepseek_launcher.xml

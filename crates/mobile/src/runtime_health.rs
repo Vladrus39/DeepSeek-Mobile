@@ -1,6 +1,7 @@
 //! Aggregated runtime health for the cockpit health panel.
 
 use crate::mcp_state::McpUiState;
+use crate::mobile_runtime_config::default_data_dir;
 use crate::native_bridge::NativeBridgeState;
 use crate::pc_pairing_state::PcPairingUiState;
 use crate::settings_state::SettingsFormState;
@@ -24,6 +25,7 @@ pub struct RuntimeHealthSnapshot {
     pub network_hints: Vec<String>,
     /// API + valid Termux path — full agent on phone without PC.
     pub full_agent_on_phone_ready: bool,
+    pub data_dir_display: String,
 }
 
 impl RuntimeHealthSnapshot {
@@ -34,7 +36,8 @@ impl RuntimeHealthSnapshot {
         mcp: &McpUiState,
         bridge: &NativeBridgeState,
     ) -> Self {
-        let api_configured = !settings.api_key.trim().is_empty() && settings.api_key.trim().starts_with("sk-");
+        let api_configured =
+            !settings.api_key.trim().is_empty() && settings.api_key.trim().starts_with("sk-");
         let pc_online = pc
             .active_endpoint
             .as_ref()
@@ -55,11 +58,21 @@ impl RuntimeHealthSnapshot {
         let pc_status_label = match &pc.status {
             crate::pc_pairing_state::PcPairingUiStatus::Online => "Online".to_string(),
             crate::pc_pairing_state::PcPairingUiStatus::Offline => "Offline".to_string(),
-            crate::pc_pairing_state::PcPairingUiStatus::WaitingForPc => "Waiting for PC host".to_string(),
-            crate::pc_pairing_state::PcPairingUiStatus::Exported => "Bundle exported — start PC host".to_string(),
-            crate::pc_pairing_state::PcPairingUiStatus::ReadyToExport => "Ready to export pairing".to_string(),
-            crate::pc_pairing_state::PcPairingUiStatus::NotConfigured => "Not configured".to_string(),
-            crate::pc_pairing_state::PcPairingUiStatus::Error(message) => format!("Error: {message}"),
+            crate::pc_pairing_state::PcPairingUiStatus::WaitingForPc => {
+                "Waiting for PC host".to_string()
+            }
+            crate::pc_pairing_state::PcPairingUiStatus::Exported => {
+                "Bundle exported — start PC host".to_string()
+            }
+            crate::pc_pairing_state::PcPairingUiStatus::ReadyToExport => {
+                "Ready to export pairing".to_string()
+            }
+            crate::pc_pairing_state::PcPairingUiStatus::NotConfigured => {
+                "Not configured".to_string()
+            }
+            crate::pc_pairing_state::PcPairingUiStatus::Error(message) => {
+                format!("Error: {message}")
+            }
         };
 
         let native_pending = bridge.has_pending_commands()
@@ -78,7 +91,9 @@ impl RuntimeHealthSnapshot {
                 "Full agent on phone: install Termux, set allow-external-apps, then save a valid project path in Settings (e.g. /data/data/com.termux/files/home/project).".to_string(),
             );
         } else if !full_agent_on_phone_ready {
-            recommendations.push("Complete API key and Termux path to unlock the full on-device agent.".to_string());
+            recommendations.push(
+                "Complete API key and Termux path to unlock the full on-device agent.".to_string(),
+            );
         }
         if termux_valid && pc_workspace_active && !pc_online {
             recommendations.push(
@@ -90,10 +105,15 @@ impl RuntimeHealthSnapshot {
             );
         }
         if mcp_servers_total > 0 && mcp_servers_connected == 0 {
-            recommendations.push("MCP servers are configured but none are connected — open MCP panel and connect.".to_string());
+            recommendations.push(
+                "MCP servers are configured but none are connected — open MCP panel and connect."
+                    .to_string(),
+            );
         }
         if settings.execution_mode == ExecutionMode::Plan {
-            recommendations.push("Plan mode is on — tools will not run until you switch to Agent mode.".to_string());
+            recommendations.push(
+                "Plan mode is on — tools will not run until you switch to Agent mode.".to_string(),
+            );
         }
 
         let network_hints = if pc_workspace_active {
@@ -121,6 +141,7 @@ impl RuntimeHealthSnapshot {
             recommendations,
             network_hints,
             full_agent_on_phone_ready,
+            data_dir_display: default_data_dir().display().to_string(),
         }
     }
 
@@ -154,8 +175,10 @@ mod tests {
 
     #[test]
     fn recommends_api_key_when_missing() {
+        let mut settings = SettingsFormState::default();
+        settings.api_key.clear();
         let snapshot = RuntimeHealthSnapshot::collect(
-            &SettingsFormState::default(),
+            &settings,
             &PcPairingUiState::default(),
             &TermuxWorkspaceState::default(),
             &McpUiState::default(),

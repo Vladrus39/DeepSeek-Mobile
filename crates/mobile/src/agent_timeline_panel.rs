@@ -2,17 +2,23 @@ use crate::agent_timeline::{
     timeline_kind_label, timeline_status_label, MobileTimelineItem, MobileTimelineItemKind,
     MobileTimelineItemStatus, MobileTimelineState,
 };
+use crate::locale::{pick, AppLanguage};
 use dioxus::prelude::*;
 
-pub fn agent_timeline_panel(timeline: &MobileTimelineState) -> Element {
+pub fn agent_timeline_panel(lang: AppLanguage, timeline: &MobileTimelineState) -> Element {
     if timeline.is_empty() {
+        let empty_hint = pick(
+            lang,
+            "Попросите DeepSeek собрать, проверить, исправить или развернуть проект.\nЗдесь появятся действия агента, вызовы инструментов и одобрения.",
+            "Ask DeepSeek to build, inspect, fix, test or deploy a project.\nAgent actions, tool calls and approvals will appear here.",
+        );
         return rsx! {
             div {
                 color: "#9ca3af",
                 text_align: "center",
                 margin_top: "32px",
                 white_space: "pre-wrap",
-                "Ask DeepSeek to build, inspect, fix, test or deploy a project.\nAgent actions, tool calls and approvals will appear here."
+                "{empty_hint}"
             }
         };
     }
@@ -137,13 +143,19 @@ fn status_color(status: &MobileTimelineItemStatus) -> &'static str {
 
 #[cfg(test)]
 mod tests {
-    use super::{item_badge_color, item_background, item_border};
+    use super::{item_background, item_badge_color, item_border};
     use crate::agent_timeline::{MobileTimelineItemKind, MobileTimelineItemStatus};
 
     #[test]
     fn timeline_styles_cover_core_kinds() {
-        assert_eq!(item_badge_color(&MobileTimelineItemKind::ToolCall), "#7c3aed");
+        assert_eq!(
+            item_badge_color(&MobileTimelineItemKind::ToolCall),
+            "#7c3aed"
+        );
         assert_eq!(item_background(&MobileTimelineItemKind::Error), "#7f1d1d");
-        assert_eq!(item_border(&MobileTimelineItemStatus::WaitingForApproval), "1px solid #ca8a04");
+        assert_eq!(
+            item_border(&MobileTimelineItemStatus::WaitingForApproval),
+            "1px solid #ca8a04"
+        );
     }
 }

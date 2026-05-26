@@ -1,36 +1,57 @@
+use crate::locale::{pick, save_ui_language, tr, AppLanguage, Tr};
 use crate::settings_state::{save_config, SettingsFormState};
 use crate::termux_state::TermuxWorkspaceState;
+use crate::ui_layout::screen_layout;
 use deepseek_mobile_core::config::{ExecutionMode, ExternalAccessMode, ModelMode, ThinkingLevel};
 use dioxus::prelude::*;
 
 pub fn settings_panel(
+    mut lang: Signal<AppLanguage>,
     mut state: Signal<SettingsFormState>,
     mut termux_state: Signal<TermuxWorkspaceState>,
 ) -> Element {
     let s = state();
+    let l = lang();
+    let layout = screen_layout();
+    let msg_termux_saved = pick(l, "Конфиг Termux сохранён.", "Termux config saved.");
+    let msg_settings_saved = pick(
+        l,
+        "Настройки сохранены локально.",
+        "Settings saved to local storage.",
+    );
+    let btn_save_settings = pick(l, "Сохранить настройки", "Save settings");
 
     rsx! {
         div {
-            background_color: "#111827",
-            color: "white",
-            border: "1px solid #374151",
-            border_radius: "16px",
-            padding: "16px",
-            display: "flex",
-            flex_direction: "column",
-            gap: "14px",
+            style: "background:#111827;color:white;border:1px solid #374151;border-radius:16px;padding:clamp(12px,3vw,16px);display:flex;flex-direction:column;gap:clamp(10px,2.5vw,14px);max-width:100%;box-sizing:border-box;",
 
             div {
-                font_size: "18px",
-                font_weight: "bold",
-                "Settings"
+                style: "font-size:{layout.header_title_font};font-weight:bold;",
+                "{tr(lang(), Tr::SettingsTitle)}"
+            }
+
+            div {
+                style: "display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;",
+                span {
+                    style: "font-size:{layout.body_font};font-weight:bold;",
+                    "{tr(lang(), Tr::SettingsLanguage)}"
+                }
+                button {
+                    style: "background:#1f2937;color:#e5e7eb;border:1px solid #4b5563;border-radius:999px;padding:6px 14px;font-size:{layout.body_font};min-height:44px;min-width:44px;",
+                    onclick: move |_| {
+                        let next = lang().toggle();
+                        lang.set(next);
+                        let _ = save_ui_language(next);
+                    },
+                    "{lang().label()}"
+                }
             }
 
             // ── DeepSeek API ──
-            SectionCard { title: "DeepSeek API" }
+            SectionCard { title: pick(l, "DeepSeek API", "DeepSeek API").to_string() }
             LabeledField {
-                label: "API Key",
-                help: "Your DeepSeek API key (starts with sk-…).",
+                label: pick(l, "Ключ API", "API Key").to_string(),
+                help: pick(l, "Ключ DeepSeek (начинается с sk-…). Хранится только на устройстве.", "Your DeepSeek API key (starts with sk-…).").to_string(),
                 value: s.api_key.clone(),
                 password: true,
                 oninput: move |v: String| {
@@ -41,15 +62,15 @@ pub fn settings_panel(
             }
 
             // ── Model & Execution ──
-            SectionCard { title: "Model & Execution" }
+            SectionCard { title: pick(l, "Модель и режим", "Model & Execution").to_string() }
 
             SelectField {
-                label: "Model",
+                label: pick(l, "Модель", "Model").to_string(),
                 value: model_mode_key(&s.model_mode),
                 options: vec![
-                    ("auto".to_string(), "Auto (Flash for simple, Pro for complex)".to_string()),
-                    ("flash".to_string(), "V4 Flash (fast, cheap)".to_string()),
-                    ("pro".to_string(), "V4 Pro (deep reasoning)".to_string()),
+                    ("auto".to_string(), pick(l, "Авто (Flash простое, Pro сложное)", "Auto (Flash for simple, Pro for complex)").to_string()),
+                    ("flash".to_string(), pick(l, "V4 Flash (быстро, дёшево)", "V4 Flash (fast, cheap)").to_string()),
+                    ("pro".to_string(), pick(l, "V4 Pro (глубокий разбор)", "V4 Pro (deep reasoning)").to_string()),
                 ],
                 onchange: move |v: String| {
                     let mut next = state();
@@ -63,12 +84,12 @@ pub fn settings_panel(
             }
 
             SelectField {
-                label: "Execution mode",
+                label: pick(l, "Режим выполнения", "Execution mode").to_string(),
                 value: execution_mode_key(&s.execution_mode),
                 options: vec![
-                    ("agent".to_string(), "Agent — propose + ask approval".to_string()),
-                    ("plan".to_string(), "Plan — think only, no tools".to_string()),
-                    ("yolo".to_string(), "YOLO — auto-approve safe tools".to_string()),
+                    ("agent".to_string(), pick(l, "Agent — предложить и спросить", "Agent — propose + ask approval").to_string()),
+                    ("plan".to_string(), pick(l, "Plan — только думать", "Plan — think only, no tools").to_string()),
+                    ("yolo".to_string(), pick(l, "YOLO — авто-одобрение", "YOLO — auto-approve safe tools").to_string()),
                 ],
                 onchange: move |v: String| {
                     let mut next = state();
@@ -82,14 +103,14 @@ pub fn settings_panel(
             }
 
             SelectField {
-                label: "Thinking level",
+                label: pick(l, "Уровень размышления", "Thinking level").to_string(),
                 value: thinking_level_key(&s.thinking_level),
                 options: vec![
-                    ("off".to_string(), "Off".to_string()),
-                    ("low".to_string(), "Low".to_string()),
-                    ("medium".to_string(), "Medium".to_string()),
-                    ("high".to_string(), "High".to_string()),
-                    ("max".to_string(), "Max".to_string()),
+                    ("off".to_string(), pick(l, "Выкл", "Off").to_string()),
+                    ("low".to_string(), pick(l, "Низкий", "Low").to_string()),
+                    ("medium".to_string(), pick(l, "Средний", "Medium").to_string()),
+                    ("high".to_string(), pick(l, "Высокий", "High").to_string()),
+                    ("max".to_string(), pick(l, "Макс", "Max").to_string()),
                 ],
                 onchange: move |v: String| {
                     let mut next = state();
@@ -105,12 +126,12 @@ pub fn settings_panel(
             }
 
             SelectField {
-                label: "External access",
+                label: pick(l, "Внешний доступ", "External access").to_string(),
                 value: external_access_key(&s.external_access),
                 options: vec![
-                    ("workspace_only".to_string(), "Workspace only".to_string()),
-                    ("ask_every_time".to_string(), "Ask every time".to_string()),
-                    ("allowed_by_grant".to_string(), "Allowed by user grant".to_string()),
+                    ("workspace_only".to_string(), pick(l, "Только workspace", "Workspace only").to_string()),
+                    ("ask_every_time".to_string(), pick(l, "Спрашивать каждый раз", "Ask every time").to_string()),
+                    ("allowed_by_grant".to_string(), pick(l, "По явному разрешению", "Allowed by user grant").to_string()),
                 ],
                 onchange: move |v: String| {
                     let mut next = state();
@@ -125,8 +146,8 @@ pub fn settings_panel(
 
             if matches!(s.external_access, ExternalAccessMode::AllowedByUserGrant) {
                 LabeledField {
-                    label: "Trusted paths (one per line)",
-                    help: "Absolute paths outside the workspace the agent may read/write when grant mode is on (PC paths when paired, phone paths in sandbox).",
+                    label: pick(l, "Доверенные пути (по одному на строку)", "Trusted paths (one per line)").to_string(),
+                    help: pick(l, "Абсолютные пути вне workspace при режиме grant (PC при сопряжении, песочница на телефоне).", "Absolute paths outside the workspace the agent may read/write when grant mode is on (PC paths when paired, phone paths in sandbox).").to_string(),
                     value: s.trusted_external_paths.clone(),
                     password: false,
                     oninput: move |v: String| {
@@ -138,11 +159,11 @@ pub fn settings_panel(
             }
 
             // ── GitHub Integration ──
-            SectionCard { title: "GitHub Integration" }
+            SectionCard { title: pick(l, "Интеграция GitHub", "GitHub Integration").to_string() }
 
             LabeledField {
-                label: "GitHub Token",
-                help: "Personal access token (repo scope). Leave empty to skip GitHub features.",
+                label: pick(l, "Токен GitHub", "GitHub Token").to_string(),
+                help: pick(l, "Personal access token (repo). Пусто — без GitHub.", "Personal access token (repo scope). Leave empty to skip GitHub features.").to_string(),
                 value: s.github_token.clone(),
                 password: true,
                 oninput: move |v: String| {
@@ -153,8 +174,8 @@ pub fn settings_panel(
             }
 
             LabeledField {
-                label: "Repository",
-                help: "e.g. Vladrus39/DeepSeek-Mobile",
+                label: pick(l, "Репозиторий", "Repository").to_string(),
+                help: pick(l, "например Vladrus39/DeepSeek-Mobile", "e.g. Vladrus39/DeepSeek-Mobile").to_string(),
                 value: s.github_repo.clone(),
                 password: false,
                 oninput: move |v: String| {
@@ -165,8 +186,8 @@ pub fn settings_panel(
             }
 
             LabeledField {
-                label: "Default branch",
-                help: "e.g. main",
+                label: pick(l, "Ветка по умолчанию", "Default branch").to_string(),
+                help: pick(l, "например main", "e.g. main").to_string(),
                 value: s.github_branch.clone(),
                 password: false,
                 oninput: move |v: String| {
@@ -177,7 +198,7 @@ pub fn settings_panel(
             }
 
             ToggleField {
-                label: "Auto commit & push after turn",
+                label: pick(l, "Авто commit и push после хода", "Auto commit & push after turn").to_string(),
                 checked: s.auto_commit_push,
                 onchange: move |v: bool| {
                     let mut next = state();
@@ -187,7 +208,7 @@ pub fn settings_panel(
             }
 
             // ── Termux workspace ──
-            SectionCard { title: "Termux Workspace" }
+            SectionCard { title: pick(l, "Рабочая область Termux", "Termux Workspace").to_string() }
 
             {
                 let tws = termux_state.read();
@@ -196,11 +217,16 @@ pub fn settings_panel(
                 let tws_err = tws.validation_error.clone();
                 let tws_saved = tws.saved;
                 let tws_is_valid = tws.is_valid();
+                let btn_termux_label = if tws_is_valid {
+                    pick(l, "Сохранить и активировать Termux", "Save and activate Termux workspace")
+                } else {
+                    pick(l, "Введите путь Termux", "Enter Termux workspace path")
+                };
 
                 rsx! {
                     LabeledField {
-                        label: "Workspace path",
-                        help: "Absolute path in Termux, e.g. /data/data/com.termux/files/home/project",
+                        label: pick(l, "Путь workspace", "Workspace path").to_string(),
+                        help: pick(l, "Абсолютный путь в Termux, напр. /data/data/com.termux/files/home/project", "Absolute path in Termux, e.g. /data/data/com.termux/files/home/project").to_string(),
                         value: tws_path.clone(),
                         password: false,
                         oninput: move |v: String| {
@@ -208,8 +234,8 @@ pub fn settings_panel(
                         },
                     }
                     LabeledField {
-                        label: "Label (optional)",
-                        help: "Human-readable name for this workspace",
+                        label: pick(l, "Метка (необязательно)", "Label (optional)").to_string(),
+                        help: pick(l, "Понятное имя рабочей области", "Human-readable name for this workspace").to_string(),
                         value: tws_label.clone(),
                         password: false,
                         oninput: move |v: String| {
@@ -233,7 +259,7 @@ pub fn settings_panel(
                         div {
                             font_size: "11px",
                             color: "#6b7280",
-                            "Termux config saved."
+                            "{msg_termux_saved}"
                         }
                     }
 
@@ -250,7 +276,7 @@ pub fn settings_panel(
                         onclick: move |_| {
                             termux_state.write().save();
                         },
-                        if tws_is_valid { "Save and activate Termux workspace" } else { "Enter Termux workspace path" }
+                        "{btn_termux_label}"
                     }
                 }
             }
@@ -264,7 +290,7 @@ pub fn settings_panel(
                     padding: "10px",
                     font_size: "14px",
                     color: "white",
-                    "Settings saved to local storage."
+                    "{msg_settings_saved}"
                 }
             }
             if let Some(error) = &s.save_error {
@@ -301,7 +327,7 @@ pub fn settings_panel(
                     }
                     state.set(next);
                 },
-                "Save settings"
+                "{btn_save_settings}"
             }
         }
     }
@@ -476,4 +502,3 @@ fn external_access_key(mode: &ExternalAccessMode) -> String {
         ExternalAccessMode::AllowedByUserGrant => "allowed_by_grant".to_string(),
     }
 }
-

@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 108" role="img" aria-label="DeepSeek Mobile">
+  <rect width="108" height="108" rx="24" fill="#08111F"/>
+  <path d="M54 20 82 36v36L54 88 26 72V36Z" fill="none" stroke="#4EA1FF" stroke-width="4.5" stroke-linejoin="round"/>
+  <path d="M41 42 30 54l11 12M67 42l11 12-11 12" fill="none" stroke="#55E6C1" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="m58 38-8 32" fill="none" stroke="#EAF6FF" stroke-width="4" stroke-linecap="round"/>
+  <circle cx="54" cy="80" r="3.2" fill="#55E6C1"/>
+</svg>

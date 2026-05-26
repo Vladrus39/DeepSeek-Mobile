@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="deepseek_icon_bg">#08111F</color>
+    <color name="deepseek_icon_accent">#55E6C1</color>
+    <color name="deepseek_icon_blue">#4EA1FF</color>
+    <color name="deepseek_icon_ink">#EAF6FF</color>
+</resources>

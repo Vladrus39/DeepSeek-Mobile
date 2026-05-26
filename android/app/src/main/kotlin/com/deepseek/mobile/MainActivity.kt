@@ -7,7 +7,11 @@ import android.os.Handler
 import android.os.Looper
 import androidx.activity.ComponentActivity
 import com.deepseek.mobile.bridge.DeepSeekMobileHostCoordinator
+import com.deepseek.mobile.bridge.NativeBridge as BridgeNativeBridge
 import com.deepseek.mobile.bridge.NativeBridgeBindings
+import com.deepseek.mobile.bridge.NativeBridge as BridgeNativeBridgeInit
+import com.deepseek.mobile.bridge.TermuxResultReceiver as BridgeTermuxResultReceiver
+import java.io.File
 
 /**
  * Standalone Gradle launcher (without Dioxus WebView). For production APK use
@@ -26,6 +30,9 @@ class MainActivity : ComponentActivity(), NativeBridgeBindings {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        val dataDir = File(filesDir, "deepseek-mobile")
+        dataDir.mkdirs()
+        BridgeNativeBridgeInit.initMobileDataDir(dataDir.absolutePath)
         super.onCreate(savedInstanceState)
         hostCoordinator = DeepSeekMobileHostCoordinator.create(
             activity = this,
@@ -34,8 +41,8 @@ class MainActivity : ComponentActivity(), NativeBridgeBindings {
                 PendingIntent.getBroadcast(
                     this,
                     requestId.hashCode(),
-                    Intent(this, TermuxResultReceiver::class.java).apply {
-                        putExtra(TermuxResultReceiver.EXTRA_REQUEST_ID, requestId)
+                    Intent(this, BridgeTermuxResultReceiver::class.java).apply {
+                        putExtra(BridgeTermuxResultReceiver.EXTRA_REQUEST_ID, requestId)
                     },
                     PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE,
                 )
@@ -54,10 +61,10 @@ class MainActivity : ComponentActivity(), NativeBridgeBindings {
         super.onPause()
     }
 
-    override fun pollNextHostActionJson(): String? = NativeBridge.pollNextHostActionJson()
+    override fun pollNextHostActionJson(): String? = BridgeNativeBridge.pollNextHostActionJson()
 
     override fun deliverHostCallbackJson(payload: String) {
-        NativeBridge.deliverHostCallbackJson(payload)
+        BridgeNativeBridge.deliverHostCallbackJson(payload)
     }
 
     companion object {

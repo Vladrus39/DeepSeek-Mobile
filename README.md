@@ -1,89 +1,116 @@
 # DeepSeek-Mobile
 
-Mobile-first **DeepSeek Coding Agent** для Android — **полноценный агент на телефоне** в TUI-подобной модели работы, с **Termux** как основным executor для реальных проектов. **PC Host опционален** — для очень больших репозиториев, когда удобнее доводить работу на рабочей станции.
+Mobile-first **DeepSeek Coding Agent** for Android: the phone is the main cockpit, Termux is the primary on-device executor for real projects, and PC Host is optional for large repos or desktop-only toolchains.
 
-Каноническая формулировка продукта: [`docs/PRODUCT_POSITIONING.md`](docs/PRODUCT_POSITIONING.md).
+Canonical product stance: [`docs/PRODUCT_POSITIONING.md`](docs/PRODUCT_POSITIONING.md).
+Current factual checkpoint: [`docs/CURRENT_STATE.md`](docs/CURRENT_STATE.md).
+Real device setup: [`docs/DEVICE_SETUP.md`](docs/DEVICE_SETUP.md) (`.env` debug prefill, Termux path, smoke tests).
 
-Проект уже содержит рабочее ядро агента, approval-flow, Termux workspace, snapshots, Git/GitHub tools, diagnostics, MCP/skills, мобильный cockpit UI и **опциональный** PC gateway (pairing, tasks, terminal). Не финальная v1: Android device verification, MCP stdio на устройстве, release APK.
+## Current state — 2026-05-26
 
-## Как устроен «полный агент» на телефоне
+The project is no longer blocked on Android startup. A debug Android APK now builds, installs and launches on a real USB-debugging phone.
 
-| Режим | Для чего |
-|-------|----------|
-| **Termux workspace** (главный) | shell, git, build, test — как на ПК в TUI |
-| **Sandbox приложения** | чат, мелкие правки, ZIP import/export |
-| **PC Host** (опция) | огромные проекты / desktop toolchains без установки в Termux |
+Verified locally:
 
-## Что уже реально работает
+- `cargo +stable-x86_64-pc-windows-msvc check --workspace --all-targets` — passes.
+- `cargo +stable-x86_64-pc-windows-msvc test --workspace` — passes.
+- `dx build --android --package deepseek-mobile --device RFCNC0PWD4E --verbose` — passes.
+- APK installs and launches on Samsung `SM_G781B` / serial `RFCNC0PWD4E`.
+- Android UI renders on device. Latest hardware smoke test reaches the setup screen with API/Agent ready and Termux path still pending; with completed setup it opens the main cockpit with `API OK`.
+- Custom Android icon/adaptive launcher icon is included.
 
-- Чат с live streaming и reasoning delta
-- Session/runtime persistence и continuation после approval
-- Файловые инструменты, `apply_patch` operation-batch + unified diff, shell/git/web/GitHub tools
-- Snapshots до destructive tools и после успешных turn’ов, включая PC-gateway snapshot RPC path
-- Termux: Settings + онбординг, `exec_shell` через native bridge, continuation turn’а
-- **Опционально** PC gateway: pairing ZIP, discovery, tasks/terminal/SSE (панель PC Host)
-- Diagnostics после edits: Rust, TypeScript и Python для local/Termux/PC путей
-- Diagnostics metadata сохраняется в session и inject’ится в следующий model turn
-- Native Android bridge contracts: document picker, PC discovery, share/terminal events, Termux `RUN_COMMAND` adapter
-- Мобильные панели: chat, approvals, files с real pending diffs и PC-aware browsing, snapshots, diagnostics, PC host, terminal, Git actions, tasks, MCP, skills, settings
-- UI chrome: live API/PC chips, active workspace header, dynamic badges for approvals/diagnostics/Git/tasks/native waits, drawer + scrollable bottom navigation
-- Durable task records + queue lifecycle + artifacts/log capture + mobile task manager UI
-- Runtime HTTP task API on PC-host: task listing and per-task log retrieval
-- Tasks panel syncs active PC-host running tasks via SSE (`stream_task_events`) and can stop them through PC Host
-- Encrypted secrets storage (`secrets.enc` + `device.key`) for API/GitHub tokens
-- Skills context injection into engine turns; MCP HTTP connect + declared tools fallback
-- Android host coordinator (`DeepSeekMobileHostCoordinator`) + Rust `android_host` drain loop
-- Termux workspace selector in Settings: validates absolute Termux paths, persists config and activates the Termux runtime workspace
-- Core ZIP workspace import/export helpers with path-traversal protection and `.deepseek-mobile` metadata exclusion
-- Files panel project import/export UI: Android archive picker import into phone workspace, ZIP export and native share queue
-- Онбординг и сохранение настроек DeepSeek/GitHub
+The Android startup issues found during device testing were fixed:
 
-## Что ещё не доведено до конца
+- Dioxus packages the Rust library as `libmain.so`; the bridge now loads `main` first and keeps `deepseek_mobile` as fallback.
+- JNI exports now match `com.deepseek.mobile.bridge.NativeBridge`.
+- The Android manifest handles `assetsPaths` and other config changes to avoid the native Dioxus activity restart crash.
+- `reqwest` uses rustls, so the APK no longer depends on missing Android `libssl.so`.
 
-- JNI-связка Dioxus Android activity с `NativeBridgeBindings` и device/emulator verification
-- Финальная визуальная проверка на Android через Dioxus CLI/emulator/device
-- MCP stdio session reuse и on-device verification MCP tools
-- Dev-server lifecycle, PC-host autostart/service installer
-- Android/PC-host release packaging (signed APK/installer)
+## How the product is intended to work
 
-## Стек
+| Mode | Purpose |
+|---|---|
+| **Termux workspace** | Main phone-native full-agent path: shell, git, build, tests in a real Termux project directory. |
+| **Local Android sandbox** | Lite mode: chat, attachments, safe file edits, ZIP import/export, snapshots. |
+| **PC Host** | Optional workstation backend for very large repos or desktop-specific toolchains. |
 
-- **Core**: Rust
-- **UI**: Dioxus 0.7
-- **PC-host**: HTTP + SSE сервер на Rust
+PC pairing is not file sync. It grants the phone access to a PC Host workspace. For phone-only work, the app should use Termux or the local sandbox.
 
-## Быстрый старт
+## What is implemented
 
-```bash
+- DeepSeek streaming chat with reasoning deltas.
+- Session/runtime persistence and approval continuation.
+- File tools, `apply_patch` operation batches and unified diff input.
+- Shell/git/web/GitHub tools with approval policy.
+- Snapshots before destructive tools and after successful turns.
+- Diagnostics for Rust, TypeScript and Python, including model-readable reinjection on the next turn.
+- Git panel and engine auto-commit/push lifecycle when enabled.
+- PC Host gateway: pairing, discovery, tasks, terminal, SSE events, snapshots and diagnostics.
+- Termux bridge contract: queued native command, callback correlation and model continuation path.
+- Files panel import/export ZIP helpers with path traversal protection.
+- Mobile cockpit UI: chat, approvals, files, snapshots, diagnostics, PC Host, terminal, Git, tasks, MCP, skills and settings.
+- Android bridge module bundled into the Dioxus APK through `manganis` metadata.
+- Android app data directory initialized under `<filesDir>/deepseek-mobile/`.
+- Optional debug `.env` API-key prefill for device testing; release builds do not embed `.env`.
+- Android adaptive launcher icon and SVG favicon asset.
+
+## What remains before v1
+
+1. Hardware end-to-end checks for native flows:
+   - Android document picker for chat attachments;
+   - Files → Import ZIP;
+   - Files → Export ZIP and native share;
+   - Termux `RUN_COMMAND` permission/result callback with a safe command such as `pwd`;
+   - PC Host mDNS discovery and persisted route on a real network.
+2. Release packaging:
+   - release signing config outside the repo;
+   - signed APK/AAB;
+   - release notes and install instructions.
+3. PC Host packaging:
+   - bundled host binaries for pairing ZIP/release package;
+   - optional service/autostart installer.
+4. MCP closure:
+   - long-lived stdio session reuse;
+   - external MCP tool execution behind explicit approvals and workspace boundaries.
+5. Final UI polish after deeper touch-flow testing on phone.
+
+## Quick start
+
+```powershell
 git clone https://github.com/Vladrus39/DeepSeek-Mobile.git
 cd DeepSeek-Mobile
 
-# Android toolchain (изолированно в tools/android/, не D:\Project V)
-. .\tools\android\env.ps1   # PowerShell
+# Activate repo-local Android SDK/NDK environment.
+. .\tools\android\env.ps1
 
-# Android dev flow (когда установлены dx + NDK — см. tools/android/DOWNLOAD_BUDGET.md)
-dx serve --platform android
-
-# Проверка на Windows/MSVC
+# Rust checks on Windows/MSVC.
 cargo +stable-x86_64-pc-windows-msvc check --workspace --all-targets
 cargo +stable-x86_64-pc-windows-msvc test --workspace
+
+# Android debug APK for the connected phone.
+dx build --android --package deepseek-mobile --device RFCNC0PWD4E --verbose
 ```
 
-## Текущий статус
+## Android toolchain notes
 
-- `cargo +stable-x86_64-pc-windows-msvc check --workspace --all-targets` — проходит
-- `cargo +stable-x86_64-pc-windows-msvc test --workspace` — проходит
-- Последний локальный полный прогон: 140 mobile / 178 core / 3 pc-host tests
-- Android SDK для этого репо: `tools/android/` (изолированно от `D:\Project V`)
+The project uses an isolated Android SDK under `tools/android/`; it does not depend on `D:\Project V`.
 
-Подробности:
+See:
 
-- `docs/PRODUCT_POSITIONING.md` — phone-first, PC optional
-- `docs/PHONE_PC_OPERATING_MODEL.md`
-- `docs/CAPABILITY_MATRIX.md` — honest limits vs Cursor / full-phone control
-- `docs/PROJECT_AUDIT.md`
-- `docs/MASTER_PLAN.md`
-- `docs/ROADMAP.md`
-- `docs/android_host_integration.md`
-- `docs/UI_STATUS_AND_VERIFICATION.md`
-- `PROJECT_STATUS.md`
+- [`tools/android/README.md`](tools/android/README.md)
+- [`tools/android/DOWNLOAD_BUDGET.md`](tools/android/DOWNLOAD_BUDGET.md)
+- [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md)
+
+## Main documentation
+
+- [`docs/CURRENT_STATE.md`](docs/CURRENT_STATE.md) — current checkpoint and remaining work.
+- [`docs/DEVICE_SETUP.md`](docs/DEVICE_SETUP.md) — real phone setup and smoke tests.
+- [`PROJECT_STATUS.md`](PROJECT_STATUS.md) — compact project status.
+- [`docs/PROJECT_AUDIT.md`](docs/PROJECT_AUDIT.md) — deeper audit.
+- [`docs/PROGRESS.md`](docs/PROGRESS.md) — chronological progress log.
+- [`docs/PHONE_PC_OPERATING_MODEL.md`](docs/PHONE_PC_OPERATING_MODEL.md) — phone/PC organization.
+- [`docs/CAPABILITY_MATRIX.md`](docs/CAPABILITY_MATRIX.md) — honest user-facing capabilities.
+- [`docs/android_host_integration.md`](docs/android_host_integration.md) — Android native bridge checklist.
+- [`docs/UI_STATUS_AND_VERIFICATION.md`](docs/UI_STATUS_AND_VERIFICATION.md) — UI state and visual verification.
+- [`docs/ROADMAP.md`](docs/ROADMAP.md) — execution roadmap.
+- [`docs/MASTER_PLAN.md`](docs/MASTER_PLAN.md) — long-form implementation plan.

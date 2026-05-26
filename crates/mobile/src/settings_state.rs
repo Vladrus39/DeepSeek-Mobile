@@ -4,6 +4,8 @@ use deepseek_mobile_core::config::{
 use deepseek_mobile_core::ConfigStore;
 use std::path::PathBuf;
 
+#[cfg(not(target_os = "android"))]
+use crate::dev_api_key::apply_dev_api_key_bootstrap;
 use crate::mobile_runtime_config::default_data_dir;
 
 /// In-memory settings form state that mirrors `Config`.
@@ -96,11 +98,29 @@ pub fn config_file_path() -> PathBuf {
 
 pub fn load_saved_config() -> Option<Config> {
     let store = config_store();
-    if store.config_path().exists() || store.secrets_path().exists() {
+    let mut config = if store.config_path().exists() || store.secrets_path().exists() {
         store.load().ok()
     } else {
         None
+    };
+
+    // Desktop debug runs may use `.env` as a local convenience. Android keeps a
+    // release-like UX: debug `.env` may prefill onboarding, but it is not treated
+    // as saved device configuration until the user confirms it.
+    #[cfg(not(target_os = "android"))]
+    {
+        if config.is_none() {
+            let mut fallback = Config::default();
+            apply_dev_api_key_bootstrap(&mut fallback);
+            if fallback.api_key.trim().starts_with("sk-") {
+                config = Some(fallback);
+            }
+        } else if let Some(ref mut loaded) = config {
+            apply_dev_api_key_bootstrap(loaded);
+        }
     }
+
+    config
 }
 
 pub fn save_config(config: &Config) -> Result<(), String> {

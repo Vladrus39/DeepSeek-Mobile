@@ -5,7 +5,7 @@ plugins {
 
 android {
     namespace = "com.deepseek.mobile.bridge"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         minSdk = 26

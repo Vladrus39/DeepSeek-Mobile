@@ -2,67 +2,79 @@
 
 **Updated:** 2026-05-26
 
-This is what DeepSeek-Mobile **actually** does today. Product stance: **phone-first full agent** ([PRODUCT_POSITIONING.md](./PRODUCT_POSITIONING.md)); PC Host is optional.
+Product stance: **phone-first full agent** ([PRODUCT_POSITIONING.md](./PRODUCT_POSITIONING.md)); PC Host is optional. Current factual status is tracked in [CURRENT_STATE.md](./CURRENT_STATE.md).
 
 ## Summary
 
 | Expectation | Supported? |
-|-------------|------------|
-| **Full coding agent on phone** (TUI-like: files, patch, git, tests) | **Yes** with **Termux workspace** configured |
-| Coding agent in **sandbox only** (no Termux) | **Partial** — no `exec_shell`; edits/ZIP/plan only |
-| **PC workstation** (optional boost) | **Yes** when paired — not required for “full agent” |
-| **Phone-only** without Termux setup | **Lite** — not equivalent to desktop TUI |
-| Control **entire phone** (all apps, system UI) | **Partial** — `phone_control` (URL, share, launch app by package); not full UI automation |
-| Control **entire PC** (any folder, any app) | **Partial** — paired workspace + optional trusted paths (Settings grant mode); see [EXTENDED_CONTROL_ROADMAP.md](./EXTENDED_CONTROL_ROADMAP.md) |
-| Same as **Cursor on desktop** | **No** — different product shape |
+|---|---|
+| Full coding agent on phone | **Target path is implemented through Termux**, but final Termux hardware callback verification remains before v1 |
+| Coding agent in sandbox only | **Partial** — files/patch/ZIP/plan; no normal shell executor |
+| PC workstation backend | **Yes** when paired; optional, not required for product positioning |
+| Phone-only without Termux | **Lite mode** — not equivalent to desktop TUI |
+| Control entire phone | **Partial** — URL/share/settings/launch-app hooks; not full UI automation |
+| Control entire PC | **Partial** — paired workspace and PC Host protocol, not arbitrary remote desktop |
+| Same as Cursor desktop | **No** — different product shape |
 
 ## By channel
 
-### Phone sandbox (LocalAndroid workspace)
+### Phone sandbox: LocalAndroid workspace
 
 | Capability | Status |
-|------------|--------|
-| Chat + streaming | Yes |
-| read/write/patch files in app workspace | Yes |
-| exec_shell | **No** — use Termux or PC (clear error message) |
-| git/rust build in sandbox | Only if tools exist in sandbox (not assumed) |
-| Snapshots | Yes |
-| Import/export project ZIP | Yes (Android picker on device) |
+|---|---|
+| Chat + streaming | Implemented |
+| Read/write/patch files in app workspace | Implemented |
+| Snapshots | Implemented |
+| Project ZIP import/export | Implemented; Android picker/share hardware verification pending |
+| `exec_shell` | Not supported in sandbox; use Termux or PC Host |
+| Git/build/test | Only if tools exist in the active executor; not assumed in sandbox |
 
-### Termux workspace (primary — full agent on phone)
-
-| Capability | Status |
-|------------|--------|
-| exec_shell (approved) | Yes (native bridge + model continuation) |
-| File tools under Termux path | Yes |
-| git / build / test | Yes if installed in Termux |
-| Requires Termux + RUN_COMMAND + path in Settings | User setup (onboarding helps) |
-
-### PC Host workspace (optional — huge repos)
+### Termux workspace: primary full-agent phone path
 
 | Capability | Status |
-|------------|--------|
-| Files, patch, shell stream | Yes when host running |
-| Git panel + engine git tools | Yes |
-| Terminal / tasks / SSE | Yes |
-| Requires pairing + `deepseek-pc-host` on PC | **Optional** user setup |
+|---|---|
+| Save/activate Termux workspace path | Implemented |
+| Queue approved `exec_shell` through native bridge | Implemented |
+| Termux `RUN_COMMAND` intent and result parser | Implemented |
+| Continue model turn from stdout/stderr/exit code | Implemented in Rust/mobile path |
+| Real hardware happy-path verification | Pending |
+| Requires Termux permission and `allow-external-apps=true` | User setup |
 
-### Always on phone (any active workspace)
+### PC Host workspace: optional large-repo path
 
 | Capability | Status |
-|------------|--------|
-| github_* tools | Yes (token from settings) |
-| web_fetch / web_search | Yes |
-| MCP proxy tools | Yes (when servers connected) |
-| Plan mode | Yes — **tools not executed** |
+|---|---|
+| Files, patch, shell stream | Implemented when host is running |
+| Git panel + engine git tools | Implemented |
+| Terminal / tasks / SSE | Implemented |
+| Diagnostics | Rust/TypeScript/Python implemented |
+| Requires pairing + `deepseek-pc-host` | Optional user setup |
+| Release packaging/autostart | Pending |
 
-## Product features added for clarity
+### Always available from the phone UI
 
-- **Setup wizard** (3 steps): API → backends explained → cockpit
-- **Health panel**: API, PC, Termux, MCP, native bridge + recommendations
-- **Quick actions** in chat: plan, git status, tests, structure, diagnostics
-- **Isolated Android SDK**: `tools/android/` (no mix with other projects)
+| Capability | Status |
+|---|---|
+| Onboarding/settings | Implemented |
+| Approvals | Implemented |
+| GitHub tools | Implemented; token from settings/environment |
+| Web tools | Implemented |
+| MCP registry/UI/proxy surfaces | Implemented partially |
+| External MCP execution | Pending hardening |
+| Plan mode | Implemented; tools are not executed |
 
-## When internet returns
+## Android status
 
-See `tools/android/DOWNLOAD_BUDGET.md` (~1.0–1.2 GB for APK on a real phone).
+| Item | Status |
+|---|---|
+| Debug APK build | Verified with `dx build --android --package deepseek-mobile --device RFCNC0PWD4E` |
+| Install/launch on physical phone | Verified |
+| Android UI render | Verified: onboarding/cockpit render path works |
+| Android icon/favicon | Implemented |
+| Full native flow verification | Pending |
+
+## User-facing interpretation
+
+- **Full agent ready on phone** should mean: API key configured + valid Termux workspace + Termux permission/setup verified.
+- **PC boost ready** should mean: PC Host paired and active.
+- **Sandbox ready** should mean: chat/files/ZIP/snapshots are available, but shell/build/test are not promised.

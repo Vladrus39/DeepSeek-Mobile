@@ -280,53 +280,29 @@ fn build_engine(
 }
 
 fn load_mcp_tools_for_engine() -> Vec<deepseek_mobile_core::McpToolDescriptor> {
-    use deepseek_mobile_core::{connect_mcp_server, tools_for_server, McpClientRegistry};
+    use deepseek_mobile_core::{tools_for_server, McpClientRegistry, McpServerStatus};
+
     let path = default_data_dir().join("mcp.json");
-    let Ok(handle) = tokio::runtime::Handle::try_current() else {
-        return deepseek_mobile_core::McpClientRegistry::load_or_default(&path)
-            .map(|registry| registry.all_tools())
-            .unwrap_or_default();
-    };
-    handle.block_on(async {
-        let mut registry = McpClientRegistry::load_or_default(&path).unwrap_or_default();
-        if registry.all_tools().is_empty() {
-            let configs: Vec<_> = registry
-                .servers
-                .iter()
-                .map(|server| server.config.clone())
-                .collect();
-            for config in configs {
-                if !config.enabled {
-                    continue;
-                }
-                let declared = config.declared_tools.clone();
-                match connect_mcp_server(&config).await {
-                    Ok((status, remote_tools)) => {
-                        let tools = tools_for_server(&config.name, &declared, remote_tools);
-                        registry.set_status(&config.name, status);
-                        registry.set_tools(&config.name, tools);
-                    }
-                    Err(error) => {
-                        if !declared.is_empty() {
-                            let tools = tools_for_server(&config.name, &declared, Vec::new());
-                            registry.set_status(
-                                &config.name,
-                                deepseek_mobile_core::McpServerStatus::Connected,
-                            );
-                            registry.set_tools(&config.name, tools);
-                        } else {
-                            registry.set_status(
-                                &config.name,
-                                deepseek_mobile_core::McpServerStatus::Error(error.to_string()),
-                            );
-                        }
-                    }
-                }
-            }
-            let _ = registry.save(&path);
+    let mut registry = McpClientRegistry::load_or_default(&path).unwrap_or_default();
+    if !registry.all_tools().is_empty() {
+        return registry.all_tools();
+    }
+
+    let configs: Vec<_> = registry
+        .servers
+        .iter()
+        .map(|server| server.config.clone())
+        .collect();
+    for config in configs {
+        if !config.enabled || config.declared_tools.is_empty() {
+            continue;
         }
-        registry.all_tools()
-    })
+        let tools = tools_for_server(&config.name, &config.declared_tools, Vec::new());
+        registry.set_status(&config.name, McpServerStatus::Connected);
+        registry.set_tools(&config.name, tools);
+    }
+    let _ = registry.save(&path);
+    registry.all_tools()
 }
 
 fn load_skills_context_for_engine() -> Option<String> {

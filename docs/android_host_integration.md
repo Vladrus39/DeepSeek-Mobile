@@ -1,8 +1,21 @@
 # Android host integration checklist
 
+**Updated:** 2026-05-26
+
 This document tracks the boundary between the Rust/Dioxus mobile code and the native Android bridge module.
 
-The repository contains bridge contracts, Kotlin adapters, JNI, Rust drain/callback handling and a Dioxus `MainActivity`. **Device/emulator verification** (`dx build android`) is still pending when NDK and `dioxus-cli` are installed — see `tools/android/DOWNLOAD_BUDGET.md`.
+Current checkpoint: the Dioxus Android APK builds, installs and launches on a physical phone. Startup/native-library issues are fixed. The remaining work is manual end-to-end verification of picker/share/Termux/PC-discovery flows.
+
+## Current verified state
+
+| Item | Status |
+|---|---|
+| `dx build --android --package deepseek-mobile --device RFCNC0PWD4E --verbose` | Passes |
+| APK install on Samsung `SM_G781B` | Passes |
+| Dioxus activity launch | Passes |
+| First setup screen render | Passes |
+| Crash buffer after smoke launch | Empty |
+| Android launcher icon | Present through adaptive icon resources |
 
 ## Bridge module
 
@@ -18,9 +31,71 @@ Implemented adapters:
 DeepSeekDocumentPickerBridge.kt
 DeepSeekPcGatewayDiscoveryBridge.kt
 DeepSeekTermuxBridge.kt
+DeepSeekMobileHostCoordinator.kt
+NativeBridge.kt
+TermuxResultReceiver.kt
 ```
 
-The bridge manifest declares network/multicast permissions for PC discovery and `com.termux.permission.RUN_COMMAND` plus package visibility for Termux command execution.
+The bridge manifest declares network/multicast permissions for PC discovery, Termux `RUN_COMMAND`, package visibility for Termux, and a file provider for native share/export flows.
+
+## Dioxus packaging boundary
+
+Dioxus generates a temporary Android project under `target/dx`. The project includes the Kotlin bridge module through:
+
+```text
+crates/mobile/src/android_plugin.rs
+```
+
+The metadata:
+
+```rust
+#[manganis::ffi("../../android/bridge")]
+extern "Kotlin" {
+    pub type DeepSeekMobileHostCoordinator;
+}
+```
+
+This keeps the real bridge module in-repo while allowing `dx build --android` to package it into the generated Android host.
+
+## Native library and JNI boundary
+
+Dioxus packages the Rust Android native activity library as:
+
+```text
+libmain.so
+```
+
+Therefore `NativeBridge.kt` loads `main` first and falls back to `deepseek_mobile` only for standalone/reference shells.
+
+Rust JNI exports must match the Kotlin class package:
+
+```text
+com.deepseek.mobile.bridge.NativeBridge
+```
+
+Current Rust export prefix:
+
+```text
+Java_com_deepseek_mobile_bridge_NativeBridge_*
+```
+
+## Custom Android manifest
+
+Dioxus uses:
+
+```toml
+[application]
+android_manifest = "../../android/AndroidManifest.xml"
+```
+
+The manifest is required because the default generated manifest did not handle all startup/config-change cases on the tested device. The activity keeps the full `configChanges` set, including `assetsPaths`, to avoid the native Dioxus activity restart crash seen during device testing.
+
+The manifest also sets:
+
+```xml
+android:icon="@mipmap/deepseek_launcher"
+android:roundIcon="@mipmap/deepseek_launcher_round"
+```
 
 ## Rust command/callback boundary
 
@@ -32,20 +107,30 @@ crates/mobile/src/native_document_picker.rs
 crates/mobile/src/native_pc_discovery.rs
 crates/mobile/src/native_termux.rs
 crates/mobile/src/native_event_router.rs
+crates/mobile/src/android_host.rs
+crates/mobile/src/native_host_runtime.rs
+crates/mobile/src/jni_bridge.rs
 ```
 
-The host shell must repeatedly drain pending native commands from `NativeBridgeState` and dispatch them to Android. Native callbacks must be converted back into Rust callback enums and delivered to Rust state handling. Chat attachments and project import/export are routed in `main.rs` by `DocumentPickerRequest.purpose`; the standalone `route_native_mobile_event` helper remains useful for lower-level bridge tests and simple callback routing.
+The host shell drains pending native commands from `NativeBridgeState`, dispatches them to Kotlin adapters, then delivers JSON callbacks back into Rust.
 
 ## Document picker flow
 
-The same picker command is used for chat attachments and project ZIP import. Rust distinguishes them through `DocumentPickerRequest.purpose`: `ChatAttachment` goes to the composer, while `ProjectImport` imports the returned local archive copy into the phone workspace.
+The same picker command is used for chat attachments and project ZIP import. Rust distinguishes them through `DocumentPickerRequest.purpose`:
+
+- `ChatAttachment` goes to the composer;
+- `ProjectImport` imports the returned local archive copy into the phone workspace.
+
+Flow:
 
 1. Rust queues `NativeMobileCommand::OpenDocumentPicker`.
 2. Host converts it with `pop_next_android_document_picker_command()`.
-3. Android calls `DeepSeekDocumentPickerBridge.buildIntent()` / launch flow.
+3. Android calls `DeepSeekDocumentPickerBridge`.
 4. Android copies readable `content://` files into app-private sandbox storage.
 5. Host forwards `AndroidDocumentPickerCallback` to Rust.
-6. Rust rejects stale request ids and routes accepted documents into `ChatComposerState`.
+6. Rust rejects stale request ids and routes accepted documents by purpose.
+
+Manual verification still required on hardware.
 
 ## PC discovery flow
 
@@ -55,67 +140,51 @@ The same picker command is used for chat attachments and project ZIP import. Rus
 4. Host forwards discovery callbacks to Rust.
 5. Rust updates `PcPairingUiState`; an online route can become the active PC workspace.
 
+Manual verification still required on a real LAN with `deepseek-pc-host` running.
+
 ## Termux command flow
 
-The Rust/mobile settings UI now persists and activates a Termux workspace connection from an absolute Termux path such as `/data/data/com.termux/files/home/project`. The final Android host still needs device/emulator verification that this working directory reaches Termux correctly.
+The Settings UI persists and activates a Termux workspace connection from an absolute Termux path such as:
 
-The Termux bridge follows the official Termux `RUN_COMMAND` intent contract:
+```text
+/data/data/com.termux/files/home/project
+```
 
-- action: `com.termux.RUN_COMMAND`
-- service: `com.termux.app.RunCommandService`
-- command path: `/data/data/com.termux/files/usr/bin/sh`
-- arguments: `-lc`, followed by the approved command string
-- background execution: `true`, so stdout and stderr are returned separately
-- result transport: Android `PendingIntent` result bundle under the `result` extra
+The Termux bridge follows the Termux `RUN_COMMAND` intent contract:
 
-Reference: https://github.com/termux/termux-app/wiki/RUN_COMMAND-Intent
+- action: `com.termux.RUN_COMMAND`;
+- service: `com.termux.app.RunCommandService`;
+- command path: `/data/data/com.termux/files/usr/bin/sh`;
+- arguments: `-lc`, followed by the approved command string;
+- background execution: `true`;
+- result transport: Android `PendingIntent` result bundle under the `result` extra.
 
 Flow:
 
-1. Core handles approved `exec_shell` on a Termux workspace in `ToolExecutionCoordinator` and emits tool-result metadata containing `termux_exec_request`.
-2. Rust mobile extracts that metadata with `NativeBridgeState::enqueue_termux_command_from_agent_event()` and queues `NativeMobileCommand::RunTermuxCommand`.
+1. Core handles approved `exec_shell` on a Termux workspace and emits `termux_exec_request` metadata.
+2. Rust mobile extracts that metadata and queues `NativeMobileCommand::RunTermuxCommand`.
 3. Host converts it with `pop_next_android_termux_command()`.
-4. Host creates a unique one-shot `PendingIntent` carrying the Rust `request_id`.
-5. Android calls `DeepSeekTermuxBridge.run(command, pendingIntent)`.
-6. Android parses the result bundle with `DeepSeekTermuxBridge.parseResult(requestId, resultIntent)`.
-7. Host maps the payload to `AndroidTermuxCallback::Completed` or `AndroidTermuxCallback::Failed`.
-8. Rust rejects stale request ids and routes completion/failure into the mobile timeline.
-9. `NativeMobileEvent::TermuxCommandCompleted` triggers `continue_termux_result`, injecting the real command output back into the paused agent turn so the model can continue from the actual tool result.
+4. Host creates a one-shot `PendingIntent` carrying the Rust `request_id`.
+5. Android calls `DeepSeekTermuxBridge.run(...)`.
+6. `TermuxResultReceiver` receives the result and delivers JSON back into Rust.
+7. Rust rejects stale request ids and routes completion/failure into the mobile timeline.
+8. `continue_termux_result` injects real command output back into the paused model turn.
 
-Important host requirements:
+Manual verification still required with real Termux permissions and `allow-external-apps=true`.
 
-- The app must request and the user must grant `com.termux.permission.RUN_COMMAND`.
-- Termux must allow external apps in `~/.termux/termux.properties`.
-- For Android package visibility, the host manifest must keep the Termux `<queries>` entry.
-- PendingIntent request codes must be unique per command.
-- Large stdout/stderr should be treated as bounded output; future executor plumbing should preserve truncation metadata when available.
+## Manual verification checklist before v1
 
-## What is still not done
+- Pick one text/source file through Android picker and confirm it appears in the outgoing prompt.
+- Import one project ZIP through Files → Import ZIP and confirm the local workspace refreshes.
+- Export the phone workspace through Files → Export ZIP and confirm Android receives a native share command for the generated ZIP.
+- Discover a running PC Host over mDNS and persist the active route.
+- Save a valid Termux workspace path, run `pwd`, and confirm stdout, stderr, exit code, request id correlation and working directory.
+- Send stale picker/discovery/Termux callbacks and confirm Rust rejects them.
+- Restart the app and confirm persisted settings/workspace state load.
 
-Implemented in-repo now:
+## Known-good smoke command
 
-- Rust `android_host::drain_next_host_action` serializes the next native command for the Kotlin shell.
-- Rust `android_host::apply_host_callback_json` accepts picker picked/cancel/fail, PC discovery, and Termux callbacks.
-- JNI `com.deepseek.mobile.NativeBridge` forwards poll/deliver to the global native runtime.
-- Kotlin `DeepSeekMobileHostCoordinator` dispatches picker, discovery, share, URL and Termux payloads.
-- `android/MainActivity.kt` (`dev.dioxus.main.MainActivity`) subclasses `WryActivity` for Dioxus builds; reference Gradle app keeps `com.deepseek.mobile.MainActivity`.
-- `TermuxResultReceiver` delivers `termux_completed` JSON back into Rust.
-- Mobile UI syncs JNI/desktop callbacks through `sync_bridge_from_runtime` on each render.
-
-Still required for production:
-
-- Install NDK into `tools/android/sdk/ndk/26.1.10909125/` and `dioxus-cli` (budget: `tools/android/DOWNLOAD_BUDGET.md`).
-- Device/emulator verification with `dx build android` / `dx serve --platform android` using `. .\tools\android\env.ps1`.
-- Confirm Termux `RUN_COMMAND` results reach `continue_termux_result` on hardware.
-
-## Manual verification checklist
-
-Before marking Android host integration complete:
-
-- Pick one text/source file through Android picker; confirm it is copied into app-private storage and appears in the outgoing prompt.
-- Import one project ZIP through Files → Import ZIP; confirm the archive local copy is extracted into the phone workspace and the Files view refreshes.
-- Export the phone workspace through Files → Export ZIP; confirm Android receives a native share command for the generated `.zip` file.
-- Discover a running PC host over mDNS; confirm the active route is visible and can be persisted as a workspace.
-- Save a valid Termux workspace path in Settings, run a safe Termux command such as `pwd`, and confirm stdout, stderr, exit code, request id correlation and working directory are returned.
-- Send a stale picker/discovery/Termux callback; confirm Rust rejects it and records an error instead of mutating active state.
-- Restart the app; confirm persisted settings and active PC workspace still load.
+```powershell
+. .\tools\android\env.ps1
+dx build --android --package deepseek-mobile --device RFCNC0PWD4E --verbose
+```

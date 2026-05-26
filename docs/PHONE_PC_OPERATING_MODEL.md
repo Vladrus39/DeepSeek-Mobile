@@ -157,6 +157,14 @@ If a future TUI exposes a stable headless protocol, DeepSeek-Mobile can add it a
 
 ## Current implementation status
 
+Verified in this checkpoint:
+
+- Dioxus Android debug APK builds through the repo-local Android environment.
+- APK installs and launches on a physical phone.
+- First setup screen renders.
+- Android icon resources are packaged.
+- Dioxus native library loading, JNI package alignment and startup manifest crash are fixed.
+
 Implemented:
 
 - PC pairing bundle generation.
@@ -172,27 +180,25 @@ Implemented:
 - Core ZIP workspace import/export helpers.
 - Files panel project import/export UI for local phone workspace archives.
 - Mobile Tasks panel sync/stop controls for active PC-host running tasks.
+- Dioxus Android host: JNI, `android_host` callbacks, `MainActivity`, Kotlin coordinator and bridge packaging.
+- Health/setup/chat quick-action surfaces.
+- Plan mode skips tool execution; LocalAndroid `exec_shell` returns actionable errors.
 
 Still needed:
 
-- device/emulator verification after NDK + `dx` install (`tools/android/DOWNLOAD_BUDGET.md`);
-- final Android picker/share/Termux verification on hardware;
+- hardware verification of Android picker chat attachments;
+- hardware verification of Files Import ZIP;
+- hardware verification of Files Export ZIP/native share;
+- hardware verification of Termux `RUN_COMMAND` permission/result callback;
+- LAN verification of PC Host discovery/persisted route;
 - PC Host release package that bundles `deepseek-pc-host` for Windows/macOS/Linux;
-- optional PC service/autostart installer.
-
-Implemented in-repo (verification pending):
-
-- Dioxus Android host: JNI, `android_host` callbacks, `MainActivity`, Kotlin coordinator;
-- project-local Android SDK under `tools/android/`;
-- runtime SSE/live task events for PC-host tasks;
-- Health panel, 3-step setup wizard, chat quick actions;
-- Plan mode skips tool execution; LocalAndroid `exec_shell` returns actionable errors.
+- optional PC service/autostart installer;
+- signed Android APK/AAB.
 
 ## Recommended next implementation order
 
-1. Update Android host integration docs to reflect that Rust/mobile Termux continuation is already done, leaving final host adapter/device verification.
-2. Add PC Host bootstrap/release plan: bundled binary first, PATH fallback second, explicit install third.
-3. Implement final Dioxus/native host adapter contract.
-4. Verify Android project import/export picker/share on device or emulator.
-5. Add runtime SSE/live event streaming only after the host/runtime boundaries are stable.
-6. Add release packaging and troubleshooting docs.
+1. Run the native Android hardware checklist on the connected phone.
+2. Fix any picker/import/export/share/Termux/discovery issues found during that checklist.
+3. Add signed Android release packaging.
+4. Package PC Host binaries and optional service/autostart installer.
+5. Finish MCP stdio session reuse and controlled external MCP execution.

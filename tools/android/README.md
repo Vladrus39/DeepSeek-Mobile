@@ -1,21 +1,18 @@
 # DeepSeek-Mobile — isolated Android toolchain
 
-Everything under `tools/android/` belongs **only** to this repo. It does not use `D:\Project V` or other projects.
+Everything under `tools/android/` belongs only to this repository. It does not use `D:\Project V` or another project SDK.
 
-## Already on disk (copied locally, no internet)
+## Current status — 2026-05-26
 
-| Component | Path | Size |
-|-----------|------|------|
-| platform-tools (adb, etc.) | `sdk/platform-tools/` | ~16 MB |
-| build-tools 35.0.0 | `sdk/build-tools/35.0.0/` | ~138 MB |
-| platform android-36 | `sdk/platforms/android-36/` | ~101 MB |
-| **Total local SDK slice** | `sdk/` | **~255 MB** |
-
-Refresh from system SDK (still no internet):
-
-```powershell
-.\tools\android\sync-sdk-from-system.ps1
-```
+| Component | Path | Status |
+|---|---|---|
+| platform-tools / adb | `sdk/platform-tools/` | Present |
+| Android platform | `sdk/platforms/android-36/` | Present |
+| Android build tools | `sdk/build-tools/` | Present |
+| Android NDK | `sdk/ndk/26.1.10909125/` | Present |
+| SDK license cache | `sdk/licenses/` | Local only, git-ignored |
+| Dioxus CLI | user cargo bin, `dx 0.7.9` | Present |
+| Rust Android targets | rustup | Present |
 
 ## Activate for a terminal session
 
@@ -24,10 +21,23 @@ Refresh from system SDK (still no internet):
 adb devices
 ```
 
+## Known-good debug build
+
+```powershell
+. .\tools\android\env.ps1
+dx build --android --package deepseek-mobile --device RFCNC0PWD4E --verbose
+```
+
+The latest successful smoke test installed and launched the APK on Samsung `SM_G781B` / serial `RFCNC0PWD4E`.
+
 ## Gradle / reference Android app
 
-`android/app/local.properties` points at this SDK.
+`android/app/local.properties` points at this SDK. The Dioxus-generated project also uses this environment when launched after sourcing `env.ps1`.
 
-## See download budget
+## Repository hygiene
 
-Exact sizes for what is still missing: **[DOWNLOAD_BUDGET.md](./DOWNLOAD_BUDGET.md)**.
+The large SDK/NDK folders, downloads, licenses and SDK cache files are ignored by git. Do not commit local Android SDK contents.
+
+## Download notes
+
+See [DOWNLOAD_BUDGET.md](./DOWNLOAD_BUDGET.md) for what is already present and what may still be optional for emulator/release workflows.

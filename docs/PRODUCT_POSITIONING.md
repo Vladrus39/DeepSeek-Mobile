@@ -40,6 +40,10 @@
 - **Optional PC boost** = paired `deepseek-pc-host` for huge projects; see PC Host panel.
 - Health panel **“Full agent ready”** follows Termux, not PC online status.
 
+## Current-status note
+
+This file defines product direction. Current implementation status is tracked in `docs/CURRENT_STATE.md`.
+
 ## Doc alignment
 
 These documents must stay consistent with this file:

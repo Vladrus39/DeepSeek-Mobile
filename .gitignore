@@ -13,6 +13,8 @@ target/
 /tools/android/sdk/platform-tools/
 /tools/android/sdk/build-tools/
 /tools/android/sdk/platforms/
+/tools/android/sdk/licenses/
+/tools/android/sdk/.knownPackages
 /tools/android/sdk/ndk/**
 !tools/android/sdk/ndk/README.md
 

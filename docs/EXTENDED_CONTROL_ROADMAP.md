@@ -26,7 +26,7 @@ flowchart TB
 
 ## Phase A — Phone-first v1 (current focus)
 
-1. **Termux happy path** — onboarding saves path, Settings validation, Health “Full agent ready”, device verification of RUN_COMMAND bridge. *In progress.*
+1. **Termux happy path** — onboarding saves path, Settings validation, Health “Full agent ready”, device verification of RUN_COMMAND bridge. Android startup smoke is verified; Termux callback verification remains.
 2. **TUI parity gaps on device** — MCP stdio on-device verification, file summaries / symbol search (see ROADMAP Phase 7–8). Large-output routing and multi-round tool follow-up are implemented in core.
 3. **Default workspace policy** — `PreferTermux` for new installs; PC does not override Termux unless user activates PC workspace.
 4. **phone_control** — `open_url`, `share_file`, `launch_app`, `open_settings`. *Shipped.*

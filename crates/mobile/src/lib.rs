@@ -2,6 +2,8 @@ mod agent_event_adapter;
 mod agent_timeline;
 mod agent_timeline_panel;
 mod android_host;
+#[cfg(target_os = "android")]
+mod android_plugin;
 mod approval_diff_preview;
 mod attachment_ingestion;
 mod chat_attachment;
@@ -9,6 +11,8 @@ mod chat_quick_actions;
 mod cockpit_section_panel;
 #[cfg(not(target_os = "android"))]
 mod desktop_native_host;
+mod dev_api_key;
+mod dev_bootstrap;
 mod diagnostics_panel;
 mod diagnostics_state;
 mod document_picker;
@@ -18,9 +22,11 @@ mod health_panel;
 mod host_loop;
 #[cfg(target_os = "android")]
 mod jni_bridge;
+mod locale;
 mod mcp_panel;
 mod mcp_state;
 mod mobile_approval_panel;
+mod mobile_data_dir;
 mod mobile_drawer;
 mod mobile_engine_runner;
 mod mobile_git_runner;
@@ -44,6 +50,8 @@ mod runtime_health;
 mod saved_timeline_loader;
 mod settings_panel;
 mod settings_state;
+mod setup_panel;
+mod setup_status;
 mod skills_panel;
 mod skills_state;
 mod snapshots_panel;
@@ -53,6 +61,7 @@ mod tasks_state;
 mod terminal_panel;
 mod terminal_state;
 mod termux_state;
+mod ui_layout;
 
 use agent_event_adapter::push_agent_event;
 use agent_timeline::MobileTimelineState;
@@ -60,12 +69,15 @@ use agent_timeline_panel::agent_timeline_panel;
 use chat_attachment::ChatComposerState;
 use chat_quick_actions::chat_quick_actions_bar;
 use cockpit_section_panel::cockpit_section_panel;
+use deepseek_mobile_core::config::ExecutionMode;
 use deepseek_mobile_core::{AgentEvent, ApprovalCardView, ReviewDecision};
 use diagnostics_state::DiagnosticsUiState;
 use dioxus::prelude::*;
 use document_picker::{DocumentPickerPurpose, DocumentPickerRequest, DocumentPickerState};
 use git_state::GitUiState;
+use health_panel::HealthQuickAction;
 use host_loop::{run_host_tick, sync_bridge_from_runtime};
+use locale::{load_ui_language, pick, tr, Tr};
 use mcp_state::McpUiState;
 use mobile_approval_panel::mobile_approval_panel;
 use mobile_drawer::{bottom_nav_bar, mobile_drawer, CockpitSection, MobileChromeSummary};
@@ -74,17 +86,21 @@ use mobile_engine_runner::{
     run_mobile_turn_streaming, MobileApprovalContinuationUiResult,
 };
 use native_bridge::{NativeBridgeState, NativeMobileCommand, NativeMobileEvent};
-use onboarding_panel::onboarding_panel;
 use pc_pairing_state::{PcPairingUiState, PcPairingUiStatus};
 use project_files_state::ProjectFilesUiState;
 use project_transfer_state::{default_phone_workspace_root, ProjectTransferState};
 use saved_timeline_loader::load_default_saved_events;
-use settings_state::{load_saved_config, SettingsFormState};
+use settings_state::{save_config, SettingsFormState};
+use setup_panel::setup_panel;
+use setup_status::{
+    complete_first_login, initial_api_key_draft, initial_termux_path_draft, SetupSnapshot,
+};
 use skills_state::SkillsUiState;
 use snapshots_state::SnapshotsUiState;
 use tasks_state::TasksUiState;
 use terminal_state::TerminalUiState;
 use termux_state::TermuxWorkspaceState;
+use ui_layout::screen_layout;
 
 /// Launch the Dioxus mobile cockpit (desktop and Android).
 pub fn launch() {
@@ -235,6 +251,8 @@ fn status_chip(label: String, colors: (&'static str, &'static str, &'static str)
 }
 
 fn app() -> Element {
+    dev_bootstrap::startup();
+
     let mut messages = use_signal(Vec::<(String, String)>::new);
     let mut input = use_signal(String::new);
     let mut composer = use_signal(ChatComposerState::default);
@@ -259,15 +277,16 @@ fn app() -> Element {
     let termux_state = use_signal(TermuxWorkspaceState::default);
     let mcp_state = use_signal(McpUiState::default);
     let skills_state = use_signal(SkillsUiState::default);
-    let mut onboarding_done = use_signal(|| {
-        if let Some(config) = load_saved_config() {
-            let key = config.api_key.trim();
-            if !key.is_empty() && key.starts_with("sk-") {
-                return true;
-            }
-        }
-        false
+    let mut setup_complete = use_signal(|| {
+        let settings = SettingsFormState::default();
+        let termux = TermuxWorkspaceState::default();
+        SetupSnapshot::collect(&settings, &termux).full_agent_ready
     });
+    let ui_lang = use_signal(load_ui_language);
+    let setup_api_draft = use_signal(initial_api_key_draft);
+    let setup_termux_draft =
+        use_signal(|| initial_termux_path_draft(&TermuxWorkspaceState::default()));
+    let mut setup_error = use_signal(|| None::<String>);
 
     // Route native bridge terminal events into terminal UI state
     let terminal_event_bridge = native_bridge;
@@ -472,7 +491,7 @@ fn app() -> Element {
     // Auto-save terminal state on changes
     let terminal_persist_signal = terminal_state;
     let terminal_persist_path =
-        std::path::PathBuf::from(".deepseek-mobile").join("terminal_state.json");
+        crate::mobile_runtime_config::default_data_dir().join("terminal_state.json");
     use_effect(move || {
         let state = terminal_persist_signal();
         if !state.sessions.is_empty() {
@@ -578,7 +597,7 @@ fn app() -> Element {
     if !did_load_terminal_state() {
         did_load_terminal_state.set(true);
         let terminal_persistence_path =
-            std::path::PathBuf::from(".deepseek-mobile").join("terminal_state.json");
+            crate::mobile_runtime_config::default_data_dir().join("terminal_state.json");
         if terminal_persistence_path.exists() {
             if let Ok(saved_terminal) = TerminalUiState::load_from_file(&terminal_persistence_path)
             {
@@ -587,13 +606,75 @@ fn app() -> Element {
         }
     }
 
-    if !onboarding_done() && settings_state().api_key.trim().is_empty() {
+    if !setup_complete() {
+        let snapshot = SetupSnapshot::collect(&settings_state(), &termux_state());
+        let mut settings_signal = settings_state;
+        let mut termux_signal = termux_state;
+        let lang_signal = ui_lang;
         return rsx! {
-            {onboarding_panel(
-                EventHandler::new(move |api_key: String| {
-                    settings_state.write().api_key = api_key;
-                    onboarding_done.set(true);
-                })
+            {setup_panel(
+                lang_signal,
+                snapshot,
+                setup_api_draft,
+                setup_termux_draft,
+                setup_error,
+                EventHandler::new(move |_| {
+                    let mut settings = settings_signal();
+                    let mut termux = termux_signal();
+                    let lang = lang_signal();
+                    match complete_first_login(
+                        &mut settings,
+                        &mut termux,
+                        &setup_api_draft(),
+                        &setup_termux_draft(),
+                        false,
+                    ) {
+                        Ok(()) => {
+                            settings_signal.set(settings);
+                            termux_signal.set(termux);
+                            setup_error.set(None);
+                            setup_complete.set(true);
+                        }
+                        Err(code) => {
+                            let msg = match code.as_str() {
+                                "api_key_prefix" => tr(lang, Tr::SetupErrApiPrefix).to_string(),
+                                "invalid_termux_path" => termux
+                                    .validation_error
+                                    .clone()
+                                    .unwrap_or_else(|| tr(lang, Tr::CheckTermux).to_string()),
+                                other => other.to_string(),
+                            };
+                            setup_error.set(Some(msg));
+                        }
+                    }
+                }),
+                EventHandler::new(move |_| {
+                    let mut settings = settings_signal();
+                    let mut termux = termux_signal();
+                    let lang = lang_signal();
+                    match complete_first_login(
+                        &mut settings,
+                        &mut termux,
+                        &setup_api_draft(),
+                        "",
+                        true,
+                    ) {
+                        Ok(()) => {
+                            settings_signal.set(settings);
+                            termux_signal.set(termux);
+                            setup_error.set(None);
+                            setup_complete.set(true);
+                        }
+                        Err(code) => {
+                            let msg = if code == "api_key_prefix" {
+                                tr(lang, Tr::SetupErrApiPrefix).to_string()
+                            } else {
+                                code
+                            };
+                            setup_error.set(Some(msg));
+                        }
+                    }
+                }),
             )}
         };
     }
@@ -610,7 +691,7 @@ fn app() -> Element {
         &tasks_state(),
     );
     let api_chip = status_chip(
-        chrome_summary.api_chip_label().to_string(),
+        chrome_summary.api_chip_label(ui_lang()).to_string(),
         chrome_summary.api_chip_colors(),
     );
     let pc_chip = status_chip(
@@ -620,21 +701,34 @@ fn app() -> Element {
     let drawer_summary = chrome_summary.clone();
     let bottom_nav_summary = chrome_summary.clone();
 
+    let shell_layout = screen_layout();
+    let shell_style = format!(
+        "{}background:#0f0f0f;color:white;position:relative;",
+        ui_layout::stack_shell_style(&shell_layout)
+    );
+    let lang_now = ui_lang();
+    let label_active_workspace = pick(lang_now, "АКТИВНЫЙ ПРОЕКТ", "ACTIVE WORKSPACE");
+    let msg_wait_native = pick(
+        lang_now,
+        "Ожидание ответа Android…",
+        "Waiting for Android native callback...",
+    );
+    let msg_scan_pc = pick(
+        lang_now,
+        "Поиск PC Host в сети…",
+        "Scanning local network for DeepSeek PC Host...",
+    );
+    let msg_bridge_error = pick(lang_now, "Ошибка моста:", "Native bridge error:");
+
     rsx! {
         div {
-            background_color: "#0f0f0f",
-            color: "white",
-            height: "100vh",
-            padding: "16px",
-            display: "flex",
-            flex_direction: "column",
-            position: "relative",
-            overflow: "hidden",
+            style: "{shell_style}",
 
             {mobile_drawer(
                 drawer_open(),
                 active_section(),
                 drawer_summary,
+                ui_lang(),
                 EventHandler::new(move |section| {
                     active_section.set(section);
                     drawer_open.set(false);
@@ -642,37 +736,24 @@ fn app() -> Element {
             )}
 
             div {
-                display: "flex",
-                align_items: "center",
-                justify_content: "space-between",
-                margin_bottom: "12px",
+                style: "display:flex;align-items:center;justify-content:space-between;margin-bottom:clamp(8px,2vw,12px);gap:clamp(6px,2vw,10px);flex-wrap:wrap;",
 
                 button {
-                    background_color: "#1f2937",
-                    color: "white",
-                    width: "44px",
-                    height: "44px",
-                    border_radius: "999px",
-                    border: "1px solid #374151",
+                    style: "background:#1f2937;color:white;width:44px;height:44px;border-radius:999px;border:1px solid #374151;flex-shrink:0;",
+                    title: "{tr(ui_lang(), Tr::DrawerMenu)}",
                     onclick: move |_| drawer_open.set(!drawer_open()),
                     "☰"
                 }
 
                 div {
-                    display: "flex",
-                    flex_direction: "column",
-                    align_items: "center",
-                    min_width: "0",
-                    div { font_size: "18px", font_weight: "bold", "DeepSeek Mobile" }
+                    style: "display:flex;flex-direction:column;align-items:center;min-width:0;flex:1;",
                     div {
-                        color: "#9ca3af",
-                        font_size: "12px",
-                        text_align: "center",
-                        white_space: "nowrap",
-                        overflow: "hidden",
-                        text_overflow: "ellipsis",
-                        max_width: "190px",
-                        "{active_section().subtitle()}"
+                        style: "font-size:{shell_layout.header_title_font};font-weight:bold;text-align:center;",
+                        "{tr(ui_lang(), Tr::AppTitle)}"
+                    }
+                    div {
+                        style: "color:#9ca3af;font-size:{shell_layout.subtitle_font};text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:min(50vw,14rem);",
+                        "{active_section().localized_subtitle(ui_lang())}"
                     }
                 }
 
@@ -703,7 +784,7 @@ fn app() -> Element {
                         font_size: "10px",
                         font_weight: "bold",
                         letter_spacing: "0.08em",
-                        "ACTIVE WORKSPACE"
+                        "{label_active_workspace}"
                     }
                     div {
                         color: "white",
@@ -729,7 +810,7 @@ fn app() -> Element {
                     font_size: "12px",
                     font_weight: "bold",
                     white_space: "nowrap",
-                    "{active_section().title()}"
+                    "{active_section().localized_title(ui_lang())}"
                 }
             }
 
@@ -837,10 +918,13 @@ fn app() -> Element {
                         })
                     )}
 
-                    {agent_timeline_panel(&timeline())}
+                    {agent_timeline_panel(ui_lang(), &timeline())}
 
                     if is_loading() {
-                        div { color: "#9ca3af", "Thinking with DeepSeek..." }
+                        div {
+                            style: "color:#9ca3af;font-size:{shell_layout.subtitle_font};",
+                            "{tr(ui_lang(), Tr::Thinking)}"
+                        }
                     }
                 } else {
                     {cockpit_section_panel(
@@ -860,6 +944,7 @@ fn app() -> Element {
                         tasks_state,
                         settings_state,
                         termux_state,
+                        ui_lang,
                         EventHandler::new(move |(approval_id, decision): (String, ReviewDecision)| {
                             let approval_id = approval_id.clone();
                             let decision = decision.clone();
@@ -950,7 +1035,30 @@ fn app() -> Element {
                                 }
                                 is_loading.set(false);
                             });
-                        })
+                        }),
+                        EventHandler::new(move |action: HealthQuickAction| {
+                            match action {
+                                HealthQuickAction::OpenSettings => {
+                                    active_section.set(CockpitSection::Settings);
+                                    drawer_open.set(false);
+                                }
+                                HealthQuickAction::RunTermuxCheck => {
+                                    let mut settings = settings_state();
+                                    if settings.execution_mode != ExecutionMode::Agent {
+                                        settings.execution_mode = ExecutionMode::Agent;
+                                        let config = settings.to_config();
+                                        settings_state.set(settings);
+                                        let _ = save_config(&config);
+                                    }
+                                    input.set(
+                                        "Run pwd and ls -la in the active Termux workspace via exec_shell and summarize the environment."
+                                            .to_string(),
+                                    );
+                                    active_section.set(CockpitSection::Chat);
+                                    drawer_open.set(false);
+                                }
+                            }
+                        }),
                     )}
                 }
             }
@@ -967,7 +1075,7 @@ fn app() -> Element {
                     padding: "8px 10px",
                     color: "white",
                     font_size: "12px",
-                    "Waiting for Android native callback..."
+                    "{msg_wait_native}"
                 }
             }
 
@@ -980,7 +1088,7 @@ fn app() -> Element {
                     padding: "8px 10px",
                     color: "white",
                     font_size: "12px",
-                    "Scanning local network for DeepSeek PC Host..."
+                    "{msg_scan_pc}"
                 }
             }
 
@@ -993,7 +1101,7 @@ fn app() -> Element {
                     padding: "8px 10px",
                     color: "white",
                     font_size: "12px",
-                    "Native bridge error: {error}"
+                    "{msg_bridge_error} {error}"
                 }
             }
 
@@ -1018,18 +1126,10 @@ fn app() -> Element {
             }))}
 
             div {
-                display: "flex",
-                gap: "8px",
-                margin_top: "12px",
-                align_items: "center",
+                style: "display:flex;gap:clamp(6px,2vw,10px);margin-top:clamp(8px,2vw,12px);align-items:center;max-width:100%;",
 
                 button {
-                    background_color: "#1f2937",
-                    color: "white",
-                    width: "44px",
-                    height: "44px",
-                    border_radius: "999px",
-                    border: "1px solid #4b5563",
+                    style: "background:#1f2937;color:white;width:44px;height:44px;border-radius:999px;border:1px solid #4b5563;flex-shrink:0;",
                     onclick: move |_| {
                         let request = DocumentPickerRequest::chat_attachment();
 
@@ -1050,13 +1150,8 @@ fn app() -> Element {
                 }
 
                 input {
-                    flex: "1",
-                    background_color: "#1f2937",
-                    color: "white",
-                    padding: "12px",
-                    border: "1px solid #4b5563",
-                    border_radius: "999px",
-                    placeholder: "Message DeepSeek...",
+                    style: "flex:1;min-width:0;background:#1f2937;color:white;padding:{shell_layout.button_padding};border:1px solid #4b5563;border-radius:999px;font-size:{shell_layout.body_font};min-height:{shell_layout.chat_input_min_height};box-sizing:border-box;",
+                    placeholder: "{tr(ui_lang(), Tr::ChatPlaceholder)}",
                     value: "{input}",
                     oninput: move |e| {
                         let value = e.value();
@@ -1068,11 +1163,7 @@ fn app() -> Element {
                 }
 
                 button {
-                    background_color: "#3b82f6",
-                    color: "white",
-                    padding: "0 20px",
-                    height: "44px",
-                    border_radius: "999px",
+                    style: "background:#3b82f6;color:white;padding:0 clamp(14px,4vw,20px);min-height:44px;border-radius:999px;font-size:{shell_layout.body_font};flex-shrink:0;",
                     disabled: is_loading() || !composer().has_content(),
                     onclick: move |_| {
                         let draft = composer();
@@ -1146,13 +1237,14 @@ fn app() -> Element {
                             is_loading.set(false);
                         });
                     },
-                    "Send"
+                    "{tr(ui_lang(), Tr::Send)}"
                 }
             }
 
             {bottom_nav_bar(
                 active_section(),
                 bottom_nav_summary,
+                ui_lang(),
                 EventHandler::new(move |section| {
                     active_section.set(section);
                 })

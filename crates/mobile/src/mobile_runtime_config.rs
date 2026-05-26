@@ -73,9 +73,7 @@ impl MobileRuntimeConfig {
 }
 
 pub fn default_data_dir() -> PathBuf {
-    std::env::var("DEEPSEEK_MOBILE_DATA_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| PathBuf::from(".deepseek-mobile"))
+    crate::mobile_data_dir::resolve_data_dir()
 }
 
 pub fn workspace_connection_store_for_base_dir(

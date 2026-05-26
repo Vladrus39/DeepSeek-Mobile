@@ -2,67 +2,77 @@
 
 **Updated:** 2026-05-26
 
+Canonical checkpoint: [`docs/CURRENT_STATE.md`](docs/CURRENT_STATE.md).
+
 ## Overall state
 
-DeepSeek-Mobile is in active development with a coherent working core:
+DeepSeek-Mobile has a working Rust core, mobile cockpit UI, Android bridge layer and optional PC Host. The important status change in this checkpoint: **the Dioxus Android APK now builds, installs and launches on a physical phone**.
 
-- mobile turns use persisted settings instead of hard-coded defaults;
-- PC pairing can persist an active workspace connection and normal engine turns can reuse it;
-- approvals, snapshots, post-edit diagnostics, PC-host routing and runtime persistence are real code paths, not placeholders;
-- latest post-edit diagnostics are stored in the session and injected into the next model turn as model-readable context;
-- `apply_patch` now accepts both exact operation batches and standard unified diffs, locally and through PC-gateway routing;
-- Termux `exec_shell` is queued through the native bridge and can be continued back into the model with real callback output;
-- Git panel actions and engine auto-commit/push lifecycle are wired through real git routes;
-- durable task records, queue lifecycle, artifacts/logs, task UI, MCP config registry and skills registry/UI are present;
-- PC-host exposes a runtime HTTP task API for listing running tasks and reading per-task logs;
-- mobile Tasks panel now subscribes to live PC-host task events via SSE (`stream_task_events`) and reconciles running tasks in real-time;
-- Termux workspace selection is available in Settings and activates a persisted Termux runtime workspace;
-- after tool execution the engine re-queries the model with routed results (multi-round agent loop, cap 8);
-- approval continuation re-queries the model with streaming events and `final_text` in chat;
-- oversized tool output spills to `.deepseek-mobile/tool-output/` with a preview in-session;
-- `workspace_overview` and `file_summary` tools for repo orientation;
-- startup resolves `PreferTermux` when no active connection;
-- core ZIP workspace import/export helpers exist with traversal protection and metadata exclusion;
-- Files panel can import a picked project ZIP into the phone workspace and export/share the phone workspace as ZIP;
-- mobile UI chrome now exposes live API/PC/workspace state and dynamic badges for approvals, diagnostics, dirty Git state, running tasks and native waits;
-- GitHub Actions Rust job installs the Linux GTK/WebKit/pkg-config dependencies required by the Dioxus mobile crate before workspace checks;
-- isolated Android SDK slice lives under `tools/android/sdk/` (see `tools/android/README.md` and `DOWNLOAD_BUDGET.md`).
+The project currently supports:
 
-## Verified today
+- streamed DeepSeek turns with reasoning deltas;
+- persisted sessions, settings, runtime state and approvals;
+- approval continuation after tool execution;
+- file tools, shell/git/web/GitHub tools, snapshots and diagnostics;
+- `apply_patch` with operation batches and unified diff input;
+- PC Host gateway for files, shell, git, diagnostics, snapshots, terminal and tasks;
+- Termux execution contract through native Android `RUN_COMMAND` bridge;
+- mobile panels for chat, approvals, files, snapshots, diagnostics, PC Host, terminal, Git, tasks, MCP, skills and settings;
+- project ZIP import/export helpers with path traversal protection;
+- Android bridge module bundled into Dioxus builds;
+- custom Android launcher icon and SVG favicon;
+- Android app data directory initialization and optional debug `.env` API-key prefill for hardware testing.
 
-| Area | Current state |
+## Verified in this checkpoint
+
+| Area | Result |
 |---|---|
-| Build | Green |
-| Tests | 140 mobile / 178 core / 3 pc-host |
-| Mobile settings | Saved config is loaded into live turns and approval continuations |
-| GitHub tools | Use token from saved settings first, environment variables second |
-| Pairing | Online discovery promotes an active route; “Open PC workspace” persists it |
-| Runtime | `MobileRuntimeConfig::default()` loads the saved active workspace when one exists |
-| Diagnostics | Rust + TypeScript + Python paths exist; latest diagnostics are re-injected into the next turn |
-| Files | Local and active PC workspace browsing use real file data; pending approval diffs are real |
-| Tasks | Durable records, queue lifecycle, artifacts/logs, PC-host log capture, mobile task manager UI and PC running-task sync exist |
-| Runtime HTTP API | PC-host exposes task list/log endpoints; mobile UI subscribes to live SSE task events for real-time updates |
-| Termux workspace | Settings selector validates an absolute Termux path and activates a persisted Termux runtime connection |
-| Workspace import/export | Files panel exposes project ZIP import/export over the core helpers; final Android host picker/share verification remains pending |
-| MCP/skills | Config/manifest registries and mobile UI surfaces exist |
-| Android bridge | Kotlin bridges + JNI + `android_host` callbacks + Dioxus `MainActivity`; local SDK in `tools/android/` |
-| Mobile UI | Cockpit screens exist; latest chrome/nav pass compiles; final Android visual verification still pending |
+| Rust workspace check | `cargo +stable-x86_64-pc-windows-msvc check --workspace --all-targets` passes |
+| Rust workspace tests | `cargo +stable-x86_64-pc-windows-msvc test --workspace` passes |
+| Test count | mobile 140 / core 178 / pc-host 3 |
+| Android build | `dx build --android --package deepseek-mobile --device RFCNC0PWD4E --verbose` passes |
+| Android install/launch | APK installs and launches on Samsung `SM_G781B`, serial `RFCNC0PWD4E` |
+| Android UI render | Latest hardware smoke test renders setup screen; API/Agent are ready, Termux path is still pending until saved/configured |
+| Android crash buffer | No crash after launch smoke test |
+| Android icon | Manifest uses `@mipmap/deepseek_launcher` and `@mipmap/deepseek_launcher_round` |
+| Local Android SDK | Isolated under `tools/android/`; no dependency on `D:\Project V` |
 
-## Implemented but still partial
+## Fixed in this checkpoint
 
-- Android host: JNI bridge, callback JSON parsing, Dioxus `MainActivity` (`WryActivity` subclass), and Kotlin coordinator are in-repo; device/emulator verification remains.
-- Final visual UI pass is still not verified on device/emulator because the local environment currently lacks Dioxus CLI (`dx`).
-- Durable tasks have records/UI, artifacts/logs, PC-host process start/stop/list/log RPCs and live SSE subscription; mobile UI updates in real-time without manual polling.
-- MCP: HTTP + stdio connect, proxy tools in the registry, and engine injection work; long-lived stdio session reuse and device-side verification remain.
-- Skills context is injected into engine turns; enabled skill state persists in `skills-state.json`.
-- Terminal UI state persists recent sessions/output as closed sessions after restart; live process resurrection is intentionally not claimed.
+- Dioxus Android library loading: Kotlin bridge now loads `libmain.so` first, fallback `libdeepseek_mobile.so` second.
+- JNI package mismatch: Rust exports now match `com.deepseek.mobile.bridge.NativeBridge`.
+- Dioxus activity restart crash: custom Android manifest handles `assetsPaths` and full config changes.
+- Android OpenSSL crash risk: `reqwest` now uses `rustls-tls`, removing the missing `libssl.so` dependency.
+- Android bridge packaging: `manganis` metadata includes `android/bridge` in the Dioxus-generated Gradle project.
+- Android icon/favicon: adaptive launcher resources and SVG favicon were added.
+- Android data directory: JNI initializes `<filesDir>/deepseek-mobile/` before Dioxus UI startup.
+- Debug API prefill: Android debug builds can prefill onboarding from `.env`; release builds intentionally ignore it.
+- Runtime panic fix: MCP tool loading no longer blocks an active Tokio runtime during initial render.
+- SDK repo hygiene: local SDK licenses/cache files are ignored by git.
+- Android persistent storage: `NativeBridge.initMobileDataDir` → `<filesDir>/deepseek-mobile/` (config, secrets, runtime, workspace).
+- Setup/onboarding: pre-filled debug API key when available, RU/EN toggle, one-screen API + Termux path flow, **sandbox-only** fallback, Agent mode default after setup.
+
+See **`docs/DEVICE_SETUP.md`** for phone checklist (Termux, smoke tests, ADB).
+
+## Implemented but still needs manual end-to-end verification
+
+| Area | Current reality | Remaining verification |
+|---|---|---|
+| Android document picker | Kotlin bridge + Rust callback routing exist | Pick real file on phone and confirm chat attachment ingestion |
+| Project import ZIP | Core helper + Files UI + picker purpose routing exist | Import a real ZIP through Android picker and confirm Files refresh |
+| Project export/share | Core ZIP export + native share command exist | Export from phone workspace and confirm Android share sheet receives ZIP |
+| Termux executor | RUN_COMMAND intent, callback parser, Rust continuation path exist | Grant permission, set `allow-external-apps=true`, run `pwd`, confirm stdout/stderr/exit code continuation |
+| PC Host discovery | mDNS discovery bridge and PC Host route persistence exist | Verify on a real LAN with a running `deepseek-pc-host` |
+| UI polish | Android cockpit/onboarding render path works | Walk through all panels on small/large phone widths |
 
 ## Highest-value remaining work
 
-1. Install NDK + `dx` (~1.0–1.2 GB download; see `tools/android/DOWNLOAD_BUDGET.md`) and run device/emulator verification.
-2. PC-host autostart/service installer on real machines.
-3. Signed APK, release notes and store-ready packaging.
+1. Complete the native Android manual checklist above.
+2. Add release signing and build signed APK/AAB.
+3. Package PC Host binaries with pairing/release bundles and add optional service/autostart installer.
+4. Finish long-lived MCP stdio session reuse and external MCP tool execution behind approvals.
+5. Run final UI/touch polish after full device-flow testing.
 
-See `docs/PROJECT_AUDIT.md` for the detailed audit and `docs/MASTER_PLAN.md` for the execution backlog.
+## GitHub CI note
 
-The intended phone/PC product organization is documented in `docs/PHONE_PC_OPERATING_MODEL.md`.
+The GitHub Actions Rust workspace job installs the Linux GTK/WebKit/pkg-config dependencies needed by the Dioxus mobile crate before `cargo check` and `cargo test`. If GitHub reports a Rust environment failure, inspect the Rust workspace job logs first; locally the MSVC workspace check/test pass.

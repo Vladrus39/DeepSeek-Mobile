@@ -1,7 +1,7 @@
 # DeepSeek Mobile master implementation plan
 
 Created: 2026-05-16
-Last updated: 2026-05-25
+Last updated: 2026-05-26
 
 This is the working plan for completing DeepSeek Mobile without losing any original DeepSeek TUI capability that matters for a phone-first coding agent.
 
@@ -10,6 +10,10 @@ Reference repository: `Hmbown/DeepSeek-TUI`.
 Current project audit: `docs/PROJECT_AUDIT.md`.
 
 Phone/PC operating model: `docs/PHONE_PC_OPERATING_MODEL.md`.
+
+Current factual checkpoint: `docs/CURRENT_STATE.md`.
+
+Current Android checkpoint: debug APK builds, installs and launches on a physical phone. Remaining Android work is native flow verification (picker/import/export/share/Termux/PC discovery) plus release packaging.
 
 ## 0. Non-negotiable rules
 
@@ -93,7 +97,7 @@ Termux shell execution
   -> ToolExecutionCoordinator emits termux_exec_request metadata
   -> mobile AgentEvent handling extracts pending Termux metadata
   -> NativeBridgeState queues NativeMobileCommand::RunTermuxCommand
-  -> Android host must drain pop_next_android_termux_command()
+  -> Android host drains pop_next_android_termux_command()
   -> android/bridge DeepSeekTermuxBridge sends RUN_COMMAND intent
   -> host maps PendingIntent result to AndroidTermuxCallback
   -> NativeBridgeState rejects stale callbacks

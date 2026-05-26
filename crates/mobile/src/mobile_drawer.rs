@@ -1,3 +1,4 @@
+use crate::locale::{pick, tr, AppLanguage, Tr};
 use dioxus::prelude::*;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -33,6 +34,48 @@ impl CockpitSection {
             CockpitSection::Tasks => "Tasks",
             CockpitSection::Health => "Health",
             CockpitSection::Settings => "Settings",
+        }
+    }
+
+    pub fn localized_title(self, lang: AppLanguage) -> &'static str {
+        match (lang, self) {
+            (AppLanguage::Ru, CockpitSection::Chat) => "Чат",
+            (AppLanguage::Ru, CockpitSection::PcHost) => "PC Host",
+            (AppLanguage::Ru, CockpitSection::Files) => "Файлы",
+            (AppLanguage::Ru, CockpitSection::Snapshots) => "Снимки",
+            (AppLanguage::Ru, CockpitSection::Diagnostics) => "Диагностика",
+            (AppLanguage::Ru, CockpitSection::Terminal) => "Терминал",
+            (AppLanguage::Ru, CockpitSection::Approvals) => "Одобрения",
+            (AppLanguage::Ru, CockpitSection::Mcp) => "MCP",
+            (AppLanguage::Ru, CockpitSection::Skills) => "Навыки",
+            (AppLanguage::Ru, CockpitSection::Git) => "Git и GitHub",
+            (AppLanguage::Ru, CockpitSection::Tasks) => "Задачи",
+            (AppLanguage::Ru, CockpitSection::Health) => "Состояние",
+            (AppLanguage::Ru, CockpitSection::Settings) => "Настройки",
+            (_, s) => s.title(),
+        }
+    }
+
+    pub fn localized_subtitle(self, lang: AppLanguage) -> &'static str {
+        match (lang, self) {
+            (AppLanguage::Ru, CockpitSection::Chat) => "Диалог с ИИ и лента инструментов",
+            (AppLanguage::Ru, CockpitSection::PcHost) => "Сопряжение, статус, рабочие области",
+            (AppLanguage::Ru, CockpitSection::Files) => "Дерево проекта, файлы, diff",
+            (AppLanguage::Ru, CockpitSection::Snapshots) => "Точки восстановления",
+            (AppLanguage::Ru, CockpitSection::Diagnostics) => {
+                "Ошибки и предупреждения после правок"
+            }
+            (AppLanguage::Ru, CockpitSection::Terminal) => "Вывод PC / Termux",
+            (AppLanguage::Ru, CockpitSection::Approvals) => {
+                "Вызовы инструментов, ждущие подтверждения"
+            }
+            (AppLanguage::Ru, CockpitSection::Mcp) => "MCP-серверы и конфиг",
+            (AppLanguage::Ru, CockpitSection::Skills) => "Наборы навыков",
+            (AppLanguage::Ru, CockpitSection::Git) => "Статус, коммиты, push, pull",
+            (AppLanguage::Ru, CockpitSection::Tasks) => "Фоновые задачи и сборки",
+            (AppLanguage::Ru, CockpitSection::Health) => "API, PC, Termux, MCP",
+            (AppLanguage::Ru, CockpitSection::Settings) => "API, GitHub, Termux",
+            (_, s) => s.subtitle(),
         }
     }
 
@@ -89,11 +132,11 @@ impl Default for MobileChromeSummary {
 }
 
 impl MobileChromeSummary {
-    pub fn api_chip_label(&self) -> &'static str {
+    pub fn api_chip_label(&self, lang: AppLanguage) -> &'static str {
         if self.api_configured {
-            "API OK"
+            pick(lang, "API OK", "API OK")
         } else {
-            "NO API"
+            pick(lang, "НЕТ API", "NO API")
         }
     }
 
@@ -164,43 +207,51 @@ pub struct DrawerItem {
     pub subtitle: &'static str,
 }
 
-pub fn default_drawer_items() -> Vec<DrawerItem> {
-    vec![
-        item(CockpitSection::Chat),
-        item(CockpitSection::PcHost),
-        item(CockpitSection::Files),
-        item(CockpitSection::Snapshots),
-        item(CockpitSection::Diagnostics),
-        item(CockpitSection::Terminal),
-        item(CockpitSection::Approvals),
-        item(CockpitSection::Mcp),
-        item(CockpitSection::Skills),
-        item(CockpitSection::Git),
-        item(CockpitSection::Tasks),
-        item(CockpitSection::Health),
-        item(CockpitSection::Settings),
+pub fn default_drawer_items(lang: AppLanguage) -> Vec<DrawerItem> {
+    [
+        CockpitSection::Chat,
+        CockpitSection::PcHost,
+        CockpitSection::Files,
+        CockpitSection::Snapshots,
+        CockpitSection::Diagnostics,
+        CockpitSection::Terminal,
+        CockpitSection::Approvals,
+        CockpitSection::Mcp,
+        CockpitSection::Skills,
+        CockpitSection::Git,
+        CockpitSection::Tasks,
+        CockpitSection::Health,
+        CockpitSection::Settings,
     ]
-}
-
-fn item(section: CockpitSection) -> DrawerItem {
-    DrawerItem {
+    .into_iter()
+    .map(|section| DrawerItem {
         section,
-        title: section.title(),
-        subtitle: section.subtitle(),
-    }
+        title: section.localized_title(lang),
+        subtitle: section.localized_subtitle(lang),
+    })
+    .collect()
 }
 
 pub fn mobile_drawer(
     is_open: bool,
     active_section: CockpitSection,
     summary: MobileChromeSummary,
+    lang: AppLanguage,
     on_select: EventHandler<CockpitSection>,
 ) -> Element {
     if !is_open {
         return rsx! {};
     }
 
-    let items = default_drawer_items();
+    let items = default_drawer_items(lang);
+    let drawer_subtitle = pick(lang, "Панель кабины ИИ-кодинга", "AI coding cockpit drawer");
+    let active_workspace_label = pick(lang, "АКТИВНЫЙ ПРОЕКТ", "ACTIVE WORKSPACE");
+    let footer_version = pick(
+        lang,
+        "DeepSeek Mobile v0.1 — Android",
+        "DeepSeek Mobile v0.1 — Android preview",
+    );
+    let footer_integrations = "GitHub · DeepSeek API · PC Host";
 
     rsx! {
         div {
@@ -228,12 +279,12 @@ pub fn mobile_drawer(
                 div {
                     font_size: "22px",
                     font_weight: "bold",
-                    "DeepSeek Mobile"
+                    "{tr(lang, Tr::AppTitle)}"
                 }
                 div {
                     color: "#9ca3af",
                     font_size: "13px",
-                    "AI coding cockpit drawer"
+                    "{drawer_subtitle}"
                 }
             }
 
@@ -249,7 +300,7 @@ pub fn mobile_drawer(
                 div {
                     color: "#9ca3af",
                     font_size: "12px",
-                    "ACTIVE WORKSPACE"
+                    "{active_workspace_label}"
                 }
                 div {
                     font_size: "16px",
@@ -336,14 +387,14 @@ pub fn mobile_drawer(
                     color: "#9ca3af",
                     font_size: "12px",
                     text_align: "center",
-                    "DeepSeek Mobile v0.1 — Android preview"
+                    "{footer_version}"
                 }
                 div {
                     color: "#4b5563",
                     font_size: "11px",
                     text_align: "center",
                     margin_top: "3px",
-                    "GitHub · DeepSeek API · PC Host"
+                    "{footer_integrations}"
                 }
             }
         }
@@ -373,16 +424,16 @@ pub struct NavItem {
     pub short: &'static str,
 }
 
-pub fn default_nav_items() -> Vec<NavItem> {
+pub fn default_nav_items(lang: AppLanguage) -> Vec<NavItem> {
     vec![
         NavItem {
             section: CockpitSection::Chat,
-            label: "Chat",
+            label: CockpitSection::Chat.localized_title(lang),
             short: "💬",
         },
         NavItem {
             section: CockpitSection::Skills,
-            label: "Skills",
+            label: CockpitSection::Skills.localized_title(lang),
             short: "⚡",
         },
         NavItem {
@@ -397,17 +448,17 @@ pub fn default_nav_items() -> Vec<NavItem> {
         },
         NavItem {
             section: CockpitSection::Files,
-            label: "Files",
+            label: CockpitSection::Files.localized_title(lang),
             short: "📁",
         },
         NavItem {
             section: CockpitSection::Terminal,
-            label: "Term",
+            label: pick(lang, "Терм", "Term"),
             short: ">",
         },
         NavItem {
             section: CockpitSection::Approvals,
-            label: "Approve",
+            label: pick(lang, "Одобр.", "Approve"),
             short: "✓",
         },
         NavItem {
@@ -417,7 +468,7 @@ pub fn default_nav_items() -> Vec<NavItem> {
         },
         NavItem {
             section: CockpitSection::Tasks,
-            label: "Tasks",
+            label: CockpitSection::Tasks.localized_title(lang),
             short: "⚙",
         },
     ]
@@ -426,9 +477,10 @@ pub fn default_nav_items() -> Vec<NavItem> {
 pub fn bottom_nav_bar(
     active_section: CockpitSection,
     summary: MobileChromeSummary,
+    lang: AppLanguage,
     on_select: EventHandler<CockpitSection>,
 ) -> Element {
-    let items = default_nav_items();
+    let items = default_nav_items(lang);
 
     rsx! {
         div {
@@ -513,7 +565,7 @@ mod tests {
 
     #[test]
     fn drawer_items_include_all_sections() {
-        let items = super::default_drawer_items();
+        let items = super::default_drawer_items(crate::locale::AppLanguage::En);
         let titles: Vec<&str> = items.iter().map(|i| i.title).collect();
         assert!(titles.contains(&"Chat"));
         assert!(titles.contains(&"MCP"));
@@ -524,7 +576,7 @@ mod tests {
 
     #[test]
     fn bottom_nav_includes_all_new_sections() {
-        let items = super::default_nav_items();
+        let items = super::default_nav_items(crate::locale::AppLanguage::En);
         let labels: Vec<&str> = items.iter().map(|i| i.label).collect();
         assert!(labels.contains(&"MCP"));
         assert!(labels.contains(&"Skills"));
@@ -545,7 +597,10 @@ mod tests {
             ..MobileChromeSummary::default()
         };
 
-        assert_eq!(summary.api_chip_label(), "API OK");
+        assert_eq!(
+            summary.api_chip_label(crate::locale::AppLanguage::En),
+            "API OK"
+        );
         assert_eq!(
             summary.badge_for(CockpitSection::PcHost).as_deref(),
             Some("PC ON")

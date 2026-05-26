@@ -1,5 +1,6 @@
-//! JNI exports for the Android Dioxus shell (`com.deepseek.mobile.NativeBridge`).
+//! JNI exports for the Android Dioxus shell (`com.deepseek.mobile.bridge.NativeBridge`).
 
+use crate::mobile_data_dir;
 use crate::native_host_runtime;
 use jni::objects::{JClass, JString};
 use jni::sys::jstring;
@@ -16,7 +17,19 @@ fn java_string(env: &mut JNIEnv, value: Option<String>) -> jstring {
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_deepseek_mobile_NativeBridge_pollNextHostActionJson(
+pub extern "system" fn Java_com_deepseek_mobile_bridge_NativeBridge_initMobileDataDir(
+    mut env: JNIEnv,
+    _class: JClass,
+    path: JString,
+) {
+    let Ok(path) = env.get_string(&path) else {
+        return;
+    };
+    mobile_data_dir::set_mobile_data_dir(path.to_string_lossy().to_string());
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_deepseek_mobile_bridge_NativeBridge_pollNextHostActionJson(
     mut env: JNIEnv,
     _class: JClass,
 ) -> jstring {
@@ -24,7 +37,7 @@ pub extern "system" fn Java_com_deepseek_mobile_NativeBridge_pollNextHostActionJ
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_deepseek_mobile_NativeBridge_deliverHostCallbackJson(
+pub extern "system" fn Java_com_deepseek_mobile_bridge_NativeBridge_deliverHostCallbackJson(
     mut env: JNIEnv,
     _class: JClass,
     payload: JString,
@@ -36,7 +49,7 @@ pub extern "system" fn Java_com_deepseek_mobile_NativeBridge_deliverHostCallback
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_deepseek_mobile_NativeBridge_hasPendingCommands(
+pub extern "system" fn Java_com_deepseek_mobile_bridge_NativeBridge_hasPendingCommands(
     _env: JNIEnv,
     _class: JClass,
 ) -> jni::sys::jboolean {

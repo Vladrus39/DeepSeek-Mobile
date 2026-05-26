@@ -1,67 +1,62 @@
-# Download budget to finish DeepSeek-Mobile (Android + release)
+# Download budget to finish DeepSeek-Mobile Android work
 
-All figures are for **Windows**, **first-time** installs. If you already have caches elsewhere, real traffic can be lower.
+**Updated:** 2026-05-26
 
-## Already satisfied (no download)
+The debug APK path is now working on the connected physical phone. No additional download is currently required for the existing smoke-test flow.
+
+## Already satisfied on this machine
 
 | Item | Status |
-|------|--------|
+|---|---|
 | Rust / Cargo | Installed |
-| JDK 21 | Installed |
-| SDK slice (platform-tools, build-tools 35, platform 36) | Copied into `tools/android/sdk/` (~255 MB on disk, **0 MB** download) |
-| Project code, tests | In repo |
-| Android Studio on `D:\Project V` | Optional; **not required** if using `dx` + local SDK |
+| JDK | Installed |
+| Project-local Android SDK slice | Present under `tools/android/sdk/` |
+| Android NDK 26.1.10909125 | Present under `tools/android/sdk/ndk/26.1.10909125/` |
+| Rust Android targets | Installed |
+| Dioxus CLI | `dx 0.7.9` installed |
+| Gradle wrapper/cache needed for debug build | Present |
+| USB device debug path | Verified with Samsung `SM_G781B` / `RFCNC0PWD4E` |
 
-## Minimum to build Android APK (`dx build android`)
+## Current minimum build command
 
-| # | Component | Size (download) | Notes |
-|---|-----------|---------------|--------|
-| 1 | **Android NDK** 26.1.10909125 | **~631 MB** | Zip; unpack to `tools/android/sdk/ndk/26.1.10909125/` |
-| 2 | **dioxus-cli** (`dx`) | **~250–450 MB** | `cargo install dioxus-cli --locked` (crates.io + compile; cache may shrink retries) |
-| 3 | **Rust Android targets** | **~90–130 MB** | `rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android` |
-| | **Minimum total** | **~970 MB – 1.2 GB** | One-time |
+```powershell
+. .\tools\android\env.ps1
+dx build --android --package deepseek-mobile --device RFCNC0PWD4E --verbose
+```
 
-## Recommended (comfortable dev, not strict minimum)
+Expected output APK:
 
-| # | Component | Size (download) | Notes |
-|---|-----------|---------------|--------|
-| 4 | Platform **android-35** (optional) | **~100 MB** | Project `compileSdk = 35`; android-36 often works; add if Gradle complains |
-| 5 | **cmdline-tools** (sdkmanager) | **~150 MB** | Only if you want CLI NDK install instead of manual zip |
-| 6 | Emulator system image (e.g. API 35) | **~0.8–1.5 GB** | Only for emulator; **physical phone = skip** |
-| | **With emulator** | **+1.0–1.7 GB** | |
+```text
+target/dx/deepseek-mobile/debug/android/app/app/build/outputs/apk/debug/app-debug.apk
+```
+
+## Remaining downloads
+
+| Goal | Extra download estimate | Required now? |
+|---|---:|---|
+| Continue debug APK testing on the connected phone | 0 MB | No |
+| Android emulator image | ~0.8–1.5 GB | Optional; skip while using physical phone |
+| Extra SDK platforms/build tools | ~100–300 MB | Only if Gradle asks for a missing version |
+| Release signing tools | 0 MB | No meaningful download; keystore must stay outside repo |
+| PC Host release packaging deps | Depends on target platform | Later |
 
 ## Do not download for this project
 
 | Item | Why skip |
-|------|----------|
-| Full SDK again (~4 GB) | Already copied minimal slice + system SDK on C: |
-| `D:\Project V\Android Studio` copy | 3.1 GB; use existing install or IDE you already have |
-| `Help Car.rar` (5 GB) | Unrelated archive |
+|---|---|
+| Full Android SDK again | Repo-local SDK/NDK path already works |
+| `D:\Project V` Android Studio copy | Not required by this repository |
+| Large unrelated archives | Not part of the build |
 
-## Scenarios
+## If the build cache is deleted
 
-| Goal | Budget |
-|------|--------|
-| **Code + tests only** | **0 MB** (done today: `cargo test --workspace`) |
-| **APK on a real phone** | **~1.0–1.2 GB** (NDK + dx + Rust targets) |
-| **APK + emulator** | **~2.0–2.9 GB** |
-| **Signed store release** | Same as APK + keystore (negligible) |
+Likely one-time re-downloads:
 
-## After internet is available (ordered)
+| Component | Approximate size |
+|---|---:|
+| Android NDK 26.1.10909125 | ~631 MB |
+| Dioxus CLI crates/compile cache | ~250–450 MB |
+| Rust Android targets | ~90–130 MB |
+| Gradle wrapper distribution | ~128 MB |
 
-```powershell
-# 1) NDK — manual zip into tools/android/sdk/ndk/26.1.10909125/
-
-# 2) Rust targets
-rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android
-
-# 3) Dioxus CLI (match workspace Dioxus 0.7)
-cargo install dioxus-cli --version "0.7.9" --locked
-
-# 4) Build
-. .\tools\android\env.ps1
-cd C:\Users\vladi\Desktop\DeepSeek-Mobile
-dx build android
-```
-
-Update the `dioxus-cli` version if `Cargo.toml` workspace `dioxus` version changes.
+With the current local state, these are already available.

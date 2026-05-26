@@ -2,132 +2,125 @@
 
 ## Vision
 
-DeepSeek-Mobile is a **full coding agent on Android** (phone-first), bringing a DeepSeek-TUI-like agent workflow to Dioxus + native bridges. The phone is the cockpit; the model runs in the cloud; the Rust core manages turns, tools and approvals.
+DeepSeek-Mobile is a **full coding agent on Android** in a DeepSeek-TUI-like workflow. The phone is the cockpit, the model runs through the configured API, the Rust core manages turns/tools/approvals, and execution happens through one of three backends:
 
-**Primary executor on device:** Termux (real shell/git/build in a project directory).  
-**Lite mode:** local app sandbox (files/patch without shell).  
-**Optional:** PC-host when a project is too large for the phone — remote finish on a workstation, not a requirement to use the app.
+1. **Termux workspace** — primary phone-native full-agent path.
+2. **Local Android workspace** — safe sandbox/lite mode.
+3. **PC Host** — optional workstation backend for huge repos or desktop-only toolchains.
 
-See `docs/PRODUCT_POSITIONING.md`.
+Current factual checkpoint: `docs/CURRENT_STATE.md`.
 
-Execution modes (priority):
+## Current Android checkpoint — 2026-05-26
 
-1. **Termux workspace** — full agent on the phone (main path).
-2. **Local Android workspace** — safe file operations inside app storage.
-3. **PC-host / remote** — optional boost for huge repos.
+- [x] Project-local Android SDK/NDK environment.
+- [x] Dioxus CLI `dx 0.7.9` available.
+- [x] Rust Android targets installed.
+- [x] `dx build --android --package deepseek-mobile --device RFCNC0PWD4E --verbose` passes.
+- [x] Debug APK installs and launches on Samsung `SM_G781B`.
+- [x] Android UI renders: onboarding without a saved key, main cockpit when a key is saved.
+- [x] Android launcher icon/favicon assets added.
+- [x] Dioxus `libmain.so` loading fixed.
+- [x] JNI package mismatch fixed.
+- [x] Custom manifest prevents observed startup/config-change crash.
+- [ ] Manual picker/import/export/share/Termux/PC-discovery checks.
+- [ ] Signed release APK/AAB.
 
-## Phase 0 — Stabilize repository
+## Phase 0 — Stabilize repository ✅
 
 - [x] Add missing session module.
 - [x] CI workflow for `cargo check` + `cargo test` + Android bridge static check.
-- [x] Ensure workspace compiles (MSVC + GNU toolchains verified; `cargo check --workspace` clean).
-- [x] `cargo test --workspace` passes (104/106 tests; 2 pre-existing auto_commit failures).
-- [x] Added session persistence JSON file storage (save/load for conversation survival).
-- [x] Added streaming command execution via SSE on PC-host.
-- [x] Added policy presets (ReadOnly/Developer/Admin) for PC-host security.
-- [x] Added Git UI panel in mobile cockpit (status, diff, branch, commit).
-- [x] Basic architecture documents (docs/PROJECT_AUDIT.md, docs/CORE_STATUS.md).
-- [x] MVP status tracking (PROJECT_STATUS.md).
+- [x] Ensure workspace compiles on the intended local toolchain.
+- [x] Session persistence JSON file storage.
+- [x] Streaming command execution via SSE on PC-host.
+- [x] Policy presets for PC-host security.
+- [x] Git UI panel in mobile cockpit.
+- [x] Architecture/status documents.
 
-## Phase 1 — Real chat core
+## Phase 1 — Real chat core ✅
 
 - [x] Store API key through a mobile-safe settings flow.
-- [x] Use full message history, not only the last user message.
-- [x] Request/response error model (anyhow-based).
-- [x] Provider abstraction for DeepSeek API (DeepSeekClient with streaming).
+- [x] Use full message history.
+- [x] Request/response error model.
+- [x] DeepSeek provider abstraction.
 - [x] Non-streaming and streaming chat implementation.
 
-## Phase 2 — Streaming agent events
+## Phase 2 — Streaming agent events ✅
 
-- [x] `AgentEvent` enum (Started, TextDelta, ReasoningDelta, ToolCallStarted, ApprovalRequired, …).
-- [x] Streaming API client (SSE-based, `DeepSeekClient::chat_stream`).
-- [x] Render text deltas in the mobile UI (agent timeline panel).
-- [x] Render reasoning/status events separately from final text.
-- [x] Persist event timeline for resume (saved_timeline_loader).
+- [x] `AgentEvent` enum.
+- [x] SSE streaming API client.
+- [x] Text/reasoning deltas in mobile UI.
+- [x] Persisted event timeline for resume.
 
-## Phase 3 — Workspace and files
+## Phase 3 — Workspace and files ✅
 
 - [x] Workspace model with path traversal protection.
-- [x] Project import/export as ZIP (PC pairing bundle).
-- [x] File tree (project_files_panel, project_files_state).
-- [x] `read_file` tool.
-- [x] `write_file` tool.
-- [x] `edit_file` / `apply_patch` tools.
-- [x] Diff viewer (approval_diff_preview).
-- [x] Patch approval screen (mobile_approval_panel).
+- [x] Project import/export ZIP helpers.
+- [x] File tree and preview.
+- [x] File read/write/edit/apply-patch tools.
+- [x] Diff viewer and approval screen.
 
-## Phase 4 — Tool-calling loop
+## Phase 4 — Tool-calling loop ✅
 
-- [x] Tool schemas and JSON input contracts (ToolSpec trait).
-- [x] Tool specs sent to model (through tool_loop).
-- [x] Parse tool calls from model output (parse_tool_calls_from_text).
-- [x] Execute tools through approval policy (approval.rs + tool_loop.rs).
-- [x] Return tool results to model.
-- [x] Stop only on final answer (ToolLoopOutcome.pending_approvals).
+- [x] Tool schemas and JSON contracts.
+- [x] Tool specs sent to model.
+- [x] Tool call parsing.
+- [x] Approval policy execution.
+- [x] Tool results returned to model.
+- [x] Multi-round follow-up loop.
 
-## Phase 5 — Execution policy
+## Phase 5 — Execution policy ✅
 
-- [x] Plan mode (ExecutionMode::Plan exists; engine routes to thinking-only turns).
-- [x] Agent mode (MobileEngine + tool_loop).
-- [x] YOLO mode (ExecutionMode::Yolo exists; engine skips approval for non-destructive tools).
-- [x] Dangerous command blocker (approval risk classification).
-- [x] Workspace boundary checks (Workspace::contains, resolve_relative_path).
-- [x] Per-tool approval rules (ApprovalRisk, ToolCategory, ApprovalSessionPolicy).
+- [x] Plan mode.
+- [x] Agent mode.
+- [x] YOLO mode.
+- [x] Dangerous command blocker.
+- [x] Workspace boundary checks.
+- [x] Per-tool approval rules.
 
-## Phase 6 — Termux and remote execution
+## Phase 6 — Termux and remote execution 🔄
 
-- [x] Executor trait (Executor + CommandRequest/CommandOutput).
-- [x] Local Android executor (file_ops tools on LocalAndroid workspace).
-- [x] Termux bridge executor (Rust queue + callback continuation; Android host coordinator + JNI + callback JSON).
-- [x] Remote PC-host executor (PcGatewayClient, PC-host HTTP server).
-- [x] Command output to UI (agent_timeline events).
-- [x] Persist command logs (runtime_store events).
+- [x] Executor trait.
+- [x] Local Android file workspace.
+- [x] Termux bridge request/callback/continuation path.
+- [x] Remote PC-host executor.
+- [x] Command output to UI.
+- [x] Persist command logs.
+- [ ] Real Termux `RUN_COMMAND` hardware verification.
 
-## Phase 7 — Large project support
+## Phase 7 — Large project support 🔄
 
-- [x] Project index (workspace_files + workspace_diagnostics task detection).
-- [x] Large-output routing (spill to `.deepseek-mobile/tool-output/`, preview in model context).
-- [x] `workspace_overview` tool (layout + extension counts + largest files).
-- [x] Multi-round tool follow-up loop in `MobileEngine` (model sees tool results, up to 8 rounds).
-- [x] File summaries (`file_summary` tool for README/manifests/roadmap).
-- [ ] Symbol search hooks (planned).
-- [x] Test/build diagnostics (PC-host `cargo check --message-format=json`, cargo/npm/pytest task detection).
-- [x] Snapshot/rollback (WorkspaceSnapshotService, snapshot_create/list/restore tools).
-- [x] Cost/context tracking (ContextBudget, estimate_messages_tokens).
-
-## Phase 8 — Plugins and integrations
-
-- [x] MCP config registry, HTTP connect (`tools/list`), declared-tools fallback, mobile UI.
-- [x] MCP stdio spawn + proxy tools in agent registry (`mcp_client`, `mcp_proxy`, engine injection).
-- [ ] MCP stdio session reuse + on-device invoke verification.
-- [x] GitHub tools (github_repo, github_pr, github_issue, github_browse, github_push_file).
-- [x] GitHub API client (GitHubClient with auth, repo info, PR/issues, file push).
-- [x] Git operations (status, diff, commit, push, pull, branch, log, checkout, clone).
-- [x] Auto-commit/push after successful agent turn (auto_commit.rs).
-- [ ] Y-lit deploy tools.
-- [x] Durable task queue + PC-host background tasks + SSE task events.
-- [ ] Background jobs beyond PC/durable task model.
+- [x] Project index and task detection.
+- [x] Large-output routing.
+- [x] `workspace_overview` tool.
+- [x] `file_summary` tool.
+- [x] Diagnostics providers.
+- [x] Snapshot/rollback.
+- [x] Cost/context tracking.
+- [ ] Symbol search hooks.
 - [ ] LSP diagnostics through remote or Termux executor.
 
-## Current sprint: GitHub integration + production readiness
+## Phase 8 — Plugins and integrations 🔄
 
-- [x] GitHub config fields (github_token, github_repo, github_branch, auto_commit_push).
-- [x] GitHub REST API client.
-- [x] GitHub tool surface (5 tools).
-- [x] Extended git tool surface (10 operations) + Git UI panel in mobile cockpit.
+- [x] MCP config registry and HTTP connect.
+- [x] Declared-tools fallback and mobile UI.
+- [x] MCP stdio spawn/proxy surfaces in registry/engine.
+- [x] GitHub tools and GitHub API client.
+- [x] Git operations and Git UI.
 - [x] Auto-commit/push helper.
-- [x] `cargo check --workspace` clean; `cargo test --workspace` 104/106 pass.
-- [x] Streaming command execution via SSE on PC-host.
-- [x] Policy presets (ReadOnly/Developer/Admin) for PC-host security.
-- [x] GitHub settings screen in mobile UI.
-- [*] Integration test with actual GitHub repo (needs real token).
+- [x] Durable task queue + PC-host background tasks + SSE events.
+- [ ] MCP stdio session reuse + on-device invoke verification.
+- [ ] External MCP execution hardening behind approvals.
 
-## Phase 9 — Android packaging (in progress)
+## Phase 9 — Android packaging 🔄
 
-- [x] Kotlin bridge module (picker, discovery, Termux, share).
+- [x] Kotlin bridge module.
 - [x] Rust `android_host` drain + callback JSON + JNI `NativeBridge`.
-- [x] Dioxus `MainActivity` (`dev.dioxus.main`, `WryActivity` subclass).
-- [x] Project-local Android SDK slice (`tools/android/sdk/`, ~255 MB, no internet).
-- [x] Download budget doc (`tools/android/DOWNLOAD_BUDGET.md`).
-- [ ] Install NDK + `dioxus-cli` and `dx build android` on device/emulator.
-- [ ] Signed release APK and store notes.
+- [x] Dioxus `MainActivity`.
+- [x] Project-local Android SDK/NDK.
+- [x] Debug APK build/install/launch smoke test on real phone.
+- [x] Android app icon/favicon.
+- [x] Android app-private data directory initialization.
+- [x] Optional debug `.env` API prefill for hardware testing.
+- [x] MCP startup panic removed from main render path.
+- [ ] Manual native flow verification.
+- [ ] Signed release APK/AAB and store/release notes.

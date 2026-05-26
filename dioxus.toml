@@ -1,15 +1,22 @@
 [application]
 name = "DeepSeek Mobile"
 version = "0.1.0"
+# `dx --package deepseek-mobile` resolves this path from `crates/mobile/Cargo.toml`.
+android_main_activity = "../../android/MainActivity.kt"
+android_manifest = "../../android/AndroidManifest.xml"
 
 [android]
-package = "com.deepseek.mobile"
-# Path to custom Kotlin activity (must subclass dev.dioxus.main.WryActivity).
-android_main_activity = "android/MainActivity.kt"
-permissions = [
-    "android.permission.INTERNET",
-    "android.permission.ACCESS_NETWORK_STATE",
-    "android.permission.ACCESS_WIFI_STATE",
-    "android.permission.CHANGE_WIFI_MULTICAST_STATE",
-    "com.termux.permission.RUN_COMMAND",
-]
+identifier = "com.deepseek.mobile"
+min_sdk = 26
+target_sdk = 35
+# The project-local SDK already contains android-36. Keep compileSdk on the
+# installed platform to avoid downloading android-35 only for the generated
+# Dioxus host build.
+compile_sdk = 36
+
+[android.permissions]
+"android.permission.INTERNET" = { description = "Network access for model, gateway and sync requests" }
+"android.permission.ACCESS_NETWORK_STATE" = { description = "Detect network state for PC host discovery and connection health" }
+"android.permission.ACCESS_WIFI_STATE" = { description = "Read Wi-Fi state for local PC host discovery" }
+"android.permission.CHANGE_WIFI_MULTICAST_STATE" = { description = "Enable multicast DNS discovery of the paired PC host" }
+"com.termux.permission.RUN_COMMAND" = { description = "Run approved commands through Termux when configured" }

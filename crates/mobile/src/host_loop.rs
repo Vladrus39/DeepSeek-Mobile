@@ -1,6 +1,8 @@
 //! Unified native host loop for desktop and Android.
 
+#[cfg(not(target_os = "android"))]
 use crate::android_host::drain_next_host_action;
+#[cfg(not(target_os = "android"))]
 use crate::desktop_native_host;
 use crate::native_bridge::NativeBridgeState;
 use crate::native_host_runtime;
@@ -19,6 +21,9 @@ pub fn tick_android_from_jni() {
 /// Run one host tick: drain commands and execute platform handlers.
 pub fn run_host_tick(bridge: &mut NativeBridgeState) -> Vec<String> {
     native_host_runtime::replace(bridge.clone());
+    #[cfg(target_os = "android")]
+    let notes = Vec::new();
+    #[cfg(not(target_os = "android"))]
     let mut notes = Vec::new();
 
     #[cfg(not(target_os = "android"))]

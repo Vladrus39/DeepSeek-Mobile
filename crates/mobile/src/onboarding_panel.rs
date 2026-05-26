@@ -1,6 +1,7 @@
+use crate::dev_bootstrap::prefill_api_key_for_onboarding;
 use crate::settings_state::save_config;
 use crate::termux_state::TermuxWorkspaceState;
-use deepseek_mobile_core::config::Config;
+use deepseek_mobile_core::config::{Config, ExecutionMode};
 use dioxus::prelude::*;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -13,8 +14,9 @@ enum OnboardingStep {
 /// Full-screen setup wizard: API → Termux (full agent) → optional PC note → start.
 pub fn onboarding_panel(on_complete: EventHandler<String>) -> Element {
     let mut step = use_signal(|| OnboardingStep::Api);
-    let mut api_key_input = use_signal(String::new);
-    let mut termux_path_input = use_signal(|| "/data/data/com.termux/files/home/project".to_string());
+    let mut api_key_input = use_signal(prefill_api_key_for_onboarding);
+    let mut termux_path_input =
+        use_signal(|| "/data/data/com.termux/files/home/project".to_string());
     let mut validation_error = use_signal(|| None::<String>);
 
     rsx! {
@@ -130,6 +132,18 @@ pub fn onboarding_panel(on_complete: EventHandler<String>) -> Element {
                             onclick: move |_| step.set(OnboardingStep::Done),
                             "Continue"
                         }
+                        button {
+                            background_color: "transparent",
+                            color: "#9ca3af",
+                            padding: "10px",
+                            border: "1px solid #4b5563",
+                            border_radius: "12px",
+                            onclick: move |_| {
+                                termux_path_input.set(String::new());
+                                step.set(OnboardingStep::Done);
+                            },
+                            "Skip Termux for now (sandbox only)"
+                        }
                     },
                     OnboardingStep::Done => rsx! {
                         div { font_weight: "bold", "You're set" }
@@ -149,6 +163,7 @@ pub fn onboarding_panel(on_complete: EventHandler<String>) -> Element {
                                 let key = api_key_input().trim().to_string();
                                 let config = Config {
                                     api_key: key.clone(),
+                                    execution_mode: ExecutionMode::Agent,
                                     ..Config::default()
                                 };
                                 match save_config(&config) {

@@ -5,10 +5,21 @@ import android.content.Intent
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
-import com.deepseek.mobile.NativeBridge
-import com.deepseek.mobile.TermuxResultReceiver
 import com.deepseek.mobile.bridge.DeepSeekMobileHostCoordinator
+import com.deepseek.mobile.bridge.NativeBridge
 import com.deepseek.mobile.bridge.NativeBridgeBindings
+import com.deepseek.mobile.bridge.TermuxResultReceiver
+import java.io.File
+
+/**
+ * Dioxus 0.7 generates Kotlin support files in `dev.dioxus.main`, while Gradle
+ * generates `BuildConfig` under the configured Android namespace. Keep a small
+ * same-package shim so generated support code can resolve `BuildConfig.DEBUG`.
+ */
+object BuildConfig {
+    @JvmField
+    val DEBUG: Boolean = com.deepseek.mobile.BuildConfig.DEBUG
+}
 
 /**
  * Dioxus Android shell activity. Must subclass [WryActivity] so the mobile runtime can start.
@@ -28,6 +39,9 @@ class MainActivity : WryActivity(), NativeBridgeBindings {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        val dataDir = File(filesDir, "deepseek-mobile")
+        dataDir.mkdirs()
+        NativeBridge.initMobileDataDir(dataDir.absolutePath)
         super.onCreate(savedInstanceState)
         hostCoordinator = DeepSeekMobileHostCoordinator.create(
             activity = this,

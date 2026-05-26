@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="@color/deepseek_icon_blue"
+        android:strokeWidth="4.5"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M54,20 L82,36 L82,72 L54,88 L26,72 L26,36 Z" />
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="@color/deepseek_icon_accent"
+        android:strokeWidth="4"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M41,42 L30,54 L41,66" />
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="@color/deepseek_icon_accent"
+        android:strokeWidth="4"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M67,42 L78,54 L67,66" />
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="@color/deepseek_icon_ink"
+        android:strokeWidth="4"
+        android:strokeLineCap="round"
+        android:pathData="M58,38 L50,70" />
+    <path
+        android:fillColor="@color/deepseek_icon_accent"
+        android:pathData="M54,80 m-3.2,0 a3.2,3.2 0,1 0,6.4 0 a3.2,3.2 0,1 0,-6.4 0" />
+</vector>
