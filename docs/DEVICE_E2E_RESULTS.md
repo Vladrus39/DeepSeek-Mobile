@@ -10,7 +10,8 @@
 |-------|--------|-------|
 | API HTTP (`api_probe`) | PASS (last run) | `http=200` in `.api_probe_result` |
 | Agent turn (`agent_turn_probe`) | PASS (last run) | `PROBE_OK` in `.agent_turn_probe_result` |
-| Termux calibration | PASS | `.agent_calibrated_v1` present |
+| Termux calibration | PASS | `adb-control -Action Calibrate` 2026-05-28 |
+| Termux pwd agent (`device-termux-pwd-probe`) | PASS | `exit=0`, stdout `.../deepseek-project` — 2026-05-28 ~13s |
 | PC mDNS discovery | Intermittent | `.pc_discovery_probe_running` can stick; requires `deepseek-pc-host` on `0.0.0.0:8787`, same Wi‑Fi |
 
 Run: `. .\tools\android\env.ps1; .\scripts\device-full-verify.ps1 -Serial RFCNC0PWD4E`

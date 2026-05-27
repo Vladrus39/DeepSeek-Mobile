@@ -1,72 +1,43 @@
-# Real device setup — full agent on phone
+# Device setup (Android)
 
-Use this after `dx build --android` installs the debug APK (see `docs/CURRENT_STATE.md`).
+**Updated:** 2026-05-28
 
 ## 1. API key (project `.env`)
 
-1. Copy `.env.example` → `.env` at repo root.
-2. Set `DEEPSEEK_API_KEY=sk-...` (gitignored).
-3. Rebuild debug APK: `dx build --android --package deepseek-mobile --device <serial>`.
-
-On **desktop** debug builds, an empty secrets store may be auto-filled from `.env` for faster iteration.
-
-On **Android**, the debug APK may **prefill** the onboarding field from your machine’s `.env` at build time, but the key is saved only after you tap **Continue** / save in Settings.
-
-**Release builds do not embed `.env`.** Everyone enters their own key on the device. Do not share debug APKs built with a real `.env` key.
+Debug builds can prefill onboarding from repo `.env` (`DEEPSEEK_API_KEY=sk-…`). Release builds do not embed `.env`.
 
 ## 2. Termux (required for TUI-class agent)
 
-### Phone has no internet
+**Product priority:** full phone agent first; PC Host pairing is a later phase.
 
-On your PC (with internet):
-
-```powershell
-. .\tools\android\env.ps1
-.\scripts\install-termux-offline.ps1 -Serial RFCNC0PWD4E
-```
-
-This downloads the F-Droid Termux APK (~109 MB) and a bootstrap zip fallback, installs via USB, and copies `bootstrap-aarch64.zip` to `Download/` on the phone. Termux 0.118+ also embeds bootstrap in the APK, so first launch usually works offline after 1–2 minutes.
-
-Then on the phone in Termux (no network):
-
-```bash
-mkdir -p ~/deepseek-project
-mkdir -p ~/.termux
-echo allow-external-apps=true >> ~/.termux/termux.properties
-```
-
-Restart Termux, open DeepSeek Mobile, grant **Run commands in Termux environment**.
-
-### Phone has internet
-
-1. Install [Termux](https://github.com/termux/termux-app) from F-Droid.
-2. In Termux:
+1. Install **Termux** from F-Droid (or use **Установить Termux** on the in-app setup screen).
+2. In Termux (one-time, cannot be set from our app):
    ```bash
-   mkdir -p ~/deepseek-project && cd ~/deepseek-project
-   echo "allow-external-apps=true" >> ~/.termux/termux.properties
+   mkdir -p ~/.termux
+   echo allow-external-apps=true >> ~/.termux/termux.properties
+   termux-reload-settings
    ```
-   Restart Termux after editing `termux.properties`.
-3. Grant **Run commands in Termux environment** when Android prompts (or Termux:API permission flow).
-4. In DeepSeek Mobile → onboarding or **Settings → Termux workspace**, set path:
-   ```text
-   /data/data/com.termux/files/home/deepseek-project
-   ```
-5. Save and open **Health** — expect “full agent on phone ready” when API + path are valid.
+3. Grant **RUN_COMMAND** when Termux prompts (or tap **Проверить RUN_COMMAND** on setup).
+4. Set project path in setup, e.g. `/data/data/com.termux/files/home/deepseek-project`.
+5. Continue — app seeds workspace via background calibration when bridge is ready.
+
+Offline USB install: `scripts/install-termux-offline.ps1`.
 
 ## 3. Smoke tests on device
 
-| Test | Where | Expected |
-|------|--------|----------|
-| Chat | Agent mode, send “list files in workspace” | Model replies; may call `list_dir` |
-| Shell | “run pwd in termux” / quick action | Termux runs; timeline shows output; model continues |
-| Files | Import ZIP | Picker → workspace updates |
-| Approvals | `write_file` with review mode | Approve → tool runs → **new assistant message** |
-| PC (optional) | PC Host panel | mDNS or manual URL when host running on LAN |
+**Do not** run `device-full-verify.ps1` or other probe scripts during manual chat testing — they `force-stop` the app.
+
+Scripted E2E only:
+
+```powershell
+. .\tools\android\env.ps1
+.\scripts\device-termux-pwd-probe.ps1 -Serial RFCNC0PWD4E
+```
 
 ## 4. Data locations (Android)
 
-| Path | Content |
-|------|---------|
+| Path | Contents |
+|------|----------|
 | `<filesDir>/deepseek-mobile/` | config, secrets, runtime_store, workspace |
 | `<filesDir>/deepseek-mobile/workspace/` | app sandbox project |
 | Termux path you configured | full shell/git/cargo |
@@ -83,7 +54,11 @@ Restart Termux, open DeepSeek Mobile, grant **Run commands in Termux environment
 
 ## 6. ADB helpers
 
+**Canonical control script:** [`scripts/adb-control.ps1`](../scripts/adb-control.ps1) — install/launch, capture, Termux grant, chat send. See [`docs/ADB_CONTROL.md`](./ADB_CONTROL.md).
+
 ```powershell
+. .\tools\android\env.ps1
+.\scripts\adb-control.ps1 -Action InstallLaunch -Serial RFCNC0PWD4E
 adb devices
 adb logcat -s "DeepSeek" "RustStdout" "dioxus" | Select-Object -Last 80
 adb shell run-as com.deepseek.mobile ls files/deepseek-mobile
@@ -95,3 +70,7 @@ adb shell run-as com.deepseek.mobile ls files/deepseek-mobile
 - **API errors** — check Health → API configured; re-save key in Settings.
 - **Termux silent** — `allow-external-apps`, RUN_COMMAND permission, absolute path.
 - **Plan mode** — switch to **Agent** in Settings (tools disabled in Plan).
+- **Work log stuck on «выполняется»** — fixed in 2026-05-28 build; update APK.
+- **EOF restore banner** — fixed; corrupt event JSON is skipped.
+
+See also [`TROUBLESHOOTING.md`](./TROUBLESHOOTING.md).
