@@ -141,7 +141,8 @@ mod tests {
 
     #[test]
     fn command_uses_android_open_document_contract() {
-        let command = AndroidDocumentPickerCommand::from_request(&DocumentPickerRequest::chat_attachment());
+        let command =
+            AndroidDocumentPickerCommand::from_request(&DocumentPickerRequest::chat_attachment());
         assert_eq!(command.action, "android.intent.action.OPEN_DOCUMENT");
         assert_eq!(command.category, "android.intent.category.OPENABLE");
         assert!(command.allow_multiple);
@@ -171,7 +172,10 @@ mod tests {
                 assert_eq!(documents.len(), 1);
                 assert_eq!(documents[0].display_name, "main.rs");
                 assert_eq!(documents[0].uri.as_deref(), Some("content://docs/main.rs"));
-                assert_eq!(documents[0].path.as_ref().unwrap().to_string_lossy(), "/tmp/main.rs");
+                assert_eq!(
+                    documents[0].path.as_ref().unwrap().to_string_lossy(),
+                    "/tmp/main.rs"
+                );
             }
             other => panic!("unexpected native event: {:?}", other),
         }

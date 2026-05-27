@@ -1,6 +1,6 @@
 # DeepSeek-Mobile — current project status
 
-**Updated:** 2026-05-26
+**Updated:** 2026-05-28
 
 Canonical checkpoint: [`docs/CURRENT_STATE.md`](docs/CURRENT_STATE.md).
 
@@ -65,12 +65,19 @@ See **`docs/DEVICE_SETUP.md`** for phone checklist (Termux, smoke tests, ADB).
 | PC Host discovery | mDNS discovery bridge and PC Host route persistence exist | Verify on a real LAN with a running `deepseek-pc-host` |
 | UI polish | Android cockpit/onboarding render path works | Walk through all panels on small/large phone widths |
 
+## Priority (2026-05-28)
+
+1. **Phone agent (Termux)** — primary; E2E chat + shell verified on device.
+2. Release signing and signed APK/AAB.
+3. **PC Host** — deferred: LAN pairing/mDNS after phone path is stable.
+4. MCP stdio session reuse; UI polish.
+
 ## Highest-value remaining work
 
-1. Complete the native Android manual checklist above.
+1. Remaining manual checklist (picker/ZIP where not preview-disabled).
 2. Add release signing and build signed APK/AAB.
-3. Package PC Host binaries with pairing/release bundles and add optional service/autostart installer.
-4. Finish long-lived MCP stdio session reuse and external MCP tool execution behind approvals.
+3. PC Host pairing on real LAN (later phase).
+4. Finish long-lived MCP stdio session reuse.
 5. Run final UI/touch polish after full device-flow testing.
 
 ## GitHub CI note

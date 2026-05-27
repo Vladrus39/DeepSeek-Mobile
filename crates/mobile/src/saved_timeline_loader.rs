@@ -4,8 +4,16 @@ use crate::mobile_runtime_config::MobileRuntimeConfig;
 use deepseek_mobile_core::{AgentEvent, RuntimeThreadStore};
 
 pub fn load_saved_events(runtime: &MobileRuntimeConfig) -> anyhow::Result<Vec<AgentEvent>> {
-    let store = RuntimeThreadStore::open(runtime.runtime_store_root.clone())?;
-    let records = store.load_events(&runtime.thread_id)?;
+    let store = match RuntimeThreadStore::open(runtime.runtime_store_root.clone()) {
+        Ok(store) => store,
+        Err(error) if is_benign_restore_error(&error) => return Ok(Vec::new()),
+        Err(error) => return Err(error),
+    };
+    let records = match store.load_events(&runtime.thread_id) {
+        Ok(records) => records,
+        Err(error) if is_benign_restore_error(&error) => return Ok(Vec::new()),
+        Err(error) => return Err(error),
+    };
     Ok(records.into_iter().map(|record| record.event).collect())
 }
 
@@ -25,6 +33,25 @@ pub fn load_default_saved_timeline() -> anyhow::Result<MobileTimelineState> {
 
 pub fn load_default_saved_events() -> anyhow::Result<Vec<AgentEvent>> {
     load_saved_events(&MobileRuntimeConfig::default())
+}
+
+pub fn load_active_saved_timeline() -> anyhow::Result<MobileTimelineState> {
+    crate::chat_session::load_timeline_for_active_thread()
+}
+
+pub fn load_active_saved_events() -> anyhow::Result<Vec<AgentEvent>> {
+    load_saved_events(&crate::chat_session::runtime_for_active_thread())
+}
+
+/// Empty or partially corrupt runtime JSON should not surface as a chat error banner.
+pub fn is_benign_restore_error(error: &anyhow::Error) -> bool {
+    let message = error.to_string();
+    if message.contains("No such file") || message.contains("os error 2") {
+        return true;
+    }
+    message.contains("EOF while parsing")
+        || message.contains("unexpected end of input")
+        || message.contains("trailing characters")
 }
 
 #[cfg(test)]
@@ -61,6 +88,12 @@ mod tests {
         assert_eq!(timeline.items[0].body, "restored");
 
         let _ = std::fs::remove_dir_all(base_dir);
+    }
+
+    #[test]
+    fn benign_restore_error_detects_eof() {
+        let err = anyhow::anyhow!("EOF while parsing a value at line 1 column 0");
+        assert!(super::is_benign_restore_error(&err));
     }
 
     #[test]

@@ -15,9 +15,10 @@ tokio = { version = "1", features = ["full"] }
 anyhow = "1"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls-webpki-roots"] }
 axum = "0.7"
 tokio-stream = "0.1"
 zip = "0.6"
 dioxus = { version = "0.7", features = ["mobile"] }
 deepseek-mobile-core = { path = "crates/core" }
+mdns-sd = "0.13"

@@ -3,26 +3,34 @@ use crate::agent_timeline::{
 };
 use deepseek_mobile_core::{AgentEvent, RiskLevel, WorkspaceSnapshotRecord};
 
+fn skip_status_timeline_line(message: &str) -> bool {
+    matches!(
+        message,
+        "DeepSeek streaming response opened" | "DeepSeek streaming response completed"
+    ) || message.starts_with("ModelRouter:")
+}
+
 pub fn push_agent_event(timeline: &mut MobileTimelineState, event: &AgentEvent) -> Option<String> {
     match event {
-        AgentEvent::Started => Some(timeline.push(
-            MobileTimelineItemKind::Status,
-            MobileTimelineItemStatus::Running,
-            "Agent started",
-            "DeepSeek agent request started",
-        )),
-        AgentEvent::Status(message) => Some(timeline.push(
-            MobileTimelineItemKind::Status,
-            MobileTimelineItemStatus::Running,
-            "Agent status",
-            message.clone(),
-        )),
-        AgentEvent::TurnStarted { turn_id } => Some(timeline.push(
-            MobileTimelineItemKind::Status,
-            MobileTimelineItemStatus::Running,
-            "Turn started",
-            turn_id.clone(),
-        )),
+        AgentEvent::Started => None,
+        AgentEvent::Status(message) => {
+            if skip_status_timeline_line(message) {
+                return None;
+            }
+            timeline.seal_agent_status_items();
+            let status = if MobileTimelineState::status_message_is_terminal(message) {
+                MobileTimelineItemStatus::Done
+            } else {
+                MobileTimelineItemStatus::Running
+            };
+            Some(timeline.push(
+                MobileTimelineItemKind::Status,
+                status,
+                "Agent status",
+                message.clone(),
+            ))
+        }
+        AgentEvent::TurnStarted { .. } => None,
         AgentEvent::TurnFinished {
             turn_id,
             status,
@@ -34,12 +42,9 @@ pub fn push_agent_event(timeline: &mut MobileTimelineState, event: &AgentEvent) 
             } else {
                 timeline.finish_live_assistant_message();
             }
+            timeline.seal_open_work_items();
             Some(timeline.push(
-                if error.is_some() {
-                    MobileTimelineItemKind::Error
-                } else {
-                    MobileTimelineItemKind::Status
-                },
+                MobileTimelineItemKind::Status,
                 if error.is_some() {
                     MobileTimelineItemStatus::Failed
                 } else {
@@ -61,16 +66,11 @@ pub fn push_agent_event(timeline: &mut MobileTimelineState, event: &AgentEvent) 
                 ),
             ))
         }
-        AgentEvent::MessageStarted { index, role } => {
+        AgentEvent::MessageStarted { index: _, role } => {
             if role == "assistant" {
                 timeline.start_live_assistant_message();
             }
-            Some(timeline.push(
-                MobileTimelineItemKind::Status,
-                MobileTimelineItemStatus::Running,
-                "Message started",
-                format!("#{} role={}", index, role),
-            ))
+            None
         }
         AgentEvent::TextDelta(text) => {
             if text.is_empty() {
@@ -79,20 +79,16 @@ pub fn push_agent_event(timeline: &mut MobileTimelineState, event: &AgentEvent) 
                 Some(timeline.append_live_assistant_delta(text))
             }
         }
-        AgentEvent::ReasoningDelta(text) => Some(timeline.push(
-            MobileTimelineItemKind::Status,
-            MobileTimelineItemStatus::Running,
-            "Reasoning",
-            text.clone(),
-        )),
-        AgentEvent::MessageFinished { index } => {
+        AgentEvent::ReasoningDelta(text) => {
+            if text.is_empty() {
+                None
+            } else {
+                Some(timeline.append_live_reasoning_delta(text))
+            }
+        }
+        AgentEvent::MessageFinished { index: _ } => {
             timeline.finish_live_assistant_message();
-            Some(timeline.push(
-                MobileTimelineItemKind::Status,
-                MobileTimelineItemStatus::Done,
-                "Message finished",
-                format!("message #{} completed", index),
-            ))
+            None
         }
         AgentEvent::ToolCallStarted(tool) => Some(timeline.push(
             MobileTimelineItemKind::ToolCall,
@@ -101,6 +97,7 @@ pub fn push_agent_event(timeline: &mut MobileTimelineState, event: &AgentEvent) 
             tool.args.clone(),
         )),
         AgentEvent::ToolCallFinished(result) => {
+            timeline.seal_tool_call(&result.name);
             if let Some(snapshot) = result
                 .metadata
                 .as_ref()
@@ -196,19 +193,18 @@ pub fn push_agent_event(timeline: &mut MobileTimelineState, event: &AgentEvent) 
                 workspace
             ),
         )),
-        AgentEvent::TermuxExecutionPending { call_id, .. } => {
-            Some(timeline.push(
-                MobileTimelineItemKind::Status,
-                MobileTimelineItemStatus::Running,
-                "Termux execution pending",
-                format!(
-                    "tool_call_id={} — waiting for Android Termux bridge to complete",
-                    call_id
-                ),
-            ))
-        }
+        AgentEvent::TermuxExecutionPending { call_id, .. } => Some(timeline.push(
+            MobileTimelineItemKind::Status,
+            MobileTimelineItemStatus::Running,
+            "Termux execution pending",
+            format!(
+                "tool_call_id={} — waiting for Android Termux bridge to complete",
+                call_id
+            ),
+        )),
         AgentEvent::Error(message) => {
             timeline.fail_live_assistant_message();
+            timeline.seal_open_work_items();
             Some(timeline.push(
                 MobileTimelineItemKind::Error,
                 MobileTimelineItemStatus::Failed,
@@ -218,12 +214,8 @@ pub fn push_agent_event(timeline: &mut MobileTimelineState, event: &AgentEvent) 
         }
         AgentEvent::Finished => {
             timeline.finish_live_assistant_message();
-            Some(timeline.push(
-                MobileTimelineItemKind::Status,
-                MobileTimelineItemStatus::Done,
-                "Agent finished",
-                "DeepSeek agent request completed",
-            ))
+            timeline.seal_open_work_items();
+            None
         }
     }
 }
@@ -254,6 +246,34 @@ mod tests {
         assert_eq!(timeline.len(), 1);
         assert_eq!(timeline.items[0].kind, MobileTimelineItemKind::Status);
         assert_eq!(timeline.items[0].body, "Thinking");
+        assert_eq!(timeline.items[0].status, MobileTimelineItemStatus::Running);
+    }
+
+    #[test]
+    fn terminal_status_event_is_marked_done() {
+        let mut timeline = MobileTimelineState::default();
+        push_agent_event(
+            &mut timeline,
+            &AgentEvent::Status("Готово · workspace: /tmp · thread: t1".to_string()),
+        );
+        assert_eq!(timeline.items[0].status, MobileTimelineItemStatus::Done);
+    }
+
+    #[test]
+    fn reasoning_deltas_merge_into_one_work_log_line() {
+        let mut timeline = MobileTimelineState::default();
+        push_agent_event(&mut timeline, &AgentEvent::ReasoningDelta("a".to_string()));
+        push_agent_event(&mut timeline, &AgentEvent::ReasoningDelta("b".to_string()));
+        push_agent_event(&mut timeline, &AgentEvent::MessageFinished { index: 0 });
+
+        let reasoning: Vec<_> = timeline
+            .items
+            .iter()
+            .filter(|item| item.title == "Reasoning")
+            .collect();
+        assert_eq!(reasoning.len(), 1);
+        assert_eq!(reasoning[0].body, "ab");
+        assert_eq!(reasoning[0].status, MobileTimelineItemStatus::Done);
     }
 
     #[test]
@@ -360,6 +380,37 @@ mod tests {
         assert_eq!(timeline.items[0].title, "Termux native execution queued");
         assert!(timeline.items[0].body.contains("termux-tool-3"));
         assert_eq!(timeline.items[1].title, "Tool result: exec_shell");
+    }
+
+    #[test]
+    fn turn_finished_seals_running_status_rows() {
+        let mut timeline = MobileTimelineState::default();
+        push_agent_event(&mut timeline, &AgentEvent::Status("Thinking".to_string()));
+        push_agent_event(
+            &mut timeline,
+            &AgentEvent::TurnFinished {
+                turn_id: "t1".to_string(),
+                status: deepseek_mobile_core::TurnStatus::Completed,
+                usage: deepseek_mobile_core::TokenUsage::default(),
+                error: None,
+            },
+        );
+        let running_status = timeline
+            .items
+            .iter()
+            .filter(|item| {
+                item.kind == MobileTimelineItemKind::Status
+                    && item.title == "Agent status"
+                    && item.status == MobileTimelineItemStatus::Running
+            })
+            .count();
+        assert_eq!(running_status, 0);
+        assert!(
+            timeline
+                .items
+                .iter()
+                .any(|item| item.title == "Turn finished")
+        );
     }
 
     #[test]

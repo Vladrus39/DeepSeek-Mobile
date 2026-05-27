@@ -110,7 +110,10 @@ impl ToolSpec for PhoneControlTool {
                 let path = required_str(&input, "path")?;
                 let resolved = context.resolve_path(path)?;
                 if !resolved.is_file() {
-                    return Err(anyhow!("share_file path is not a file: {}", resolved.display()));
+                    return Err(anyhow!(
+                        "share_file path is not a file: {}",
+                        resolved.display()
+                    ));
                 }
                 PhoneNativeRequest::share_file(
                     resolved.display().to_string(),
@@ -155,7 +158,12 @@ mod tests {
     #[test]
     fn open_url_emits_native_metadata() {
         let tool = PhoneControlTool;
-        let workspace = Workspace::new("w1", "Phone", PathBuf::from("."), ExecutorKind::LocalAndroid);
+        let workspace = Workspace::new(
+            "w1",
+            "Phone",
+            PathBuf::from("."),
+            ExecutorKind::LocalAndroid,
+        );
         let result = tool
             .execute(
                 json!({"action": "open_url", "url": "https://example.com"}),

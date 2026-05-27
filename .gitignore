@@ -8,6 +8,10 @@ target/
 /tools/pc-host/bin/**/*
 !tools/pc-host/bin/README.md
 
+# Sideloaded Termux APK/bootstrap (see scripts/install-termux-offline.ps1)
+/tools/android/third-party/*.apk
+/tools/android/third-party/bootstrap-*.zip
+
 # Project-local Android SDK copy (large; reproducible via sync-sdk-from-system.ps1)
 /tools/android/downloads/
 /tools/android/sdk/platform-tools/

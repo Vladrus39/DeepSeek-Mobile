@@ -3,6 +3,8 @@ package com.deepseek.mobile
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.os.Handler
+import android.os.Looper
 import com.deepseek.mobile.bridge.DeepSeekTermuxBridge
 import org.json.JSONObject
 
@@ -23,7 +25,9 @@ class TermuxResultReceiver : BroadcastReceiver() {
                     .put("error", result.error),
             )
             .toString()
-        NativeBridge.deliverHostCallbackJson(payload)
+        Handler(Looper.getMainLooper()).post {
+            NativeBridge.deliverHostCallbackJson(payload)
+        }
     }
 
     companion object {

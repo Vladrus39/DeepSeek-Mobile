@@ -247,8 +247,13 @@ Security note: this bundle contains a pairing token. Do not share it with untrus
         )
     }
 
-    pub fn bundle_files(&self, host_binaries: Option<&PcHostBinaryBundle>) -> Result<Vec<PcPairingBundleFile>> {
-        let host_included = host_binaries.map(PcHostBinaryBundle::has_any).unwrap_or(false);
+    pub fn bundle_files(
+        &self,
+        host_binaries: Option<&PcHostBinaryBundle>,
+    ) -> Result<Vec<PcPairingBundleFile>> {
+        let host_included = host_binaries
+            .map(PcHostBinaryBundle::has_any)
+            .unwrap_or(false);
         let mut files = vec![
             PcPairingBundleFile {
                 relative_path: "pairing.json".to_string(),
@@ -267,11 +272,18 @@ Security note: this bundle contains a pairing token. Do not share it with untrus
             },
         ];
 
-        files.extend(self.launch_scripts().into_iter().map(|script| PcPairingBundleFile {
-            relative_path: script.file_name,
-            content: script.content,
-            executable: matches!(script.platform, PcPairingPlatform::LinuxShell | PcPairingPlatform::MacOsShell),
-        }));
+        files.extend(
+            self.launch_scripts()
+                .into_iter()
+                .map(|script| PcPairingBundleFile {
+                    relative_path: script.file_name,
+                    content: script.content,
+                    executable: matches!(
+                        script.platform,
+                        PcPairingPlatform::LinuxShell | PcPairingPlatform::MacOsShell
+                    ),
+                }),
+        );
 
         Ok(files)
     }
@@ -293,8 +305,9 @@ Security note: this bundle contains a pairing token. Do not share it with untrus
         for file in self.bundle_files(host_binaries)? {
             let path = output_dir.join(&file.relative_path);
             if let Some(parent) = path.parent() {
-                fs::create_dir_all(parent)
-                    .with_context(|| format!("create pairing bundle parent {}", parent.display()))?;
+                fs::create_dir_all(parent).with_context(|| {
+                    format!("create pairing bundle parent {}", parent.display())
+                })?;
             }
             fs::write(&path, file.content)
                 .with_context(|| format!("write pairing bundle file {}", path.display()))?;
@@ -361,12 +374,7 @@ Security note: this bundle contains a pairing token. Do not share it with untrus
 
         if let Some(hosts) = host_binaries {
             if let Some(windows) = hosts.windows_exe.as_ref() {
-                write_zip_binary_file(
-                    &mut zip,
-                    "deepseek-pc-host.exe",
-                    windows,
-                    false,
-                )?;
+                write_zip_binary_file(&mut zip, "deepseek-pc-host.exe", windows, false)?;
             }
             if let Some(unix) = hosts.unix_bin.as_ref() {
                 write_zip_binary_file(&mut zip, "deepseek-pc-host", unix, true)?;
@@ -511,8 +519,8 @@ fn write_zip_binary_file(
     source: &Path,
     executable: bool,
 ) -> Result<()> {
-    let bytes = fs::read(source)
-        .with_context(|| format!("read PC host binary {}", source.display()))?;
+    let bytes =
+        fs::read(source).with_context(|| format!("read PC host binary {}", source.display()))?;
     let unix_permissions = if executable { 0o755 } else { 0o644 };
     let options = FileOptions::default()
         .compression_method(CompressionMethod::Deflated)
@@ -551,9 +559,15 @@ mod tests {
         let bundle = sample_bundle();
         let scripts = bundle.launch_scripts();
         assert_eq!(scripts.len(), 3);
-        assert!(scripts.iter().any(|script| script.file_name.ends_with(".ps1")));
-        assert!(scripts.iter().any(|script| script.file_name.ends_with(".sh")));
-        assert!(scripts.iter().any(|script| script.file_name.ends_with(".command")));
+        assert!(scripts
+            .iter()
+            .any(|script| script.file_name.ends_with(".ps1")));
+        assert!(scripts
+            .iter()
+            .any(|script| script.file_name.ends_with(".sh")));
+        assert!(scripts
+            .iter()
+            .any(|script| script.file_name.ends_with(".command")));
     }
 
     #[test]
@@ -574,10 +588,16 @@ mod tests {
     fn bundle_file_manifest_contains_expected_files() {
         let bundle = sample_bundle();
         let files = bundle.bundle_files(None).unwrap();
-        assert!(files.iter().any(|file| file.relative_path == "pairing.json"));
-        assert!(files.iter().any(|file| file.relative_path == "deepseek-pc-host.env"));
+        assert!(files
+            .iter()
+            .any(|file| file.relative_path == "pairing.json"));
+        assert!(files
+            .iter()
+            .any(|file| file.relative_path == "deepseek-pc-host.env"));
         assert!(files.iter().any(|file| file.relative_path == "README.txt"));
-        assert!(files.iter().any(|file| file.relative_path == "start-deepseek-pc-host.ps1"));
+        assert!(files
+            .iter()
+            .any(|file| file.relative_path == "start-deepseek-pc-host.ps1"));
     }
 
     #[test]

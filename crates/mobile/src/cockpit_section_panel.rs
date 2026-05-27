@@ -170,8 +170,8 @@ pub fn cockpit_section_panel(
                 git_state.write().set_commit_message(message);
             }),
         ),
-        CockpitSection::Mcp => mcp_panel(mcp_state),
-        CockpitSection::Skills => skills_panel(skills_state),
+        CockpitSection::Mcp => mcp_panel(lang(), mcp_state),
+        CockpitSection::Skills => skills_panel(lang(), skills_state),
         CockpitSection::Tasks => {
             let pc_client = pc_pairing_state()
                 .active_workspace_connection()

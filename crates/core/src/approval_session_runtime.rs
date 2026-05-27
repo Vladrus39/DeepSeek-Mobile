@@ -35,20 +35,32 @@ impl ApprovalSessionRuntimeStore {
         if !path.exists() {
             return Ok(ApprovalSessionPolicy::new());
         }
-        let bytes = fs::read(&path)
-            .map_err(|error| anyhow!("failed to read approval session {}: {}", path.display(), error))?;
+        let bytes = fs::read(&path).map_err(|error| {
+            anyhow!(
+                "failed to read approval session {}: {}",
+                path.display(),
+                error
+            )
+        })?;
         let record: ApprovalSessionRuntimeRecord = serde_json::from_slice(&bytes)?;
         Ok(record.policy)
     }
 
-    pub fn save(&self, thread_id: impl Into<String>, policy: &ApprovalSessionPolicy) -> Result<ApprovalSessionRuntimeRecord> {
+    pub fn save(
+        &self,
+        thread_id: impl Into<String>,
+        policy: &ApprovalSessionPolicy,
+    ) -> Result<ApprovalSessionRuntimeRecord> {
         let record = ApprovalSessionRuntimeRecord {
             thread_id: thread_id.into(),
             policy: policy.clone(),
             updated_at_unix: unix_time(),
         };
         fs::create_dir_all(&self.root)?;
-        fs::write(self.path(&record.thread_id), serde_json::to_string_pretty(&record)?)?;
+        fs::write(
+            self.path(&record.thread_id),
+            serde_json::to_string_pretty(&record)?,
+        )?;
         Ok(record)
     }
 
@@ -71,7 +83,13 @@ impl ApprovalSessionRuntimeStore {
 
 fn safe_file_id(id: &str) -> String {
     id.chars()
-        .map(|ch| if ch.is_ascii_alphanumeric() || ch == '-' || ch == '_' { ch } else { '_' })
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() || ch == '-' || ch == '_' {
+                ch
+            } else {
+                '_'
+            }
+        })
         .collect()
 }
 
@@ -96,7 +114,10 @@ mod tests {
             .duration_since(std::time::UNIX_EPOCH)
             .expect("system clock before unix epoch")
             .as_nanos();
-        std::env::temp_dir().join(format!("deepseek-approval-session-store-{}-{}", name, nanos))
+        std::env::temp_dir().join(format!(
+            "deepseek-approval-session-store-{}-{}",
+            name, nanos
+        ))
     }
 
     #[test]

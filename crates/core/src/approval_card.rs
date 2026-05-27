@@ -68,7 +68,12 @@ impl ApprovalCardView {
     }
 
     pub fn from_pending_tool_approval(pending: &PendingToolCallApproval) -> Self {
-        Self::from_pending_tool_approval_with_context(pending, None, None, ApprovalCardStatus::Pending)
+        Self::from_pending_tool_approval_with_context(
+            pending,
+            None,
+            None,
+            ApprovalCardStatus::Pending,
+        )
     }
 
     pub fn from_approval_request(request: &MobileApprovalRequest) -> Self {
@@ -124,7 +129,10 @@ impl ApprovalCardView {
 }
 
 pub fn approval_cards_from_records(records: &[PendingApprovalRecord]) -> Vec<ApprovalCardView> {
-    records.iter().map(ApprovalCardView::from_pending_record).collect()
+    records
+        .iter()
+        .map(ApprovalCardView::from_pending_record)
+        .collect()
 }
 
 pub fn sanitize_value_for_preview(value: &Value) -> Value {
@@ -133,7 +141,10 @@ pub fn sanitize_value_for_preview(value: &Value) -> Value {
             let mut out = Map::new();
             for (idx, (key, value)) in map.iter().enumerate() {
                 if idx >= MAX_PREVIEW_OBJECT_KEYS {
-                    out.insert("_truncated".to_string(), Value::String("object preview truncated".to_string()));
+                    out.insert(
+                        "_truncated".to_string(),
+                        Value::String("object preview truncated".to_string()),
+                    );
                     break;
                 }
                 if is_sensitive_key(key) {
@@ -172,7 +183,10 @@ fn truncate_preview_string(text: &str) -> String {
     if char_count <= MAX_PREVIEW_STRING_CHARS {
         return text.to_string();
     }
-    let mut preview = text.chars().take(MAX_PREVIEW_STRING_CHARS).collect::<String>();
+    let mut preview = text
+        .chars()
+        .take(MAX_PREVIEW_STRING_CHARS)
+        .collect::<String>();
     preview.push_str("... <truncated>");
     preview
 }
@@ -191,9 +205,13 @@ fn title_for(category: &ToolCategory, tool_name: &str) -> String {
 fn subtitle_for(category: &ToolCategory, risk: &ApprovalRisk) -> String {
     match (category, risk) {
         (ToolCategory::Safe, ApprovalRisk::Benign) => "Read-only operation".to_string(),
-        (ToolCategory::Safe, ApprovalRisk::Destructive) => "Unexpected high-risk read operation".to_string(),
+        (ToolCategory::Safe, ApprovalRisk::Destructive) => {
+            "Unexpected high-risk read operation".to_string()
+        }
         (ToolCategory::FileWrite, _) => "This may modify workspace files".to_string(),
-        (ToolCategory::Shell, _) => "This may run a command through the selected executor".to_string(),
+        (ToolCategory::Shell, _) => {
+            "This may run a command through the selected executor".to_string()
+        }
         (ToolCategory::Git, _) => "This may inspect or change repository state".to_string(),
         (ToolCategory::Network, _) => "This may access network resources".to_string(),
         (ToolCategory::Unknown, _) => "Tool impact is unknown".to_string(),

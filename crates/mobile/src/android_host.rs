@@ -85,19 +85,20 @@ pub fn drain_next_host_action(bridge: &mut NativeBridgeState) -> Option<AndroidH
         return Some(terminal_action(command));
     }
     match bridge.pop_next_command()? {
-        NativeMobileCommand::ShareFile { path, mime_type } => Some(AndroidHostAction::ShareFile {
-            path,
-            mime_type,
-        }),
+        NativeMobileCommand::ShareFile { path, mime_type } => {
+            Some(AndroidHostAction::ShareFile { path, mime_type })
+        }
         NativeMobileCommand::OpenUrl { url } => Some(AndroidHostAction::OpenUrl { url }),
-        NativeMobileCommand::LaunchApp { package } => Some(AndroidHostAction::LaunchApp { package }),
+        NativeMobileCommand::LaunchApp { package } => {
+            Some(AndroidHostAction::LaunchApp { package })
+        }
         NativeMobileCommand::OpenSystemSettings => Some(AndroidHostAction::OpenSystemSettings),
         NativeMobileCommand::OpenDocumentPicker(_)
         | NativeMobileCommand::StartPcGatewayDiscovery(_)
         | NativeMobileCommand::RunTermuxCommand(_) => drain_next_host_action(bridge),
-        NativeMobileCommand::OpenTerminal { workspace_id } => Some(AndroidHostAction::OpenTerminal {
-            workspace_id,
-        }),
+        NativeMobileCommand::OpenTerminal { workspace_id } => {
+            Some(AndroidHostAction::OpenTerminal { workspace_id })
+        }
         NativeMobileCommand::TerminalInput { session_id, input } => {
             Some(AndroidHostAction::TerminalInput { session_id, input })
         }
@@ -140,16 +141,15 @@ fn termux_action(command: AndroidTermuxCommand) -> AndroidHostAction {
 
 fn terminal_action(command: NativeMobileCommand) -> AndroidHostAction {
     match command {
-        NativeMobileCommand::OpenTerminal { workspace_id } => AndroidHostAction::OpenTerminal {
-            workspace_id,
-        },
-        NativeMobileCommand::TerminalInput { session_id, input } => AndroidHostAction::TerminalInput {
-            session_id,
-            input,
-        },
-        NativeMobileCommand::CloseTerminal { session_id } => AndroidHostAction::CloseTerminal {
-            session_id,
-        },
+        NativeMobileCommand::OpenTerminal { workspace_id } => {
+            AndroidHostAction::OpenTerminal { workspace_id }
+        }
+        NativeMobileCommand::TerminalInput { session_id, input } => {
+            AndroidHostAction::TerminalInput { session_id, input }
+        }
+        NativeMobileCommand::CloseTerminal { session_id } => {
+            AndroidHostAction::CloseTerminal { session_id }
+        }
         other => AndroidHostAction::OpenUrl {
             url: format!("unsupported-terminal-command:{other:?}"),
         },
@@ -242,7 +242,10 @@ fn parse_pc_discovery_callback(callback: &Value) -> Option<AndroidPcGatewayDisco
                 .iter()
                 .filter_map(parse_mdns_record)
                 .collect();
-            Some(AndroidPcGatewayDiscoveryCallback::Completed { request_id, records })
+            Some(AndroidPcGatewayDiscoveryCallback::Completed {
+                request_id,
+                records,
+            })
         }
         "failed" => Some(AndroidPcGatewayDiscoveryCallback::Failed {
             request_id,
@@ -257,7 +260,10 @@ fn parse_pc_discovery_callback(callback: &Value) -> Option<AndroidPcGatewayDisco
 }
 
 /// Apply a host callback encoded as JSON into bridge state.
-pub fn apply_host_callback_json(bridge: &mut NativeBridgeState, payload: &str) -> Option<NativeMobileEvent> {
+pub fn apply_host_callback_json(
+    bridge: &mut NativeBridgeState,
+    payload: &str,
+) -> Option<NativeMobileEvent> {
     let value: Value = serde_json::from_str(payload).ok()?;
     let kind = value.get("kind")?.as_str()?;
     match kind {
@@ -279,7 +285,10 @@ pub fn apply_host_callback_json(bridge: &mut NativeBridgeState, payload: &str) -
                 .unwrap_or("document picker failed")
                 .to_string();
             Some(bridge.accept_android_document_picker_callback(
-                AndroidDocumentPickerCallback::Failed { request_id, message },
+                AndroidDocumentPickerCallback::Failed {
+                    request_id,
+                    message,
+                },
             ))
         }
         "pc_discovery" => {
@@ -301,7 +310,10 @@ pub fn apply_host_callback_json(bridge: &mut NativeBridgeState, payload: &str) -
                 .unwrap_or("termux command failed")
                 .to_string();
             Some(bridge.accept_android_termux_callback(
-                crate::native_termux::AndroidTermuxCallback::Failed { request_id, message },
+                crate::native_termux::AndroidTermuxCallback::Failed {
+                    request_id,
+                    message,
+                },
             ))
         }
         _ => None,
@@ -341,7 +353,10 @@ mod tests {
             r#"{{"kind":"document_picker_picked","callback":{{"type":"picked","request_id":"{request_id}","documents":[{{"id":"doc-1","display_name":"notes.txt","local_path":"/data/user/0/com.deepseek.mobile/files/notes.txt","mime_type":"text/plain","size_bytes":12}}]}}}}"#
         );
         let event = super::apply_host_callback_json(&mut bridge, &payload).expect("event");
-        assert!(matches!(event, crate::native_bridge::NativeMobileEvent::DocumentsPicked(_)));
+        assert!(matches!(
+            event,
+            crate::native_bridge::NativeMobileEvent::DocumentsPicked(_)
+        ));
         assert!(!bridge.is_waiting_for_document_picker_callback());
     }
 

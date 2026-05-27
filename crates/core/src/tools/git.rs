@@ -7,7 +7,10 @@
 //! Read-only operations (status, diff, log) auto-approve.
 //! Write operations (commit, push, pull, branch) require approval.
 
-use super::{optional_str, required_str, ApprovalRequirement, ToolCapability, ToolContext, ToolResult, ToolSpec};
+use super::{
+    optional_str, required_str, ApprovalRequirement, ToolCapability, ToolContext, ToolResult,
+    ToolSpec,
+};
 use anyhow::{anyhow, Result};
 use serde_json::{json, Value};
 use std::path::PathBuf;
@@ -49,7 +52,11 @@ impl ToolSpec for GitTool {
     }
 
     fn capabilities(&self) -> Vec<ToolCapability> {
-        vec![ToolCapability::Git, ToolCapability::RequiresApproval, ToolCapability::Sandboxable]
+        vec![
+            ToolCapability::Git,
+            ToolCapability::RequiresApproval,
+            ToolCapability::Sandboxable,
+        ]
     }
 
     fn approval_requirement(&self) -> ApprovalRequirement {
@@ -208,10 +215,8 @@ mod tests {
         use std::hash::{Hash, Hasher};
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
         std::thread::current().id().hash(&mut hasher);
-        let root = std::env::temp_dir().join(format!(
-            "deepseek_mobile_git_test_{}",
-            hasher.finish()
-        ));
+        let root =
+            std::env::temp_dir().join(format!("deepseek_mobile_git_test_{}", hasher.finish()));
         let _ = fs::remove_dir_all(&root);
         fs::create_dir_all(&root).unwrap();
         let workspace = Workspace::new("test", "Test", root.clone(), ExecutorKind::LocalAndroid);
@@ -240,7 +245,9 @@ mod tests {
     fn git_status_on_empty_repo() {
         let (ctx, root) = temp_workspace();
         init_git_repo(&root);
-        let result = GitTool.execute(json!({"operation": "status"}), &ctx).unwrap();
+        let result = GitTool
+            .execute(json!({"operation": "status"}), &ctx)
+            .unwrap();
         assert!(result.success);
         let _ = fs::remove_dir_all(&root);
     }

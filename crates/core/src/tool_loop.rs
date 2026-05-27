@@ -17,7 +17,7 @@ fn execution_mode_to_approval_mode(mode: &crate::config::ExecutionMode) -> Appro
 use crate::approval_card::ApprovalCardView;
 use crate::approval_session::{ApprovalSessionGrant, ApprovalSessionPolicy};
 use crate::events::{AgentEvent, ToolCallEvent, ToolResultEvent};
-use crate::pc_gateway::{PcGatewayResponse};
+use crate::pc_gateway::PcGatewayResponse;
 use crate::pc_gateway_client::PcGatewayClient;
 use crate::runtime_store::ApprovalDecisionRecord;
 use crate::snapshots::{WorkspaceSnapshotRecord, WorkspaceSnapshotService};
@@ -93,7 +93,13 @@ pub async fn process_model_text_with_tools_and_session(
     session: &mut ApprovalSessionPolicy,
 ) -> Result<ToolLoopOutcome> {
     process_model_text_with_tools_and_session_and_pc_gateway(
-        text, registry, context, turn, session, None, crate::config::ExecutionMode::Agent,
+        text,
+        registry,
+        context,
+        turn,
+        session,
+        None,
+        crate::config::ExecutionMode::Agent,
     )
     .await
 }
@@ -135,10 +141,7 @@ pub async fn process_model_text_with_tools_and_session_and_pc_gateway(
                 execute_approved_call_with_pc_gateway(registry, context, turn, &call, pc_gateway)
                     .await;
             push_execution_result(&mut outcome, &call, result);
-        } else if crate::approval::should_request_approval(
-            &approval_mode,
-            &approval,
-        ) {
+        } else if crate::approval::should_request_approval(&approval_mode, &approval) {
             let pending = PendingToolCallApproval { approval, call };
             outcome.events.push(AgentEvent::ApprovalRequired(
                 crate::events::ApprovalRequest {
@@ -276,7 +279,28 @@ pub async fn execute_approved_call_with_pc_gateway(
         &call.name,
         call.arguments.clone(),
     ));
-    let pre_snapshot = create_pre_tool_snapshot_if_needed(context, call, pc_gateway).await?;
+    let pre_snapshot = match create_pre_tool_snapshot_if_needed(context, call, pc_gateway).await {
+        Ok(snapshot) => snapshot,
+        Err(error) => {
+            // Snapshots are a safety feature, not the executor itself. On Android
+            // a Termux workspace path is owned by the Termux app, so the mobile
+            // sandbox cannot always create snapshot files there before queueing
+            // a native RUN_COMMAND. Do not block the requested tool because of
+            // best-effort snapshot failure; surface the warning in metadata.
+            Some(WorkspaceSnapshotRecord {
+                schema_version: 1,
+                id: "pre-snapshot-skipped".to_string(),
+                workspace_id: context.workspace.id.clone(),
+                workspace_name: context.workspace.name.clone(),
+                workspace_root: context.workspace.root.clone(),
+                reason: format!("pre-tool snapshot skipped before {}: {}", call.name, error),
+                created_unix: current_unix_time(),
+                file_count: 0,
+                total_bytes: 0,
+                files: Vec::new(),
+            })
+        }
+    };
     let mut coordinator = ToolExecutionCoordinator::new(registry);
     if let Some(client) = pc_gateway {
         coordinator = coordinator.with_pc_gateway(client);
@@ -319,7 +343,7 @@ async fn create_pre_tool_snapshot_if_needed(
             match client.create_snapshot(&context.workspace.id, &reason).await {
                 Ok(PcGatewayResponse::SnapshotRecord(record)) => return Ok(Some(record)),
                 Ok(_other) => return Ok(None), // unexpected response, skip
-                Err(_) => return Ok(None), // gateway error, skip snapshot
+                Err(_) => return Ok(None),     // gateway error, skip snapshot
             }
         }
         return Ok(None);
@@ -385,6 +409,15 @@ fn git_operation_may_modify(arguments: &Value) -> bool {
 fn attach_pre_snapshot_metadata(result: &mut ToolResult, snapshot: WorkspaceSnapshotRecord) {
     let mut metadata = result.metadata.take().unwrap_or_else(|| json!({}));
     if let Value::Object(object) = &mut metadata {
+        if snapshot.id == "pre-snapshot-skipped" {
+            object.insert("pre_snapshot_skipped".to_string(), json!(true));
+            object.insert("pre_snapshot_warning".to_string(), json!(snapshot.reason));
+            result
+                .content
+                .push_str("\n\n[warning] pre-tool snapshot skipped; tool execution continued.");
+            result.metadata = Some(metadata);
+            return;
+        }
         object.insert(
             "pre_snapshot".to_string(),
             serde_json::to_value(snapshot).unwrap_or_else(|_| json!({})),
@@ -422,7 +455,9 @@ fn push_execution_result(
                     .metadata
                     .as_ref()
                     .and_then(|m| m.get("termux_exec_request"))
-                    .and_then(|v| serde_json::from_value::<crate::executor::TermuxExecRequest>(v.clone()).ok())
+                    .and_then(|v| {
+                        serde_json::from_value::<crate::executor::TermuxExecRequest>(v.clone()).ok()
+                    })
                 {
                     outcome.events.push(AgentEvent::TermuxExecutionPending {
                         call_id: call.id.clone(),

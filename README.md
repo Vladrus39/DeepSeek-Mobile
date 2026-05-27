@@ -7,9 +7,9 @@ Current factual checkpoint: [`docs/CURRENT_STATE.md`](docs/CURRENT_STATE.md).
 Real device setup: [`docs/DEVICE_SETUP.md`](docs/DEVICE_SETUP.md) (`.env` debug prefill, Termux path, smoke tests).
 Windows PC install/update: [`docs/INSTALL_PC_WINDOWS.md`](docs/INSTALL_PC_WINDOWS.md).
 
-## Current state — 2026-05-26
+## Current state — 2026-05-28
 
-The project is no longer blocked on Android startup. A debug Android APK now builds, installs and launches on a real USB-debugging phone.
+**Primary goal:** full coding agent on the phone (Termux), like the desktop TUI — **not** PC Host pairing first. A debug Android APK builds, installs, and launches on a real USB-debugging phone (`RFCNC0PWD4E`).
 
 Verified locally:
 
@@ -75,6 +75,17 @@ PC pairing is not file sync. It grants the phone access to a PC Host workspace. 
    - external MCP tool execution behind explicit approvals and workspace boundaries.
 5. Final UI polish after deeper touch-flow testing on phone.
 
+## Device control (ADB)
+
+Canonical script for screenshots, logcat, install, and taps on a connected phone:
+
+```powershell
+. .\tools\android\env.ps1
+.\scripts\adb-control.ps1 -Action InstallLaunch -Serial RFCNC0PWD4E
+```
+
+See [`docs/ADB_CONTROL.md`](docs/ADB_CONTROL.md). Avoid `device-*-verify.ps1` while manually testing chat (they `force-stop` the app).
+
 ## Quick start
 
 ### Windows PC install or update — one command
@@ -93,6 +104,8 @@ Faster update without full tests:
 Set-ExecutionPolicy -Scope Process Bypass -Force; $u='https://raw.githubusercontent.com/Vladrus39/DeepSeek-Mobile/main/scripts/setup-pc-windows.ps1'; $s="$env:TEMP\setup-pc-windows.ps1"; Invoke-WebRequest $u -OutFile $s; powershell -ExecutionPolicy Bypass -File $s -SkipTests
 ```
 
+Alternative clone/update from inside a checkout: [`docs/INSTALL_UPDATE.md`](docs/INSTALL_UPDATE.md) (`scripts/install-windows.ps1`, `scripts/update-windows.ps1`).
+
 Run the desktop UI after setup:
 
 ```powershell
@@ -100,7 +113,7 @@ cd $HOME\DeepSeek-Mobile
 cargo run -p deepseek-mobile
 ```
 
-Run PC Host after setup:
+Run PC Host after setup (optional, later phase):
 
 ```powershell
 cd $HOME\DeepSeek-Mobile
@@ -111,6 +124,8 @@ cargo run -p deepseek-pc-host
 ```
 
 ### Android debug APK build
+
+### Developer commands
 
 ```powershell
 git clone https://github.com/Vladrus39/DeepSeek-Mobile.git
@@ -136,11 +151,14 @@ See:
 - [`tools/android/README.md`](tools/android/README.md)
 - [`tools/android/DOWNLOAD_BUDGET.md`](tools/android/DOWNLOAD_BUDGET.md)
 - [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md)
+- [`docs/INSTALL_UPDATE.md`](docs/INSTALL_UPDATE.md)
 
 ## Main documentation
 
 - [`docs/CURRENT_STATE.md`](docs/CURRENT_STATE.md) — current checkpoint and remaining work.
+- [`docs/INSTALL_UPDATE.md`](docs/INSTALL_UPDATE.md) — one-command Windows install/update.
 - [`docs/DEVICE_SETUP.md`](docs/DEVICE_SETUP.md) — real phone setup and smoke tests.
+- [`docs/ADB_CONTROL.md`](docs/ADB_CONTROL.md) — `scripts/adb-control.ps1` device automation.
 - [`docs/INSTALL_PC_WINDOWS.md`](docs/INSTALL_PC_WINDOWS.md) — one-command Windows PC install/update and PC Host startup.
 - [`PROJECT_STATUS.md`](PROJECT_STATUS.md) — compact project status.
 - [`docs/PROJECT_AUDIT.md`](docs/PROJECT_AUDIT.md) — deeper audit.

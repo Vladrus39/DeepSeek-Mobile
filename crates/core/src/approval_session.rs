@@ -59,16 +59,20 @@ impl ApprovalSessionPolicy {
         }
 
         let scope = scope_for_call(approval, call)?;
-        if let Some(existing) = self
-            .grants
-            .iter()
-            .find(|grant| grant.tool_name == approval.tool_name && grant.category == approval.category && grant.scope == scope)
-        {
+        if let Some(existing) = self.grants.iter().find(|grant| {
+            grant.tool_name == approval.tool_name
+                && grant.category == approval.category
+                && grant.scope == scope
+        }) {
             return Some(existing.clone());
         }
 
         let grant = ApprovalSessionGrant {
-            id: format!("session-grant-{}-{}", current_unix_time(), self.grants.len() + 1),
+            id: format!(
+                "session-grant-{}-{}",
+                current_unix_time(),
+                self.grants.len() + 1
+            ),
             tool_name: approval.tool_name.clone(),
             category: approval.category.clone(),
             scope,

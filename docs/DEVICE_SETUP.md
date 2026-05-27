@@ -16,6 +16,29 @@ On **Android**, the debug APK may **prefill** the onboarding field from your mac
 
 ## 2. Termux (required for TUI-class agent)
 
+### Phone has no internet
+
+On your PC (with internet):
+
+```powershell
+. .\tools\android\env.ps1
+.\scripts\install-termux-offline.ps1 -Serial RFCNC0PWD4E
+```
+
+This downloads the F-Droid Termux APK (~109 MB) and a bootstrap zip fallback, installs via USB, and copies `bootstrap-aarch64.zip` to `Download/` on the phone. Termux 0.118+ also embeds bootstrap in the APK, so first launch usually works offline after 1–2 minutes.
+
+Then on the phone in Termux (no network):
+
+```bash
+mkdir -p ~/deepseek-project
+mkdir -p ~/.termux
+echo allow-external-apps=true >> ~/.termux/termux.properties
+```
+
+Restart Termux, open DeepSeek Mobile, grant **Run commands in Termux environment**.
+
+### Phone has internet
+
 1. Install [Termux](https://github.com/termux/termux-app) from F-Droid.
 2. In Termux:
    ```bash

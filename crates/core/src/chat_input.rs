@@ -142,7 +142,11 @@ impl UserChatInput {
             out.push('\n');
         }
 
-        for attachment in self.attachments.iter().filter(|item| item.extracted_text.is_some()) {
+        for attachment in self
+            .attachments
+            .iter()
+            .filter(|item| item.extracted_text.is_some())
+        {
             let text = attachment.extracted_text.as_deref().unwrap_or_default();
             out.push_str("\n--- Extracted content for ");
             out.push_str(&attachment.display_name);
@@ -168,7 +172,10 @@ fn truncate_attachment_text(text: &str) -> String {
         return text.to_string();
     }
 
-    let mut out = text.chars().take(MAX_ATTACHMENT_PROMPT_CHARS).collect::<String>();
+    let mut out = text
+        .chars()
+        .take(MAX_ATTACHMENT_PROMPT_CHARS)
+        .collect::<String>();
     out.push_str("\n...[attachment content truncated]...");
     out
 }
@@ -186,12 +193,14 @@ mod tests {
 
     #[test]
     fn attachments_are_rendered_into_prompt_text() {
-        let input = UserChatInput::new("Analyze this")
-            .with_attachments(vec![
-                UserAttachmentRef::new("a1", "project.zip", UserAttachmentKind::Archive)
-                    .with_mime_type("application/zip")
-                    .with_size_bytes(2048),
-            ]);
+        let input =
+            UserChatInput::new("Analyze this").with_attachments(vec![UserAttachmentRef::new(
+                "a1",
+                "project.zip",
+                UserAttachmentKind::Archive,
+            )
+            .with_mime_type("application/zip")
+            .with_size_bytes(2048)]);
         let prompt = input.to_prompt_text();
         assert!(prompt.contains("Analyze this"));
         assert!(prompt.contains("project.zip"));
@@ -201,11 +210,13 @@ mod tests {
 
     #[test]
     fn extracted_attachment_text_is_rendered_into_prompt() {
-        let input = UserChatInput::new("Review this")
-            .with_attachments(vec![
-                UserAttachmentRef::new("a1", "main.rs", UserAttachmentKind::SourceFile)
-                    .with_extracted_text("fn main() {}"),
-            ]);
+        let input =
+            UserChatInput::new("Review this").with_attachments(vec![UserAttachmentRef::new(
+                "a1",
+                "main.rs",
+                UserAttachmentKind::SourceFile,
+            )
+            .with_extracted_text("fn main() {}")]);
         let prompt = input.to_prompt_text();
         assert!(prompt.contains("extracted_text=true"));
         assert!(prompt.contains("Extracted content for main.rs"));
@@ -214,11 +225,13 @@ mod tests {
 
     #[test]
     fn extracted_attachment_text_is_truncated() {
-        let input = UserChatInput::new("Review this")
-            .with_attachments(vec![
-                UserAttachmentRef::new("a1", "large.txt", UserAttachmentKind::SourceFile)
-                    .with_extracted_text("x".repeat(30_000)),
-            ]);
+        let input =
+            UserChatInput::new("Review this").with_attachments(vec![UserAttachmentRef::new(
+                "a1",
+                "large.txt",
+                UserAttachmentKind::SourceFile,
+            )
+            .with_extracted_text("x".repeat(30_000))]);
         let prompt = input.to_prompt_text();
         assert!(prompt.contains("attachment content truncated"));
         assert!(prompt.len() < 26_000);
@@ -226,8 +239,11 @@ mod tests {
 
     #[test]
     fn attachment_only_input_is_not_empty() {
-        let input = UserChatInput::new("")
-            .with_attachments(vec![UserAttachmentRef::new("a1", "spec.pdf", UserAttachmentKind::Document)]);
+        let input = UserChatInput::new("").with_attachments(vec![UserAttachmentRef::new(
+            "a1",
+            "spec.pdf",
+            UserAttachmentKind::Document,
+        )]);
         assert!(!input.is_empty());
         assert!(input.to_prompt_text().contains("Attached files"));
     }

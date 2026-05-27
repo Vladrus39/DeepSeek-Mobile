@@ -50,10 +50,7 @@ impl ToolSpec for McpProxyTool {
     }
 
     fn capabilities(&self) -> Vec<ToolCapability> {
-        vec![
-            ToolCapability::Network,
-            ToolCapability::RequiresApproval,
-        ]
+        vec![ToolCapability::Network, ToolCapability::RequiresApproval]
     }
 
     fn approval_requirement(&self) -> ApprovalRequirement {

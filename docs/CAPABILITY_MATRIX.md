@@ -1,8 +1,8 @@
 # Capability matrix (user-facing)
 
-**Updated:** 2026-05-26
+**Updated:** 2026-05-28
 
-Product stance: **phone-first full agent** ([PRODUCT_POSITIONING.md](./PRODUCT_POSITIONING.md)); PC Host is optional. Current factual status is tracked in [CURRENT_STATE.md](./CURRENT_STATE.md).
+Product stance: **phone-first full agent** ([PRODUCT_POSITIONING.md](./PRODUCT_POSITIONING.md)); **PC Host is optional and deferred** until phone-agent flows are complete. Current factual status is tracked in [CURRENT_STATE.md](./CURRENT_STATE.md).
 
 ## Summary
 
@@ -37,7 +37,7 @@ Product stance: **phone-first full agent** ([PRODUCT_POSITIONING.md](./PRODUCT_P
 | Queue approved `exec_shell` through native bridge | Implemented |
 | Termux `RUN_COMMAND` intent and result parser | Implemented |
 | Continue model turn from stdout/stderr/exit code | Implemented in Rust/mobile path |
-| Real hardware happy-path verification | Pending |
+| Real hardware happy-path verification | **Verified** (chat PONG, Termux pwd probe on `RFCNC0PWD4E` when Termux configured) |
 | Requires Termux permission and `allow-external-apps=true` | User setup |
 
 ### PC Host workspace: optional large-repo path

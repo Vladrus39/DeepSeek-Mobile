@@ -94,10 +94,8 @@ impl McpUiState {
                             config.name, error
                         ));
                     } else {
-                        self.registry.set_status(
-                            &config.name,
-                            McpServerStatus::Error(error.to_string()),
-                        );
+                        self.registry
+                            .set_status(&config.name, McpServerStatus::Error(error.to_string()));
                         self.registry.set_tools(&config.name, Vec::new());
                         self.last_error = Some(format!(
                             "MCP '{}' connection failed: {}",

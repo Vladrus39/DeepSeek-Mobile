@@ -24,7 +24,10 @@ pub enum DurableTaskStatus {
 
 impl DurableTaskStatus {
     pub fn is_terminal(&self) -> bool {
-        matches!(self, DurableTaskStatus::Completed | DurableTaskStatus::Failed | DurableTaskStatus::Canceled)
+        matches!(
+            self,
+            DurableTaskStatus::Completed | DurableTaskStatus::Failed | DurableTaskStatus::Canceled
+        )
     }
 }
 
@@ -155,10 +158,7 @@ impl DurableTaskManager {
 
     /// Load a single task by id.
     pub fn load(&self, task_id: &str) -> Result<Option<DurableTaskRecord>> {
-        Ok(self
-            .load_all()?
-            .into_iter()
-            .find(|t| t.id == task_id))
+        Ok(self.load_all()?.into_iter().find(|t| t.id == task_id))
     }
 
     /// Save a task record (insert or update in place).
@@ -186,7 +186,11 @@ impl DurableTaskManager {
     }
 
     /// Update the status of an existing task.
-    pub fn update_status(&self, task_id: &str, status: DurableTaskStatus) -> Result<Option<DurableTaskRecord>> {
+    pub fn update_status(
+        &self,
+        task_id: &str,
+        status: DurableTaskStatus,
+    ) -> Result<Option<DurableTaskRecord>> {
         let mut state = self.load_state_or_default()?;
         let found = state.tasks.iter_mut().find(|t| t.id == task_id);
         match found {
@@ -194,8 +198,12 @@ impl DurableTaskManager {
                 let mut updated = record.clone();
                 updated.status = status.clone();
                 match &status {
-                    DurableTaskStatus::Running => updated.started_at_unix = updated.started_at_unix.or(Some(unix_secs())),
-                    DurableTaskStatus::Completed | DurableTaskStatus::Failed | DurableTaskStatus::Canceled => {
+                    DurableTaskStatus::Running => {
+                        updated.started_at_unix = updated.started_at_unix.or(Some(unix_secs()))
+                    }
+                    DurableTaskStatus::Completed
+                    | DurableTaskStatus::Failed
+                    | DurableTaskStatus::Canceled => {
                         updated.completed_at_unix = Some(unix_secs());
                     }
                     DurableTaskStatus::Queued => {}
@@ -313,8 +321,7 @@ impl DurableTaskManager {
             return Ok(DurableTaskManagerState::default());
         }
         let bytes = fs::read(&self.path)?;
-        Ok(serde_json::from_slice(&bytes)
-            .unwrap_or_default())
+        Ok(serde_json::from_slice(&bytes).unwrap_or_default())
     }
 
     fn write_state(&self, state: &DurableTaskManagerState) -> Result<()> {
@@ -405,7 +412,10 @@ mod tests {
         let mgr = DurableTaskManager::open_in(&dir).unwrap();
         mgr.create("t1", "Build", "cargo").unwrap();
 
-        let updated = mgr.update_status("t1", DurableTaskStatus::Running).unwrap().unwrap();
+        let updated = mgr
+            .update_status("t1", DurableTaskStatus::Running)
+            .unwrap()
+            .unwrap();
         assert_eq!(updated.status, DurableTaskStatus::Running);
         assert!(updated.started_at_unix.is_some());
 
@@ -419,7 +429,9 @@ mod tests {
     fn test_manager_update_nonexistent() {
         let dir = temp_dir();
         let mgr = DurableTaskManager::open_in(&dir).unwrap();
-        let result = mgr.update_status("ghost", DurableTaskStatus::Running).unwrap();
+        let result = mgr
+            .update_status("ghost", DurableTaskStatus::Running)
+            .unwrap();
         assert!(result.is_none());
         clean(&dir);
     }

@@ -98,7 +98,9 @@ impl TerminalUiState {
         for session in &mut compact.sessions {
             if session.output.len() > MAX_OUTPUT_LINES {
                 let truncated = session.output.len() - MAX_OUTPUT_LINES;
-                let keep = session.output.split_off(session.output.len() - MAX_OUTPUT_LINES);
+                let keep = session
+                    .output
+                    .split_off(session.output.len() - MAX_OUTPUT_LINES);
                 session.output = keep;
                 session
                     .output

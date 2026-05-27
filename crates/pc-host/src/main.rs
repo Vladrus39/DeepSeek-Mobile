@@ -4,30 +4,32 @@ use axum::http::{HeaderMap, StatusCode};
 use axum::response::sse::{Event, Sse};
 use axum::routing::{get, post};
 use axum::{Json, Router};
-use std::convert::Infallible;
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-use tokio::process::Command as TokioCommand;
-use tokio_stream::wrappers::ReceiverStream;
-use tokio::sync::broadcast;
 use deepseek_mobile_core::{
     CommandOutput, CommandRequest, LogRing, PcDiagnostic, PcDiagnosticSeverity,
     PcEnvironmentDescriptor, PcGatewayCapability, PcGatewayConnectionStatus, PcGatewayDirEntry,
     PcGatewayError, PcGatewayHealth, PcGatewayLogEntry, PcGatewayLogs, PcGatewayRequest,
     PcGatewayRequestEnvelope, PcGatewayResponse, PcGatewayResponseEnvelope,
-    PcGatewaySecurityPolicy, PolicyPreset, PcRunningTaskEvent, PcRunningTaskInfo, PcTaskDescriptor, PcTaskKind,
-    PcTerminalSession, PcWorkspaceGrant,
+    PcGatewaySecurityPolicy, PcRunningTaskEvent, PcRunningTaskInfo, PcTaskDescriptor, PcTaskKind,
+    PcTerminalSession, PcWorkspaceGrant, PolicyPreset,
 };
 use serde::Deserialize;
+use std::collections::HashMap;
+use std::convert::Infallible;
 use std::env;
 use std::net::SocketAddr;
 use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::fs;
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::process::Command as TokioCommand;
 use tokio::process::{Child, Command};
+use tokio::sync::broadcast;
 use tokio::sync::Mutex;
 use tokio::time::timeout;
-use std::collections::HashMap;
+use tokio_stream::wrappers::ReceiverStream;
+
+mod mdns_advertise;
 
 #[derive(Clone)]
 struct PcHostState {
@@ -48,8 +50,6 @@ struct TaskHandle {
     log_path: PathBuf,
     started_at_unix: u64,
 }
-
-
 
 #[derive(Clone, Debug)]
 struct PcHostConfig {
@@ -99,15 +99,19 @@ impl PcHostConfig {
             .parse::<SocketAddr>()
             .context("parse DEEPSEEK_PC_HOST_BIND")?;
         let gateway_id = env::var("DEEPSEEK_PC_HOST_ID").unwrap_or_else(|_| "pc-local".to_string());
-        let gateway_label = env::var("DEEPSEEK_PC_HOST_LABEL").unwrap_or_else(|_| "Developer PC".to_string());
-        let workspace_id = env::var("DEEPSEEK_PC_HOST_WORKSPACE_ID").unwrap_or_else(|_| "local".to_string());
+        let gateway_label =
+            env::var("DEEPSEEK_PC_HOST_LABEL").unwrap_or_else(|_| "Developer PC".to_string());
+        let workspace_id =
+            env::var("DEEPSEEK_PC_HOST_WORKSPACE_ID").unwrap_or_else(|_| "local".to_string());
         let workspace_root = env::var("DEEPSEEK_PC_HOST_WORKSPACE")
             .map(PathBuf::from)
             .unwrap_or_else(|_| env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
         let workspace_root = workspace_root
             .canonicalize()
             .with_context(|| format!("canonicalize workspace root {}", workspace_root.display()))?;
-        let auth_token = env::var("DEEPSEEK_PC_HOST_TOKEN").ok().filter(|token| !token.is_empty());
+        let auth_token = env::var("DEEPSEEK_PC_HOST_TOKEN")
+            .ok()
+            .filter(|token| !token.is_empty());
         let preset = env::var("DEEPSEEK_PC_HOST_POLICY")
             .ok()
             .and_then(|v| match v.to_lowercase().as_str() {
@@ -145,7 +149,11 @@ impl PcHostConfig {
         })
     }
 
-    fn response(&self, request_id: String, response: PcGatewayResponse) -> PcGatewayResponseEnvelope {
+    fn response(
+        &self,
+        request_id: String,
+        response: PcGatewayResponse,
+    ) -> PcGatewayResponseEnvelope {
         PcGatewayResponseEnvelope {
             request_id,
             timestamp_unix: current_unix_time(),
@@ -182,9 +190,14 @@ impl PcHostConfig {
         for component in candidate.components() {
             match component {
                 Component::Normal(_) | Component::CurDir => {}
-                Component::ParentDir => return Err(anyhow!("parent path segments are not accepted: {}", path)),
+                Component::ParentDir => {
+                    return Err(anyhow!("parent path segments are not accepted: {}", path))
+                }
                 Component::RootDir | Component::Prefix(_) => {
-                    return Err(anyhow!("root or prefix path segments are not accepted: {}", path));
+                    return Err(anyhow!(
+                        "root or prefix path segments are not accepted: {}",
+                        path
+                    ));
                 }
             }
         }
@@ -203,7 +216,10 @@ impl PcHostConfig {
             let canonical_parent = parent
                 .canonicalize()
                 .with_context(|| format!("canonicalize parent {}", parent.display()))?;
-            canonical_parent.join(path.file_name().ok_or_else(|| anyhow!("path has no file name"))?)
+            canonical_parent.join(
+                path.file_name()
+                    .ok_or_else(|| anyhow!("path has no file name"))?,
+            )
         };
 
         if canonical.starts_with(&self.workspace_root) {
@@ -235,10 +251,7 @@ impl PcHostConfig {
         }
         for trusted in &self.trusted_paths {
             if let Ok(rel) = absolute.strip_prefix(trusted) {
-                return format!(
-                    "@trusted/{}",
-                    rel.to_string_lossy().replace('\\', "/")
-                );
+                return format!("@trusted/{}", rel.to_string_lossy().replace('\\', "/"));
             }
         }
         absolute.to_string_lossy().replace('\\', "/")
@@ -258,6 +271,7 @@ async fn main() -> Result<()> {
     let config = PcHostConfig::from_env()?;
     let bind_addr = config.bind_addr;
     let gateway_label = config.gateway_label.clone();
+    let gateway_id = config.gateway_id.clone();
     let (task_events_tx, _) = broadcast::channel::<PcRunningTaskEvent>(32);
     let state = PcHostState {
         config: Arc::new(config),
@@ -275,7 +289,10 @@ async fn main() -> Result<()> {
         .route("/v1/gateway/logs", get(logs_handler))
         .route("/v1/runtime/tasks", get(runtime_tasks_handler))
         .route("/v1/runtime/tasks/events", get(runtime_task_events_handler))
-        .route("/v1/runtime/tasks/{task_id}/log", get(runtime_task_log_handler))
+        .route(
+            "/v1/runtime/tasks/{task_id}/log",
+            get(runtime_task_log_handler),
+        )
         .with_state(state);
     // Note: /v1/runtime/tasks and log routes return task status data
     // that survives the mobile app restart because the pc-host keeps tasks in memory.
@@ -283,7 +300,14 @@ async fn main() -> Result<()> {
     let listener = tokio::net::TcpListener::bind(bind_addr)
         .await
         .with_context(|| format!("bind PC host on {}", bind_addr))?;
-    println!("deepseek-pc-host '{}' listening on http://{}", gateway_label, bind_addr);
+    if let Err(error) = mdns_advertise::register_pc_gateway(bind_addr, &gateway_id, &gateway_label)
+    {
+        eprintln!("deepseek-pc-host mDNS advertise skipped: {error:#}");
+    }
+    println!(
+        "deepseek-pc-host '{}' listening on http://{}",
+        gateway_label, bind_addr
+    );
     axum::serve(listener, app).await?;
     Ok(())
 }
@@ -317,7 +341,9 @@ async fn gateway_request_handler(
 
     let response = match handle_gateway_request(&state, envelope.request).await {
         Ok(response) => response,
-        Err(error) => PcGatewayResponse::Error(PcGatewayError::new("host_error", error.to_string())),
+        Err(error) => {
+            PcGatewayResponse::Error(PcGatewayError::new("host_error", error.to_string()))
+        }
     };
 
     let duration_ms = start.elapsed().as_millis() as u64;
@@ -329,7 +355,11 @@ async fn gateway_request_handler(
             request_id: request_id.clone(),
             operation,
             success,
-            error_message: if success { None } else { Some(format!("{:?}", response)) },
+            error_message: if success {
+                None
+            } else {
+                Some(format!("{:?}", response))
+            },
             duration_ms,
         });
     }
@@ -358,9 +388,15 @@ async fn exec_stream_handler(
     let working_dir = match body.command.working_dir.as_ref() {
         Some(dir) => {
             if dir.is_absolute() {
-                return Err((StatusCode::BAD_REQUEST, "absolute paths not accepted".to_string()));
+                return Err((
+                    StatusCode::BAD_REQUEST,
+                    "absolute paths not accepted".to_string(),
+                ));
             }
-            match state.config.resolve_workspace_path(&body.workspace_id, &dir.to_string_lossy()) {
+            match state
+                .config
+                .resolve_workspace_path(&body.workspace_id, &dir.to_string_lossy())
+            {
                 Ok(resolved) => match state.config.ensure_path_allowed(&resolved).await {
                     Ok(dir) => dir,
                     Err(e) => return Err((StatusCode::FORBIDDEN, e.to_string())),
@@ -375,11 +411,13 @@ async fn exec_stream_handler(
     let max_seconds = state.config.security_policy.max_command_seconds;
 
     tokio::spawn(async move {
-        let result = stream_process_output(body.command, working_dir, max_seconds, tx.clone()).await;
+        let result =
+            stream_process_output(body.command, working_dir, max_seconds, tx.clone()).await;
         if let Err(e) = result {
             let _ = tx
                 .send(Ok(Event::default().data(
-                    serde_json::json!({"kind": "stderr", "data": format!("stream error: {}", e)}).to_string(),
+                    serde_json::json!({"kind": "stderr", "data": format!("stream error: {}", e)})
+                        .to_string(),
                 )))
                 .await;
         }
@@ -418,9 +456,8 @@ async fn stream_process_output(
     let stdout_task = tokio::spawn(async move {
         let mut reader = BufReader::new(stdout).lines();
         while let Ok(Some(line)) = reader.next_line().await {
-            let event = Ok(Event::default().data(
-                serde_json::json!({"kind": "stdout", "data": line}).to_string(),
-            ));
+            let event = Ok(Event::default()
+                .data(serde_json::json!({"kind": "stdout", "data": line}).to_string()));
             if tx_stdout.send(event).await.is_err() {
                 break;
             }
@@ -430,9 +467,8 @@ async fn stream_process_output(
     let stderr_task = tokio::spawn(async move {
         let mut reader = BufReader::new(stderr).lines();
         while let Ok(Some(line)) = reader.next_line().await {
-            let event = Ok(Event::default().data(
-                serde_json::json!({"kind": "stderr", "data": line}).to_string(),
-            ));
+            let event = Ok(Event::default()
+                .data(serde_json::json!({"kind": "stderr", "data": line}).to_string()));
             if tx_stderr.send(event).await.is_err() {
                 break;
             }
@@ -470,52 +506,116 @@ fn authorize(config: &PcHostConfig, headers: &HeaderMap) -> Result<()> {
     Ok(())
 }
 
-async fn handle_gateway_request(state: &PcHostState, request: PcGatewayRequest) -> Result<PcGatewayResponse> {
+async fn handle_gateway_request(
+    state: &PcHostState,
+    request: PcGatewayRequest,
+) -> Result<PcGatewayResponse> {
     match request {
         PcGatewayRequest::Health => Ok(PcGatewayResponse::Health(state.config.health())),
-        PcGatewayRequest::ListWorkspaces => Ok(PcGatewayResponse::Workspaces(vec![state.config.workspace.clone()])),
-        PcGatewayRequest::ListEnvironments { .. } => Ok(PcGatewayResponse::Environments(Vec::<PcEnvironmentDescriptor>::new())),
-        PcGatewayRequest::DetectTasks { workspace_id } => detect_tasks(&state.config, &workspace_id).await,
-        PcGatewayRequest::GetDiagnostics { workspace_id, path } => diagnostics(&state.config, &workspace_id, path.as_deref()).await,
-        PcGatewayRequest::ListDir { workspace_id, path } => list_dir(&state.config, &workspace_id, &path).await,
-        PcGatewayRequest::ReadFile { workspace_id, path } => read_file(&state.config, &workspace_id, &path).await,
-        PcGatewayRequest::WriteFile { workspace_id, path, content } => {
-            write_file(&state.config, &workspace_id, &path, &content).await
+        PcGatewayRequest::ListWorkspaces => Ok(PcGatewayResponse::Workspaces(vec![state
+            .config
+            .workspace
+            .clone()])),
+        PcGatewayRequest::ListEnvironments { .. } => Ok(PcGatewayResponse::Environments(Vec::<
+            PcEnvironmentDescriptor,
+        >::new(
+        ))),
+        PcGatewayRequest::DetectTasks { workspace_id } => {
+            detect_tasks(&state.config, &workspace_id).await
         }
-        PcGatewayRequest::DeleteFile { workspace_id, path } => delete_file(&state.config, &workspace_id, &path).await,
-        PcGatewayRequest::ExecuteCommand { workspace_id, command, environment_id: _ } => {
-            execute_command(&state.config, &workspace_id, command).await
+        PcGatewayRequest::GetDiagnostics { workspace_id, path } => {
+            diagnostics(&state.config, &workspace_id, path.as_deref()).await
         }
-        PcGatewayRequest::GitStatus { workspace_id } => git_text(&state.config, &workspace_id, "status", &["status", "--short"]).await,
-        PcGatewayRequest::GitDiff { workspace_id } => git_text(&state.config, &workspace_id, "diff", &["diff", "--"]).await,
-        PcGatewayRequest::GitCommit { workspace_id, message } => {
-            git_commit(&state.config, &workspace_id, &message).await
+        PcGatewayRequest::ListDir { workspace_id, path } => {
+            list_dir(&state.config, &workspace_id, &path).await
         }
-        PcGatewayRequest::GitPush { workspace_id, remote, branch } => {
-            git_push(&state.config, &workspace_id, remote.as_deref(), branch.as_deref()).await
+        PcGatewayRequest::ReadFile { workspace_id, path } => {
+            read_file(&state.config, &workspace_id, &path).await
         }
-        PcGatewayRequest::GitPull { workspace_id, remote, branch } => {
-            git_pull(&state.config, &workspace_id, remote.as_deref(), branch.as_deref()).await
+        PcGatewayRequest::WriteFile {
+            workspace_id,
+            path,
+            content,
+        } => write_file(&state.config, &workspace_id, &path, &content).await,
+        PcGatewayRequest::DeleteFile { workspace_id, path } => {
+            delete_file(&state.config, &workspace_id, &path).await
+        }
+        PcGatewayRequest::ExecuteCommand {
+            workspace_id,
+            command,
+            environment_id: _,
+        } => execute_command(&state.config, &workspace_id, command).await,
+        PcGatewayRequest::GitStatus { workspace_id } => {
+            git_text(
+                &state.config,
+                &workspace_id,
+                "status",
+                &["status", "--short"],
+            )
+            .await
+        }
+        PcGatewayRequest::GitDiff { workspace_id } => {
+            git_text(&state.config, &workspace_id, "diff", &["diff", "--"]).await
+        }
+        PcGatewayRequest::GitCommit {
+            workspace_id,
+            message,
+        } => git_commit(&state.config, &workspace_id, &message).await,
+        PcGatewayRequest::GitPush {
+            workspace_id,
+            remote,
+            branch,
+        } => {
+            git_push(
+                &state.config,
+                &workspace_id,
+                remote.as_deref(),
+                branch.as_deref(),
+            )
+            .await
+        }
+        PcGatewayRequest::GitPull {
+            workspace_id,
+            remote,
+            branch,
+        } => {
+            git_pull(
+                &state.config,
+                &workspace_id,
+                remote.as_deref(),
+                branch.as_deref(),
+            )
+            .await
         }
         PcGatewayRequest::GitBranch { workspace_id } => {
-            git_text(&state.config, &workspace_id, "branch", &["branch", "--list"]).await
+            git_text(
+                &state.config,
+                &workspace_id,
+                "branch",
+                &["branch", "--list"],
+            )
+            .await
         }
-        PcGatewayRequest::SnapshotCreate { workspace_id, reason } => {
-            snapshot_create(&state.config, &workspace_id, &reason).await
+        PcGatewayRequest::SnapshotCreate {
+            workspace_id,
+            reason,
+        } => snapshot_create(&state.config, &workspace_id, &reason).await,
+        PcGatewayRequest::SnapshotRestore {
+            workspace_id,
+            snapshot_id,
+        } => snapshot_restore(&state.config, &workspace_id, &snapshot_id).await,
+        PcGatewayRequest::SnapshotList { workspace_id } => {
+            snapshot_list(&state.config, &workspace_id).await
         }
-        PcGatewayRequest::SnapshotRestore { workspace_id, snapshot_id } => {
-            snapshot_restore(&state.config, &workspace_id, &snapshot_id).await
-        }
-        PcGatewayRequest::SnapshotList { workspace_id } => snapshot_list(&state.config, &workspace_id).await,
-        PcGatewayRequest::OpenTerminal { workspace_id, cwd, environment_id: _ } => {
-            open_terminal(state, &workspace_id, cwd.as_deref()).await
-        }
+        PcGatewayRequest::OpenTerminal {
+            workspace_id,
+            cwd,
+            environment_id: _,
+        } => open_terminal(state, &workspace_id, cwd.as_deref()).await,
         PcGatewayRequest::TerminalInput { session_id, input } => {
             terminal_input(state, &session_id, &input).await
         }
-        PcGatewayRequest::CloseTerminal { session_id } => {
-            close_terminal(state, &session_id).await
-        }
+        PcGatewayRequest::CloseTerminal { session_id } => close_terminal(state, &session_id).await,
         PcGatewayRequest::RunTask { task_id } => run_task_handler(state, &task_id).await,
         PcGatewayRequest::StopTask { task_id } => stop_task_handler(state, &task_id).await,
         PcGatewayRequest::ListTasks => list_tasks_handler(state).await,
@@ -524,12 +624,19 @@ async fn handle_gateway_request(state: &PcHostState, request: PcGatewayRequest) 
         }
         unsupported => Ok(PcGatewayResponse::Error(PcGatewayError::new(
             "unsupported_request",
-            format!("request is not implemented by this PC host build: {:?}", unsupported),
+            format!(
+                "request is not implemented by this PC host build: {:?}",
+                unsupported
+            ),
         ))),
     }
 }
 
-async fn open_path_in_os(config: &PcHostConfig, workspace_id: &str, path: &str) -> Result<PcGatewayResponse> {
+async fn open_path_in_os(
+    config: &PcHostConfig,
+    workspace_id: &str,
+    path: &str,
+) -> Result<PcGatewayResponse> {
     let requested = config.resolve_workspace_path(workspace_id, path)?;
     let allowed = config.ensure_path_allowed(&requested).await?;
     launch_path_in_os_shell(&allowed)?;
@@ -569,7 +676,11 @@ fn launch_path_in_os_shell(path: &Path) -> Result<()> {
     }
 }
 
-async fn list_dir(config: &PcHostConfig, workspace_id: &str, path: &str) -> Result<PcGatewayResponse> {
+async fn list_dir(
+    config: &PcHostConfig,
+    workspace_id: &str,
+    path: &str,
+) -> Result<PcGatewayResponse> {
     let path = config.resolve_workspace_path(workspace_id, path)?;
     let path = config.ensure_path_allowed(&path).await?;
     let mut entries = fs::read_dir(&path)
@@ -590,7 +701,11 @@ async fn list_dir(config: &PcHostConfig, workspace_id: &str, path: &str) -> Resu
     Ok(PcGatewayResponse::DirEntries(out))
 }
 
-async fn read_file(config: &PcHostConfig, workspace_id: &str, path: &str) -> Result<PcGatewayResponse> {
+async fn read_file(
+    config: &PcHostConfig,
+    workspace_id: &str,
+    path: &str,
+) -> Result<PcGatewayResponse> {
     let requested = config.resolve_workspace_path(workspace_id, path)?;
     let path = config.ensure_path_allowed(&requested).await?;
     let content = fs::read_to_string(&path)
@@ -601,7 +716,10 @@ async fn read_file(config: &PcHostConfig, workspace_id: &str, path: &str) -> Res
         .unwrap_or(&path)
         .to_string_lossy()
         .replace('\\', "/");
-    Ok(PcGatewayResponse::FileContent { path: relative, content })
+    Ok(PcGatewayResponse::FileContent {
+        path: relative,
+        content,
+    })
 }
 
 async fn write_file(
@@ -632,14 +750,21 @@ async fn write_file(
     })
 }
 
-async fn delete_file(config: &PcHostConfig, workspace_id: &str, path: &str) -> Result<PcGatewayResponse> {
+async fn delete_file(
+    config: &PcHostConfig,
+    workspace_id: &str,
+    path: &str,
+) -> Result<PcGatewayResponse> {
     let requested = config.resolve_workspace_path(workspace_id, path)?;
     let path = config.ensure_path_allowed(&requested).await?;
     let metadata = fs::metadata(&path)
         .await
         .with_context(|| format!("metadata for delete {}", path.display()))?;
     if metadata.is_dir() {
-        return Err(anyhow!("delete_file refuses to delete directories: {}", path.display()));
+        return Err(anyhow!(
+            "delete_file refuses to delete directories: {}",
+            path.display()
+        ));
     }
     fs::remove_file(&path)
         .await
@@ -681,10 +806,18 @@ async fn execute_command(
         .args(&command.args)
         .current_dir(&working_dir)
         .output();
-    let output = timeout(Duration::from_secs(config.security_policy.max_command_seconds), run)
-        .await
-        .map_err(|_| anyhow!("command timed out after {} seconds", config.security_policy.max_command_seconds))?
-        .with_context(|| format!("execute command {}", command.program))?;
+    let output = timeout(
+        Duration::from_secs(config.security_policy.max_command_seconds),
+        run,
+    )
+    .await
+    .map_err(|_| {
+        anyhow!(
+            "command timed out after {} seconds",
+            config.security_policy.max_command_seconds
+        )
+    })?
+    .with_context(|| format!("execute command {}", command.program))?;
 
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
@@ -706,10 +839,19 @@ async fn git_text(
     }
     let output = timeout(
         Duration::from_secs(config.security_policy.max_command_seconds),
-        Command::new("git").args(args).current_dir(&config.workspace_root).output(),
+        Command::new("git")
+            .args(args)
+            .current_dir(&config.workspace_root)
+            .output(),
     )
     .await
-    .map_err(|_| anyhow!("git {} timed out after {} seconds", operation, config.security_policy.max_command_seconds))?
+    .map_err(|_| {
+        anyhow!(
+            "git {} timed out after {} seconds",
+            operation,
+            config.security_policy.max_command_seconds
+        )
+    })?
     .with_context(|| format!("git {}", operation))?;
     let mut text = String::new();
     text.push_str(&String::from_utf8_lossy(&output.stdout));
@@ -719,7 +861,11 @@ async fn git_text(
         output: truncate_output(text, config.security_policy.max_output_bytes),
     })
 }
-async fn git_commit(config: &PcHostConfig, workspace_id: &str, message: &str) -> Result<PcGatewayResponse> {
+async fn git_commit(
+    config: &PcHostConfig,
+    workspace_id: &str,
+    message: &str,
+) -> Result<PcGatewayResponse> {
     if workspace_id != config.workspace.id {
         return Err(anyhow!("unknown workspace id: {}", workspace_id));
     }
@@ -731,7 +877,12 @@ async fn git_commit(config: &PcHostConfig, workspace_id: &str, message: &str) ->
             .output(),
     )
     .await
-    .map_err(|_| anyhow!("git commit timed out after {} seconds", config.security_policy.max_command_seconds))?
+    .map_err(|_| {
+        anyhow!(
+            "git commit timed out after {} seconds",
+            config.security_policy.max_command_seconds
+        )
+    })?
     .with_context(|| "git commit")?;
     let mut text = String::new();
     text.push_str(&String::from_utf8_lossy(&output.stdout));
@@ -760,10 +911,18 @@ async fn git_push(
     }
     let output = timeout(
         Duration::from_secs(config.security_policy.max_command_seconds),
-        Command::new("git").args(&args).current_dir(&config.workspace_root).output(),
+        Command::new("git")
+            .args(&args)
+            .current_dir(&config.workspace_root)
+            .output(),
     )
     .await
-    .map_err(|_| anyhow!("git push timed out after {} seconds", config.security_policy.max_command_seconds))?
+    .map_err(|_| {
+        anyhow!(
+            "git push timed out after {} seconds",
+            config.security_policy.max_command_seconds
+        )
+    })?
     .with_context(|| "git push")?;
     let mut text = String::new();
     text.push_str(&String::from_utf8_lossy(&output.stdout));
@@ -792,10 +951,18 @@ async fn git_pull(
     }
     let output = timeout(
         Duration::from_secs(config.security_policy.max_command_seconds),
-        Command::new("git").args(&args).current_dir(&config.workspace_root).output(),
+        Command::new("git")
+            .args(&args)
+            .current_dir(&config.workspace_root)
+            .output(),
     )
     .await
-    .map_err(|_| anyhow!("git pull timed out after {} seconds", config.security_policy.max_command_seconds))?
+    .map_err(|_| {
+        anyhow!(
+            "git pull timed out after {} seconds",
+            config.security_policy.max_command_seconds
+        )
+    })?
     .with_context(|| "git pull")?;
     let mut text = String::new();
     text.push_str(&String::from_utf8_lossy(&output.stdout));
@@ -805,7 +972,11 @@ async fn git_pull(
         output: truncate_output(text, config.security_policy.max_output_bytes),
     })
 }
-async fn open_terminal(state: &PcHostState, workspace_id: &str, cwd: Option<&str>) -> Result<PcGatewayResponse> {
+async fn open_terminal(
+    state: &PcHostState,
+    workspace_id: &str,
+    cwd: Option<&str>,
+) -> Result<PcGatewayResponse> {
     let config = &state.config;
     if workspace_id != config.workspace.id {
         return Err(anyhow!("unknown workspace id: {}", workspace_id));
@@ -902,7 +1073,11 @@ async fn open_terminal(state: &PcHostState, workspace_id: &str, cwd: Option<&str
     }))
 }
 
-async fn terminal_input(state: &PcHostState, session_id: &str, input: &str) -> Result<PcGatewayResponse> {
+async fn terminal_input(
+    state: &PcHostState,
+    session_id: &str,
+    input: &str,
+) -> Result<PcGatewayResponse> {
     let mut guard = state.terminals.lock().await;
     let Some(handle) = guard.get_mut(session_id) else {
         return Err(anyhow!("terminal session not found: {}", session_id));
@@ -910,7 +1085,9 @@ async fn terminal_input(state: &PcHostState, session_id: &str, input: &str) -> R
 
     // Write to stdin if available
     if let Some(stdin) = handle.stdin_writer.as_mut() {
-        stdin.write_all(input.as_bytes()).await
+        stdin
+            .write_all(input.as_bytes())
+            .await
             .with_context(|| format!("write stdin to terminal {}", session_id))?;
         stdin.write_all(b"\n").await?;
     }
@@ -948,7 +1125,9 @@ async fn close_terminal(state: &PcHostState, session_id: &str) -> Result<PcGatew
 
 fn uuid_v4() -> String {
     use std::time::{SystemTime, UNIX_EPOCH};
-    let ts = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default();
+    let ts = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default();
     format!("term-{:x}", ts.as_nanos())
 }
 
@@ -959,28 +1138,74 @@ async fn detect_tasks(config: &PcHostConfig, workspace_id: &str) -> Result<PcGat
     let mut tasks = Vec::new();
 
     if config.workspace_root.join("Cargo.toml").exists() {
-        tasks.push(task(workspace_id, "cargo-check", "Cargo check", PcTaskKind::Build, "cargo", &["check", "--workspace"]));
-        tasks.push(task(workspace_id, "cargo-test", "Cargo test", PcTaskKind::Test, "cargo", &["test", "--workspace"]));
+        tasks.push(task(
+            workspace_id,
+            "cargo-check",
+            "Cargo check",
+            PcTaskKind::Build,
+            "cargo",
+            &["check", "--workspace"],
+        ));
+        tasks.push(task(
+            workspace_id,
+            "cargo-test",
+            "Cargo test",
+            PcTaskKind::Test,
+            "cargo",
+            &["test", "--workspace"],
+        ));
     }
     if config.workspace_root.join("package.json").exists() {
-        tasks.push(task(workspace_id, "npm-install", "npm install", PcTaskKind::Install, "npm", &["install"]));
-        tasks.push(task(workspace_id, "npm-test", "npm test", PcTaskKind::Test, "npm", &["test"]));
+        tasks.push(task(
+            workspace_id,
+            "npm-install",
+            "npm install",
+            PcTaskKind::Install,
+            "npm",
+            &["install"],
+        ));
+        tasks.push(task(
+            workspace_id,
+            "npm-test",
+            "npm test",
+            PcTaskKind::Test,
+            "npm",
+            &["test"],
+        ));
     }
-    if config.workspace_root.join("pyproject.toml").exists() || config.workspace_root.join("pytest.ini").exists() {
-        tasks.push(task(workspace_id, "pytest", "pytest", PcTaskKind::Test, "pytest", &[]));
+    if config.workspace_root.join("pyproject.toml").exists()
+        || config.workspace_root.join("pytest.ini").exists()
+    {
+        tasks.push(task(
+            workspace_id,
+            "pytest",
+            "pytest",
+            PcTaskKind::Test,
+            "pytest",
+            &[],
+        ));
     }
 
     Ok(PcGatewayResponse::Tasks(tasks))
 }
 
-async fn diagnostics(config: &PcHostConfig, workspace_id: &str, path: Option<&str>) -> Result<PcGatewayResponse> {
+async fn diagnostics(
+    config: &PcHostConfig,
+    workspace_id: &str,
+    path: Option<&str>,
+) -> Result<PcGatewayResponse> {
     if workspace_id != config.workspace.id {
         return Err(anyhow!("unknown workspace id: {}", workspace_id));
     }
     let requested_path = if let Some(path) = path {
         let requested = config.resolve_workspace_path(workspace_id, path)?;
         let checked = config.ensure_path_allowed(&requested).await?;
-        Some(checked.strip_prefix(&config.workspace_root).unwrap_or(&checked).to_path_buf())
+        Some(
+            checked
+                .strip_prefix(&config.workspace_root)
+                .unwrap_or(&checked)
+                .to_path_buf(),
+        )
     } else {
         None
     };
@@ -1008,7 +1233,10 @@ async fn diagnostics(config: &PcHostConfig, workspace_id: &str, path: Option<&st
     Ok(PcGatewayResponse::Diagnostics(diagnostics))
 }
 
-async fn typescript_diagnostics(config: &PcHostConfig, _requested_path: Option<&Path>) -> Result<Vec<PcDiagnostic>> {
+async fn typescript_diagnostics(
+    config: &PcHostConfig,
+    _requested_path: Option<&Path>,
+) -> Result<Vec<PcDiagnostic>> {
     let output = timeout(
         Duration::from_secs(config.security_policy.max_command_seconds),
         Command::new("npx")
@@ -1042,18 +1270,23 @@ fn parse_tsc_line(line: &str) -> Option<PcDiagnostic> {
 
     let path = trimmed[..paren_open].to_string();
     let line_col = &trimmed[paren_open + 1..paren_close];
-    let (line_str, col_str) = line_col.split_once(',')
+    let (line_str, col_str) = line_col
+        .split_once(',')
         .map(|(l, c)| (l.trim(), c.trim()))
         .unwrap_or((line_col, "1"));
 
-    let severity = if trimmed[global_colon + 1..].trim_start().starts_with("error") {
+    let severity = if trimmed[global_colon + 1..]
+        .trim_start()
+        .starts_with("error")
+    {
         PcDiagnosticSeverity::Error
     } else {
         PcDiagnosticSeverity::Warning
     };
 
     // Split after severity code
-    let message_start = trimmed[global_colon + 1..].find(':')
+    let message_start = trimmed[global_colon + 1..]
+        .find(':')
         .map(|pos| global_colon + 1 + pos + 1)
         .unwrap_or(global_colon + 1);
     let message = trimmed[message_start..].trim().to_string();
@@ -1068,7 +1301,10 @@ fn parse_tsc_line(line: &str) -> Option<PcDiagnostic> {
     })
 }
 
-async fn python_diagnostics(config: &PcHostConfig, _requested_path: Option<&Path>) -> Result<Vec<PcDiagnostic>> {
+async fn python_diagnostics(
+    config: &PcHostConfig,
+    _requested_path: Option<&Path>,
+) -> Result<Vec<PcDiagnostic>> {
     // Try ruff first, fallback to pyright
     let ruff_result = timeout(
         Duration::from_secs(config.security_policy.max_command_seconds),
@@ -1193,7 +1429,10 @@ fn pyright_severity(s: &str) -> PcDiagnosticSeverity {
     }
 }
 
-async fn rust_cargo_diagnostics(config: &PcHostConfig, requested_path: Option<&Path>) -> Result<Vec<PcDiagnostic>> {
+async fn rust_cargo_diagnostics(
+    config: &PcHostConfig,
+    requested_path: Option<&Path>,
+) -> Result<Vec<PcDiagnostic>> {
     let output = timeout(
         Duration::from_secs(config.security_policy.max_command_seconds),
         Command::new("cargo")
@@ -1202,7 +1441,12 @@ async fn rust_cargo_diagnostics(config: &PcHostConfig, requested_path: Option<&P
             .output(),
     )
     .await
-    .map_err(|_| anyhow!("cargo check diagnostics timed out after {} seconds", config.security_policy.max_command_seconds))?
+    .map_err(|_| {
+        anyhow!(
+            "cargo check diagnostics timed out after {} seconds",
+            config.security_policy.max_command_seconds
+        )
+    })?
     .context("execute cargo check diagnostics")?;
 
     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -1217,7 +1461,11 @@ async fn rust_cargo_diagnostics(config: &PcHostConfig, requested_path: Option<&P
         let Some(message) = message.message else {
             continue;
         };
-        diagnostics.extend(cargo_message_to_diagnostics(config, requested_path, message));
+        diagnostics.extend(cargo_message_to_diagnostics(
+            config,
+            requested_path,
+            message,
+        ));
     }
     Ok(diagnostics)
 }
@@ -1332,7 +1580,12 @@ async fn run_task_handler(state: &PcHostState, task_id: &str) -> Result<PcGatewa
     }
 
     // Prepare log path before spawning
-    let log_dir = state.config.workspace_root.join(".deepseek-mobile").join("tasks").join("logs");
+    let log_dir = state
+        .config
+        .workspace_root
+        .join(".deepseek-mobile")
+        .join("tasks")
+        .join("logs");
     tokio::fs::create_dir_all(&log_dir).await?;
     let log_path = log_dir.join(format!("{}.log", task_id));
 
@@ -1443,7 +1696,13 @@ async fn stop_task_handler(state: &PcHostState, task_id: &str) -> Result<PcGatew
     }
 
     // Emit TaskStopped event.
-    emit_task_event(state, PcRunningTaskEvent::TaskStopped { task_id: task_id.to_string() }).await;
+    emit_task_event(
+        state,
+        PcRunningTaskEvent::TaskStopped {
+            task_id: task_id.to_string(),
+        },
+    )
+    .await;
 
     Ok(PcGatewayResponse::TaskStopped {
         task_id: task_id.to_string(),
@@ -1514,7 +1773,11 @@ fn spawn_task_watcher(
             return;
         };
 
-        let _ = log_line_to_file(&log_path, &format!("Task completed with exit code {:?}", exit_code)).await;
+        let _ = log_line_to_file(
+            &log_path,
+            &format!("Task completed with exit code {:?}", exit_code),
+        )
+        .await;
 
         emit_task_event(
             &state_clone,
@@ -1544,7 +1807,11 @@ async fn runtime_task_events_handler(
         };
 
         let Some(mut broadcast_rx) = rx_opt else {
-            let _ = tx.send(Ok(Event::default().data(r#"{"kind":"error","data":"no broadcast channel"}"#))).await;
+            let _ = tx
+                .send(Ok(
+                    Event::default().data(r#"{"kind":"error","data":"no broadcast channel"}"#)
+                ))
+                .await;
             return;
         };
 
@@ -1557,7 +1824,10 @@ async fn runtime_task_events_handler(
                     }
                 }
                 Err(broadcast::error::RecvError::Lagged(n)) => {
-                    let _ = tx.send(Ok(Event::default().data(format!(r#"{{"kind":"lagged","skipped":{}}}"#, n)))).await;
+                    let _ = tx
+                        .send(Ok(Event::default()
+                            .data(format!(r#"{{"kind":"lagged","skipped":{}}}"#, n))))
+                        .await;
                 }
                 Err(broadcast::error::RecvError::Closed) => break,
             }
@@ -1571,7 +1841,11 @@ async fn runtime_task_events_handler(
 
 /// Pipe lines from a tokio AsyncRead stream into a task log file.
 #[allow(unused_variables)]
-async fn pipe_to_log(task_id: Arc<String>, log_path: PathBuf, reader: impl tokio::io::AsyncRead + Unpin) {
+async fn pipe_to_log(
+    task_id: Arc<String>,
+    log_path: PathBuf,
+    reader: impl tokio::io::AsyncRead + Unpin,
+) {
     let mut lines = tokio::io::BufReader::new(reader).lines();
     while let Ok(Some(line)) = lines.next_line().await {
         if line.is_empty() {
@@ -1633,7 +1907,10 @@ async fn runtime_task_log_handler(
     let log_path = {
         let handles = state.tasks.lock().await;
         let Some(handle) = handles.get(&task_id) else {
-            return Err((StatusCode::NOT_FOUND, format!("task '{}' not found", task_id)));
+            return Err((
+                StatusCode::NOT_FOUND,
+                format!("task '{}' not found", task_id),
+            ));
         };
         handle.log_path.clone()
     };
@@ -1642,9 +1919,12 @@ async fn runtime_task_log_handler(
         return Err((StatusCode::NOT_FOUND, "log file not found".to_string()));
     }
 
-    let content = tokio::fs::read_to_string(&log_path)
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("read log: {}", e)))?;
+    let content = tokio::fs::read_to_string(&log_path).await.map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("read log: {}", e),
+        )
+    })?;
     Ok(content)
 }
 
@@ -1686,12 +1966,21 @@ async fn logs_handler(
 
 // ── Snapshot handlers ──
 
-async fn snapshot_create(config: &PcHostConfig, workspace_id: &str, reason: &str) -> Result<PcGatewayResponse> {
+async fn snapshot_create(
+    config: &PcHostConfig,
+    workspace_id: &str,
+    reason: &str,
+) -> Result<PcGatewayResponse> {
     let workspace = deepseek_mobile_core::Workspace::new(
-        workspace_id, workspace_id, config.workspace_root.clone(),
+        workspace_id,
+        workspace_id,
+        config.workspace_root.clone(),
         deepseek_mobile_core::ExecutorKind::PcGateway,
     );
-    let store_root = config.workspace_root.join(".deepseek-mobile").join("snapshots");
+    let store_root = config
+        .workspace_root
+        .join(".deepseek-mobile")
+        .join("snapshots");
     let service = deepseek_mobile_core::WorkspaceSnapshotService::new(workspace, store_root);
     let reason = reason.to_string();
     let record = tokio::task::spawn_blocking(move || service.create_snapshot(reason))
@@ -1700,12 +1989,21 @@ async fn snapshot_create(config: &PcHostConfig, workspace_id: &str, reason: &str
     Ok(PcGatewayResponse::SnapshotRecord(record))
 }
 
-async fn snapshot_restore(config: &PcHostConfig, workspace_id: &str, snapshot_id: &str) -> Result<PcGatewayResponse> {
+async fn snapshot_restore(
+    config: &PcHostConfig,
+    workspace_id: &str,
+    snapshot_id: &str,
+) -> Result<PcGatewayResponse> {
     let workspace = deepseek_mobile_core::Workspace::new(
-        workspace_id, workspace_id, config.workspace_root.clone(),
+        workspace_id,
+        workspace_id,
+        config.workspace_root.clone(),
         deepseek_mobile_core::ExecutorKind::PcGateway,
     );
-    let store_root = config.workspace_root.join(".deepseek-mobile").join("snapshots");
+    let store_root = config
+        .workspace_root
+        .join(".deepseek-mobile")
+        .join("snapshots");
     let service = deepseek_mobile_core::WorkspaceSnapshotService::new(workspace, store_root);
     let sid = snapshot_id.to_string();
     let report = tokio::task::spawn_blocking(move || service.restore_snapshot(&sid))
@@ -1716,10 +2014,15 @@ async fn snapshot_restore(config: &PcHostConfig, workspace_id: &str, snapshot_id
 
 async fn snapshot_list(config: &PcHostConfig, workspace_id: &str) -> Result<PcGatewayResponse> {
     let workspace = deepseek_mobile_core::Workspace::new(
-        workspace_id, workspace_id, config.workspace_root.clone(),
+        workspace_id,
+        workspace_id,
+        config.workspace_root.clone(),
         deepseek_mobile_core::ExecutorKind::PcGateway,
     );
-    let store_root = config.workspace_root.join(".deepseek-mobile").join("snapshots");
+    let store_root = config
+        .workspace_root
+        .join(".deepseek-mobile")
+        .join("snapshots");
     let service = deepseek_mobile_core::WorkspaceSnapshotService::new(workspace, store_root);
     let records = tokio::task::spawn_blocking(move || service.list_snapshots())
         .await
@@ -1794,10 +2097,19 @@ mod tests {
 
     #[test]
     fn maps_cargo_levels_to_gateway_severity() {
-        assert_eq!(cargo_level_to_severity("error"), PcDiagnosticSeverity::Error);
-        assert_eq!(cargo_level_to_severity("warning"), PcDiagnosticSeverity::Warning);
+        assert_eq!(
+            cargo_level_to_severity("error"),
+            PcDiagnosticSeverity::Error
+        );
+        assert_eq!(
+            cargo_level_to_severity("warning"),
+            PcDiagnosticSeverity::Warning
+        );
         assert_eq!(cargo_level_to_severity("help"), PcDiagnosticSeverity::Hint);
-        assert_eq!(cargo_level_to_severity("unknown"), PcDiagnosticSeverity::Info);
+        assert_eq!(
+            cargo_level_to_severity("unknown"),
+            PcDiagnosticSeverity::Info
+        );
     }
 
     #[test]

@@ -15,8 +15,8 @@ use crate::workspace::ExecutorKind;
 use crate::workspace_diagnostics::WorkspaceDiagnosticsService;
 use anyhow::{anyhow, Result};
 use serde_json::{json, Value};
-use std::collections::BTreeMap;
 use std::collections::hash_map::DefaultHasher;
+use std::collections::BTreeMap;
 use std::hash::{Hash, Hasher};
 use std::path::PathBuf;
 
@@ -101,7 +101,10 @@ impl<'a> ToolExecutionCoordinator<'a> {
         match ToolExecutionTarget::from(&context.workspace.executor) {
             ToolExecutionTarget::LocalAndroid => ToolExecutionRoute {
                 target: ToolExecutionTarget::LocalAndroid,
-                reason: format!("tool '{}' will run through local Android workspace", call.name),
+                reason: format!(
+                    "tool '{}' will run through local Android workspace",
+                    call.name
+                ),
             },
             ToolExecutionTarget::Termux => ToolExecutionRoute {
                 target: ToolExecutionTarget::Termux,
@@ -118,18 +121,24 @@ impl<'a> ToolExecutionCoordinator<'a> {
         }
     }
 
-    pub async fn execute(&self, call: &ToolCallRequest, context: &ToolContext) -> Result<ToolResult> {
+    pub async fn execute(
+        &self,
+        call: &ToolCallRequest,
+        context: &ToolContext,
+    ) -> Result<ToolResult> {
         // Phone-side network tools always run locally, even when the active
         // workspace is a paired PC project.
         if runs_on_phone_regardless_of_workspace(&call.name) {
-            let result = self.registry.execute(&call.name, call.arguments.clone(), context)?;
+            let result = self
+                .registry
+                .execute(&call.name, call.arguments.clone(), context)?;
             return Ok(result);
         }
 
         match self.route(call, context).target {
-            ToolExecutionTarget::LocalAndroid if call.name == "exec_shell" => {
-                Ok(local_android_shell_unavailable_result(&context.workspace.id))
-            }
+            ToolExecutionTarget::LocalAndroid if call.name == "exec_shell" => Ok(
+                local_android_shell_unavailable_result(&context.workspace.id),
+            ),
             ToolExecutionTarget::LocalAndroid | ToolExecutionTarget::Termux
                 if call.name == "open_path" =>
             {
@@ -139,7 +148,9 @@ impl<'a> ToolExecutionCoordinator<'a> {
                 self.execute_on_termux(call, context).await
             }
             ToolExecutionTarget::LocalAndroid | ToolExecutionTarget::Termux => {
-                let mut result = self.registry.execute(&call.name, call.arguments.clone(), context)?;
+                let mut result =
+                    self.registry
+                        .execute(&call.name, call.arguments.clone(), context)?;
                 if result.success && should_run_local_post_edit_diagnostics(call) {
                     attach_local_post_edit_diagnostics(
                         context,
@@ -158,7 +169,11 @@ impl<'a> ToolExecutionCoordinator<'a> {
         }
     }
 
-    async fn execute_on_termux(&self, call: &ToolCallRequest, context: &ToolContext) -> Result<ToolResult> {
+    async fn execute_on_termux(
+        &self,
+        call: &ToolCallRequest,
+        context: &ToolContext,
+    ) -> Result<ToolResult> {
         let command = required_str(&call.arguments, "command")?.trim();
         if command.is_empty() {
             return Err(anyhow!("empty command"));
@@ -187,10 +202,14 @@ impl<'a> ToolExecutionCoordinator<'a> {
         })))
     }
 
-    async fn execute_on_pc_gateway(&self, call: &ToolCallRequest, context: &ToolContext) -> Result<ToolResult> {
-        let client = self
-            .pc_gateway
-            .ok_or_else(|| anyhow!("PC gateway workspace selected, but no PcGatewayClient is attached"))?;
+    async fn execute_on_pc_gateway(
+        &self,
+        call: &ToolCallRequest,
+        context: &ToolContext,
+    ) -> Result<ToolResult> {
+        let client = self.pc_gateway.ok_or_else(|| {
+            anyhow!("PC gateway workspace selected, but no PcGatewayClient is attached")
+        })?;
         let workspace_id = context.workspace.id.clone();
 
         match call.name.as_str() {
@@ -201,9 +220,17 @@ impl<'a> ToolExecutionCoordinator<'a> {
             "write_file" => {
                 let path = required_str(&call.arguments, "path")?;
                 let content = required_str(&call.arguments, "content")?;
-                let response = client.write_file(workspace_id.clone(), path, content).await?;
+                let response = client
+                    .write_file(workspace_id.clone(), path, content)
+                    .await?;
                 let mut result = gateway_response_to_tool_result(response)?;
-                attach_post_edit_diagnostics(client, &workspace_id, Some(path.to_string()), &mut result).await?;
+                attach_post_edit_diagnostics(
+                    client,
+                    &workspace_id,
+                    Some(path.to_string()),
+                    &mut result,
+                )
+                .await?;
                 Ok(result)
             }
             "delete_file" => {
@@ -218,8 +245,14 @@ impl<'a> ToolExecutionCoordinator<'a> {
                 let path = required_str(&call.arguments, "path")?;
                 gateway_response_to_tool_result(client.open_path(workspace_id, path).await?)
             }
-            "edit_file" => self.execute_remote_edit_file(client, workspace_id, &call.arguments).await,
-            "apply_patch" => self.execute_remote_apply_patch(client, workspace_id, &call.arguments).await,
+            "edit_file" => {
+                self.execute_remote_edit_file(client, workspace_id, &call.arguments)
+                    .await
+            }
+            "apply_patch" => {
+                self.execute_remote_apply_patch(client, workspace_id, &call.arguments)
+                    .await
+            }
             "exec_shell" => {
                 let command = required_str(&call.arguments, "command")?;
                 let request = command_request_from_shell(command, context.workspace.root.clone())?;
@@ -253,28 +286,37 @@ impl<'a> ToolExecutionCoordinator<'a> {
                     );
                     Ok(ToolResult::success(combined))
                 }
-
             }
             "git" => {
                 let operation = required_str(&call.arguments, "operation")?;
                 match operation {
-                    "status" => gateway_response_to_tool_result(client.git_status(workspace_id).await?),
+                    "status" => {
+                        gateway_response_to_tool_result(client.git_status(workspace_id).await?)
+                    }
                     "diff" => gateway_response_to_tool_result(client.git_diff(workspace_id).await?),
                     "commit" => {
                         let message = required_str(&call.arguments, "message")?;
-                        gateway_response_to_tool_result(client.git_commit(workspace_id, message).await?)
+                        gateway_response_to_tool_result(
+                            client.git_commit(workspace_id, message).await?,
+                        )
                     }
                     "push" => {
                         let remote = optional_str(&call.arguments, "remote").map(String::from);
                         let branch = optional_str(&call.arguments, "branch").map(String::from);
-                        gateway_response_to_tool_result(client.git_push(workspace_id, remote, branch).await?)
+                        gateway_response_to_tool_result(
+                            client.git_push(workspace_id, remote, branch).await?,
+                        )
                     }
                     "pull" => {
                         let remote = optional_str(&call.arguments, "remote").map(String::from);
                         let branch = optional_str(&call.arguments, "branch").map(String::from);
-                        gateway_response_to_tool_result(client.git_pull(workspace_id, remote, branch).await?)
+                        gateway_response_to_tool_result(
+                            client.git_pull(workspace_id, remote, branch).await?,
+                        )
                     }
-                    "branch" => gateway_response_to_tool_result(client.git_branch(workspace_id).await?),
+                    "branch" => {
+                        gateway_response_to_tool_result(client.git_branch(workspace_id).await?)
+                    }
                     other => {
                         let args = optional_str(&call.arguments, "args").unwrap_or("");
                         let mut command_args = vec![other.to_string()];
@@ -284,7 +326,9 @@ impl<'a> ToolExecutionCoordinator<'a> {
                             args: command_args,
                             working_dir: Some(context.workspace.root.clone()),
                         };
-                        gateway_response_to_tool_result(client.execute_command(workspace_id, request, None).await?)
+                        gateway_response_to_tool_result(
+                            client.execute_command(workspace_id, request, None).await?,
+                        )
                     }
                 }
             }
@@ -297,7 +341,9 @@ impl<'a> ToolExecutionCoordinator<'a> {
             }
             "snapshot_restore" => {
                 let snapshot_id = required_str(&call.arguments, "snapshot_id")?;
-                gateway_response_to_tool_result(client.restore_snapshot(workspace_id, snapshot_id).await?)
+                gateway_response_to_tool_result(
+                    client.restore_snapshot(workspace_id, snapshot_id).await?,
+                )
             }
             "detect_tasks" => {
                 gateway_response_to_tool_result(client.detect_tasks(workspace_id).await?)
@@ -310,9 +356,7 @@ impl<'a> ToolExecutionCoordinator<'a> {
                 let task_id = required_str(&call.arguments, "task_id")?;
                 gateway_response_to_tool_result(client.stop_task(task_id).await?)
             }
-            "task_list" => {
-                gateway_response_to_tool_result(client.list_tasks().await?)
-            }
+            "task_list" => gateway_response_to_tool_result(client.list_tasks().await?),
             other => Err(anyhow!(
                 "tool '{}' is not yet mapped to PC gateway execution",
                 other
@@ -334,8 +378,13 @@ impl<'a> ToolExecutionCoordinator<'a> {
         }
 
         let read = client.read_file(workspace_id.clone(), path).await?;
-        let PcGatewayResponse::FileContent { content: original, .. }  = read else {
-            return Err(anyhow!("read file before edit returned unexpected response"));
+        let PcGatewayResponse::FileContent {
+            content: original, ..
+        } = read
+        else {
+            return Err(anyhow!(
+                "read file before edit returned unexpected response"
+            ));
         };
         let backup = json!({"original": original});
 
@@ -347,10 +396,13 @@ impl<'a> ToolExecutionCoordinator<'a> {
                 workspace_id
             ));
         }
-        let response = client.write_file(workspace_id.clone(), path, &replaced).await?;
+        let response = client
+            .write_file(workspace_id.clone(), path, &replaced)
+            .await?;
         let mut result = gateway_response_to_tool_result(response)?;
         result.metadata = Some(json!({"backup": backup}));
-        attach_post_edit_diagnostics(client, &workspace_id, Some(path.to_string()), &mut result).await?;
+        attach_post_edit_diagnostics(client, &workspace_id, Some(path.to_string()), &mut result)
+            .await?;
         Ok(result)
     }
 
@@ -379,11 +431,21 @@ impl<'a> ToolExecutionCoordinator<'a> {
                     Ok(PcGatewayResponse::FileContent { content, .. }) => {
                         backups.insert(path.to_string(), content);
                     }
-                    Ok(_) => return Err(anyhow!("read file before apply_patch returned unexpected response")),
+                    Ok(_) => {
+                        return Err(anyhow!(
+                            "read file before apply_patch returned unexpected response"
+                        ))
+                    }
                     Err(_) if matches!(op, RemotePatchOperation::Create { .. }) => {
                         // File doesn't exist yet for Create operation — that's fine
                     }
-                    Err(e) => return Err(anyhow!("failed to read '{}' as pre-patch backup: {}", path, e)),
+                    Err(e) => {
+                        return Err(anyhow!(
+                            "failed to read '{}' as pre-patch backup: {}",
+                            path,
+                            e
+                        ))
+                    }
                 }
             }
         }
@@ -392,31 +454,50 @@ impl<'a> ToolExecutionCoordinator<'a> {
         for op in &operations {
             let path = op.path();
             match op {
-                RemotePatchOperation::Replace { search, replace, .. } => {
+                RemotePatchOperation::Replace {
+                    search, replace, ..
+                } => {
                     let content = if let Some(backup) = backups.get(path) {
                         backup.clone()
                     } else {
                         let read = client.read_file(workspace_id.clone(), path).await?;
                         match read {
                             PcGatewayResponse::FileContent { content, .. } => content,
-                            _ => return Err(anyhow!("read file '{}' returned unexpected response", path)),
+                            _ => {
+                                return Err(anyhow!(
+                                    "read file '{}' returned unexpected response",
+                                    path
+                                ))
+                            }
                         }
                     };
                     let new_content = content.replacen(search, replace, 1);
                     if new_content == content {
-                        return Err(anyhow!("apply_patch replace: search string not found in '{}'", path));
+                        return Err(anyhow!(
+                            "apply_patch replace: search string not found in '{}'",
+                            path
+                        ));
                     }
-                    client.write_file(workspace_id.clone(), path, &new_content).await?;
+                    client
+                        .write_file(workspace_id.clone(), path, &new_content)
+                        .await?;
                     backups.insert(path.to_string(), new_content);
                     applied.push(format!("replaced in {}", path));
                 }
-                RemotePatchOperation::Create { content, overwrite, .. } => {
+                RemotePatchOperation::Create {
+                    content, overwrite, ..
+                } => {
                     if let Some(_backup) = backups.get(path) {
                         if !overwrite {
-                            return Err(anyhow!("file '{}' already exists and overwrite is not set", path));
+                            return Err(anyhow!(
+                                "file '{}' already exists and overwrite is not set",
+                                path
+                            ));
                         }
                     }
-                    client.write_file(workspace_id.clone(), path, content).await?;
+                    client
+                        .write_file(workspace_id.clone(), path, content)
+                        .await?;
                     backups.insert(path.to_string(), content.clone());
                     applied.push(format!("created {}", path));
                 }
@@ -426,11 +507,18 @@ impl<'a> ToolExecutionCoordinator<'a> {
                     } else {
                         match client.read_file(workspace_id.clone(), path).await? {
                             PcGatewayResponse::FileContent { content, .. } => content,
-                            _ => return Err(anyhow!("read file '{}' returned unexpected response", path)),
+                            _ => {
+                                return Err(anyhow!(
+                                    "read file '{}' returned unexpected response",
+                                    path
+                                ))
+                            }
                         }
                     };
                     let new_content = format!("{}\n{}", existing.trim_end(), content);
-                    client.write_file(workspace_id.clone(), path, &new_content).await?;
+                    client
+                        .write_file(workspace_id.clone(), path, &new_content)
+                        .await?;
                     backups.insert(path.to_string(), new_content);
                     applied.push(format!("appended to {}", path));
                 }
@@ -451,7 +539,13 @@ impl<'a> ToolExecutionCoordinator<'a> {
         // Run post-edit diagnostics after batch operations
         if let Some(first_op) = operations.first() {
             let path = first_op.path();
-            attach_post_edit_diagnostics(client, &workspace_id, Some(path.to_string()), &mut result).await?;
+            attach_post_edit_diagnostics(
+                client,
+                &workspace_id,
+                Some(path.to_string()),
+                &mut result,
+            )
+            .await?;
         }
 
         Ok(result)
@@ -470,7 +564,10 @@ fn should_run_local_post_edit_diagnostics(call: &ToolCallRequest) -> bool {
 }
 
 fn extract_primary_path_for_diagnostics(call: &ToolCallRequest) -> Option<String> {
-    call.arguments.get("path").and_then(Value::as_str).map(String::from)
+    call.arguments
+        .get("path")
+        .and_then(Value::as_str)
+        .map(String::from)
 }
 
 async fn attach_local_post_edit_diagnostics(
@@ -490,7 +587,10 @@ async fn attach_local_post_edit_diagnostics(
         map.insert("diagnostics".to_string(), json!(report));
         map.insert("post_edit_diagnostics".to_string(), json!(diagnostics));
         map.insert("post_edit_diagnostics_summary".to_string(), json!(summary));
-        map.insert("post_edit_diagnostics_provider".to_string(), json!(provider));
+        map.insert(
+            "post_edit_diagnostics_provider".to_string(),
+            json!(provider),
+        );
         map.insert("post_edit_diagnostics_status".to_string(), json!(status));
         if let Some(path) = path.as_ref() {
             map.insert("post_edit_diagnostics_path".to_string(), json!(path));
@@ -513,7 +613,10 @@ async fn attach_post_edit_diagnostics(
     path: Option<String>,
     result: &mut ToolResult,
 ) -> Result<()> {
-    match client.get_diagnostics(workspace_id.to_string(), path.clone()).await {
+    match client
+        .get_diagnostics(workspace_id.to_string(), path.clone())
+        .await
+    {
         Ok(PcGatewayResponse::Diagnostics(diags)) => {
             let summary = summarize_diagnostics(&diags);
             let mut metadata = result.metadata.take().unwrap_or(json!({}));
@@ -521,8 +624,14 @@ async fn attach_post_edit_diagnostics(
                 map.insert("diagnostics".to_string(), json!(diags.clone()));
                 map.insert("post_edit_diagnostics".to_string(), json!(diags.clone()));
                 map.insert("post_edit_diagnostics_summary".to_string(), json!(summary));
-                map.insert("post_edit_diagnostics_provider".to_string(), json!("pc-gateway"));
-                map.insert("post_edit_diagnostics_status".to_string(), json!("Completed"));
+                map.insert(
+                    "post_edit_diagnostics_provider".to_string(),
+                    json!("pc-gateway"),
+                );
+                map.insert(
+                    "post_edit_diagnostics_status".to_string(),
+                    json!("Completed"),
+                );
                 if let Some(path) = path.as_ref() {
                     map.insert("post_edit_diagnostics_path".to_string(), json!(path));
                 }
@@ -540,7 +649,10 @@ async fn attach_post_edit_diagnostics(
             let mut metadata = result.metadata.take().unwrap_or(json!({}));
             if let serde_json::Value::Object(ref mut map) = metadata {
                 map.insert("diagnostics_error".to_string(), json!(error.to_string()));
-                map.insert("post_edit_diagnostics_error".to_string(), json!(error.to_string()));
+                map.insert(
+                    "post_edit_diagnostics_error".to_string(),
+                    json!(error.to_string()),
+                );
                 if let Some(path) = path.as_ref() {
                     map.insert("post_edit_diagnostics_path".to_string(), json!(path));
                 }
@@ -565,7 +677,9 @@ fn summarize_diagnostics(diagnostics: &[PcDiagnostic]) -> String {
         .count();
     let mut lines = vec![format!(
         "{} diagnostic(s): {} error(s), {} warning(s)",
-        diagnostics.len(), error_count, warning_count
+        diagnostics.len(),
+        error_count,
+        warning_count
     )];
     for item in diagnostics.iter().take(8) {
         lines.push(format!(
@@ -574,7 +688,10 @@ fn summarize_diagnostics(diagnostics: &[PcDiagnostic]) -> String {
         ));
     }
     if diagnostics.len() > 8 {
-        lines.push(format!("- ... {} more diagnostic(s)", diagnostics.len() - 8));
+        lines.push(format!(
+            "- ... {} more diagnostic(s)",
+            diagnostics.len() - 8
+        ));
     }
     lines.join("\n")
 }
@@ -627,28 +744,40 @@ fn shell_words(input: &str) -> Vec<String> {
 
 fn gateway_response_to_tool_result(response: PcGatewayResponse) -> Result<ToolResult> {
     match response {
-        PcGatewayResponse::FileContent { path, content } => Ok(
-            ToolResult::success(content).with_metadata(json!({"path": path}))
-        ),
-        PcGatewayResponse::FileWritten { path, bytes } => Ok(
-            ToolResult::success(format!("written {} ({} bytes)", path, bytes))
-                .with_metadata(json!({"path": path, "bytes": bytes}))
-        ),
-        PcGatewayResponse::FileDeleted { path } => Ok(
-            ToolResult::success(format!("deleted {}", path))
-                .with_metadata(json!({"path": path}))
-        ),
+        PcGatewayResponse::FileContent { path, content } => {
+            Ok(ToolResult::success(content).with_metadata(json!({"path": path})))
+        }
+        PcGatewayResponse::FileWritten { path, bytes } => Ok(ToolResult::success(format!(
+            "written {} ({} bytes)",
+            path, bytes
+        ))
+        .with_metadata(json!({"path": path, "bytes": bytes}))),
+        PcGatewayResponse::FileDeleted { path } => {
+            Ok(ToolResult::success(format!("deleted {}", path))
+                .with_metadata(json!({"path": path})))
+        }
         PcGatewayResponse::DirEntries(entries) => {
-            let text = entries.iter()
-                .map(|e| format!("{}/{} ({})", if e.is_dir { "d" } else { "-" }, e.path, e.size_bytes))
+            let text = entries
+                .iter()
+                .map(|e| {
+                    format!(
+                        "{}/{} ({})",
+                        if e.is_dir { "d" } else { "-" },
+                        e.path,
+                        e.size_bytes
+                    )
+                })
                 .collect::<Vec<_>>()
                 .join("\n");
             Ok(ToolResult::success(text).with_metadata(json!({"entries": entries})))
         }
         PcGatewayResponse::CommandOutput(output) => {
-            let text = format!("{}EXIT_CODE: {}\n\n{}",
+            let text = format!(
+                "{}EXIT_CODE: {}\n\n{}",
                 output.stdout,
-                output.status_code.map_or("unknown".to_string(), |c| c.to_string()),
+                output
+                    .status_code
+                    .map_or("unknown".to_string(), |c| c.to_string()),
                 output.stderr,
             );
             Ok(ToolResult::success(text).with_metadata(json!({
@@ -661,8 +790,14 @@ fn gateway_response_to_tool_result(response: PcGatewayResponse) -> Result<ToolRe
             let text = if diags.is_empty() {
                 "No diagnostics reported.".to_string()
             } else {
-                diags.iter()
-                    .map(|d| format!("{:?} {}:{}:{} — {}", d.severity, d.path, d.line, d.column, d.message))
+                diags
+                    .iter()
+                    .map(|d| {
+                        format!(
+                            "{:?} {}:{}:{} — {}",
+                            d.severity, d.path, d.line, d.column, d.message
+                        )
+                    })
                     .collect::<Vec<_>>()
                     .join("\n")
             };
@@ -676,32 +811,37 @@ fn gateway_response_to_tool_result(response: PcGatewayResponse) -> Result<ToolRe
             Ok(ToolResult::success(serde_json::to_string_pretty(&session)?)
                 .with_metadata(json!({"terminal_session": session})))
         }
-        PcGatewayResponse::TerminalOutput { session_id, chunk } => {
-            Ok(ToolResult::success(chunk).with_metadata(json!({"terminal_session_id": session_id})))
-        }
-        PcGatewayResponse::TerminalClosed { session_id, exit_code } => {
-            Ok(ToolResult::success(format!("terminal {} closed (exit: {:?})", session_id, exit_code))
-                .with_metadata(json!({"terminal_session_id": session_id, "exit_code": exit_code})))
-        }
-        PcGatewayResponse::SnapshotRecord(snapshot) => {
-            Ok(ToolResult::success(format!(
-                "Created snapshot {} with {} file(s), {} bytes",
-                snapshot.id, snapshot.file_count, snapshot.total_bytes
-            ))
-            .with_metadata(serde_json::to_value(snapshot)?))
-        }
-        PcGatewayResponse::SnapshotList(snapshots) => {
-            Ok(ToolResult::success(serde_json::to_string_pretty(&snapshots)?)
-                .with_metadata(serde_json::to_value(snapshots)?))
-        }
+        PcGatewayResponse::TerminalOutput { session_id, chunk } => Ok(
+            ToolResult::success(chunk).with_metadata(json!({"terminal_session_id": session_id}))
+        ),
+        PcGatewayResponse::TerminalClosed {
+            session_id,
+            exit_code,
+        } => Ok(ToolResult::success(format!(
+            "terminal {} closed (exit: {:?})",
+            session_id, exit_code
+        ))
+        .with_metadata(json!({"terminal_session_id": session_id, "exit_code": exit_code}))),
+        PcGatewayResponse::SnapshotRecord(snapshot) => Ok(ToolResult::success(format!(
+            "Created snapshot {} with {} file(s), {} bytes",
+            snapshot.id, snapshot.file_count, snapshot.total_bytes
+        ))
+        .with_metadata(serde_json::to_value(snapshot)?)),
+        PcGatewayResponse::SnapshotList(snapshots) => Ok(ToolResult::success(
+            serde_json::to_string_pretty(&snapshots)?,
+        )
+        .with_metadata(serde_json::to_value(snapshots)?)),
         PcGatewayResponse::SnapshotRestoreReport(report) => {
             Ok(ToolResult::success(serde_json::to_string_pretty(&report)?)
                 .with_metadata(serde_json::to_value(report)?))
         }
-        PcGatewayResponse::TaskStarted { task_id, process_id } => {
-            Ok(ToolResult::success(format!("task {} started (pid {})", task_id, process_id))
-                .with_metadata(json!({"task_id": task_id, "process_id": process_id})))
-        }
+        PcGatewayResponse::TaskStarted {
+            task_id,
+            process_id,
+        } => Ok(
+            ToolResult::success(format!("task {} started (pid {})", task_id, process_id))
+                .with_metadata(json!({"task_id": task_id, "process_id": process_id})),
+        ),
         PcGatewayResponse::TaskStopped { task_id } => {
             Ok(ToolResult::success(format!("task {} stopped", task_id))
                 .with_metadata(json!({"task_id": task_id})))
@@ -710,12 +850,18 @@ fn gateway_response_to_tool_result(response: PcGatewayResponse) -> Result<ToolRe
             Ok(ToolResult::success(serde_json::to_string_pretty(&tasks)?)
                 .with_metadata(serde_json::to_value(tasks)?))
         }
-        PcGatewayResponse::PathOpened { path } => Ok(
-            ToolResult::success(format!("Opened in system file manager: {}", path))
-                .with_metadata(json!({"path": path, "opened_in_os": true})),
-        ),
-        PcGatewayResponse::Error(error) => Ok(ToolResult::error(format!("{}: {}", error.code, error.message))),
-        _ => Ok(ToolResult::success("unhandled PC gateway response variant".to_string())),
+        PcGatewayResponse::PathOpened { path } => Ok(ToolResult::success(format!(
+            "Opened in system file manager: {}",
+            path
+        ))
+        .with_metadata(json!({"path": path, "opened_in_os": true}))),
+        PcGatewayResponse::Error(error) => Ok(ToolResult::error(format!(
+            "{}: {}",
+            error.code, error.message
+        ))),
+        _ => Ok(ToolResult::success(
+            "unhandled PC gateway response variant".to_string(),
+        )),
     }
 }
 
@@ -810,7 +956,10 @@ mod tests {
             source: ToolCallSource::JsonBlock,
         };
         let workspace = crate::workspace::Workspace::new(
-            "w1", "Test", PathBuf::from("."), ExecutorKind::LocalAndroid,
+            "w1",
+            "Test",
+            PathBuf::from("."),
+            ExecutorKind::LocalAndroid,
         );
         let context = ToolContext::new(workspace);
         let registry = crate::tools::ToolRegistry::new();
@@ -829,7 +978,10 @@ mod tests {
             source: ToolCallSource::JsonBlock,
         };
         let workspace = crate::workspace::Workspace::new(
-            "w1", "Test", PathBuf::from("."), ExecutorKind::PcGateway,
+            "w1",
+            "Test",
+            PathBuf::from("."),
+            ExecutorKind::PcGateway,
         );
         let context = ToolContext::new(workspace);
         let registry = crate::tools::ToolRegistry::new();
@@ -878,7 +1030,8 @@ mod tests {
 
     #[test]
     fn gateway_response_error() {
-        let response = PcGatewayResponse::Error(crate::pc_gateway::PcGatewayError::new("e1", "msg"));
+        let response =
+            PcGatewayResponse::Error(crate::pc_gateway::PcGatewayError::new("e1", "msg"));
         let result = gateway_response_to_tool_result(response).unwrap();
         assert!(!result.success);
         assert!(result.content.contains("msg"));

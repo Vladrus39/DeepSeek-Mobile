@@ -1,12 +1,18 @@
 # DeepSeek-Mobile — current state
 
-**Updated:** 2026-05-26
+**Updated:** 2026-05-28
 
-This is the factual project checkpoint after the Android device smoke test.
+This is the factual project checkpoint after phone-agent E2E on device.
 
 ## Short version
 
-The project builds and launches as an Android debug APK on a real phone. The core agent, mobile cockpit, PC Host, Android bridge module and local toolchain are in place. What remains is not another architecture rewrite; it is focused end-to-end verification of native Android flows plus release packaging.
+The project builds and launches as an Android debug APK on a real phone. **Primary focus: full phone agent via Termux (TUI parity), not PC Host pairing.** PC connection is deferred to a later phase. Core agent, mobile cockpit, Termux bridge, and local toolchain are in place; release packaging and optional PC Host LAN verification remain.
+
+## Priority order (product)
+
+1. **Phone agent** — chat, tools, Termux `RUN_COMMAND`, timeline/work log, onboarding.
+2. **Termux first-run** — install (F-Droid intent), `allow-external-apps`, RUN_COMMAND probe, workspace seed after setup.
+3. **PC Host** — optional later; do not block phone-agent work.
 
 ## Environment used
 
@@ -117,7 +123,7 @@ Run manually on the phone:
   - set `allow-external-apps=true` in `~/.termux/termux.properties`;
   - save a valid Termux project path in Settings;
   - run `pwd` and verify stdout/stderr/exit code callback and model continuation.
-- Start `deepseek-pc-host` on a PC and verify mDNS discovery/persisted route.
+- **Later phase:** start `deepseek-pc-host` on a PC and verify mDNS discovery/persisted route (not blocking phone agent work).
 
 ### Release work
 

@@ -1,7 +1,10 @@
+use crate::locale::{pick, AppLanguage};
 use crate::skills_state::SkillsUiState;
+use crate::ui_layout::screen_layout;
 use dioxus::prelude::*;
 
-pub fn skills_panel(mut state: Signal<SkillsUiState>) -> Element {
+pub fn skills_panel(lang: AppLanguage, mut state: Signal<SkillsUiState>) -> Element {
+    let layout = screen_layout();
     let mut loaded = use_signal(|| false);
     if !*loaded.peek() {
         state.write().refresh();
@@ -78,8 +81,17 @@ pub fn skills_panel(mut state: Signal<SkillsUiState>) -> Element {
                 justify_content: "space_between",
                 align_items: "center",
 
-                div { font_size: "20px", font_weight: "bold", "Skills ({skills.len()})" }
-                div { color: "#16a34a", font_size: "12px", "{enabled_count} active" }
+                div {
+                    font_size: "{layout.header_title_font}",
+                    font_weight: "bold",
+                    {pick(lang, "Навыки", "Skills")}
+                    " ({skills.len()})"
+                }
+                div {
+                    color: "#16a34a",
+                    font_size: "{layout.subtitle_font}",
+                    "{pick(lang, \"активно\", \"active\")}: {enabled_count}"
+                }
             }
 
             if let Some(ref e) = error {
@@ -96,11 +108,39 @@ pub fn skills_panel(mut state: Signal<SkillsUiState>) -> Element {
 
             if skills.is_empty() {
                 div {
-                    color: "#6b7280",
-                    font_size: "13px",
-                    text_align: "center",
-                    padding: "16px 0",
-                    "No skills found. Place SKILL.md files in ~/.deepseek/skills/ or the workspace skills directory."
+                    style: "color:#9ca3af;font-size:{layout.body_font};line-height:1.5;padding:12px 0;display:flex;flex-direction:column;gap:8px;",
+                    p {
+                        style: "margin:0;",
+                        {pick(
+                            lang,
+                            "Навыки — это папки с SKILL.md (инструкции для агента, как в Cursor).",
+                            "Skills are folders with SKILL.md — agent instructions, similar to Cursor.",
+                        )}
+                    }
+                    p {
+                        style: "margin:0;color:#6b7280;font-size:{layout.subtitle_font};",
+                        {pick(
+                            lang,
+                            "На телефоне: files/deepseek-mobile/skills/<имя>/SKILL.md",
+                            "On phone: files/deepseek-mobile/skills/<name>/SKILL.md",
+                        )}
+                    }
+                    p {
+                        style: "margin:0;color:#6b7280;font-size:{layout.subtitle_font};",
+                        {pick(
+                            lang,
+                            "Или скопируйте из ~/.cursor/skills на ПК через adb push.",
+                            "Or adb push from ~/.cursor/skills on your PC.",
+                        )}
+                    }
+                    div {
+                        style: "background:#0b1220;border:1px solid #273244;border-radius:12px;padding:10px;color:#cbd5e1;font-size:{layout.subtitle_font};",
+                        {pick(
+                            lang,
+                            "Быстрая команда: adb push <папка-навыка> /sdcard/Android/data/com.deepseek.mobile/files/deepseek-mobile/skills/",
+                            "Quick command: adb push <skill-folder> /sdcard/Android/data/com.deepseek.mobile/files/deepseek-mobile/skills/",
+                        )}
+                    }
                 }
             }
 

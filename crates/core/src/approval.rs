@@ -91,9 +91,13 @@ impl MobileApprovalRequest {
 pub fn categorize_tool(tool_name: &str) -> ToolCategory {
     match tool_name {
         "read_file" | "list_dir" | "file_info" | "git_status" | "git_diff" => ToolCategory::Safe,
-        "write_file" | "edit_file" | "delete_file" | "file_ops" | "apply_patch" => ToolCategory::FileWrite,
+        "write_file" | "edit_file" | "delete_file" | "file_ops" | "apply_patch" => {
+            ToolCategory::FileWrite
+        }
         "exec_shell" | "shell" | "run_command" | "terminal" => ToolCategory::Shell,
-        "git" | "git_commit" | "git_push" | "git_pull" | "git_checkout" | "git_reset" => ToolCategory::Git,
+        "git" | "git_commit" | "git_push" | "git_pull" | "git_checkout" | "git_reset" => {
+            ToolCategory::Git
+        }
         "http" | "fetch_url" | "download" | "network" => ToolCategory::Network,
         _ => ToolCategory::Unknown,
     }
@@ -111,7 +115,10 @@ pub fn classify_risk(category: &ToolCategory, params: &Value) -> ApprovalRisk {
         }
         ToolCategory::Shell => ApprovalRisk::Destructive,
         ToolCategory::Git => {
-            let operation = params.get("operation").and_then(Value::as_str).unwrap_or_default();
+            let operation = params
+                .get("operation")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
             match operation {
                 "status" | "diff" | "log" | "show" => ApprovalRisk::Benign,
                 _ => ApprovalRisk::Destructive,
@@ -158,7 +165,12 @@ fn description_for(tool_name: &str, category: &ToolCategory, params: &Value) -> 
     }
 }
 
-fn impacts_for(tool_name: &str, category: &ToolCategory, risk: &ApprovalRisk, params: &Value) -> Vec<String> {
+fn impacts_for(
+    tool_name: &str,
+    category: &ToolCategory,
+    risk: &ApprovalRisk,
+    params: &Value,
+) -> Vec<String> {
     let mut impacts = Vec::new();
     impacts.push(format!("Tool: {}", tool_name));
     impacts.push(format!("Category: {:?}", category));
@@ -185,7 +197,10 @@ fn quoted_path(params: &Value) -> Option<String> {
 
 fn has_destructive_path(params: &Value) -> bool {
     quoted_path(params).map_or(false, |path| {
-        path == "/" || path.contains("../") || path.contains(".git/") || path.ends_with("Cargo.lock")
+        path == "/"
+            || path.contains("../")
+            || path.contains(".git/")
+            || path.ends_with("Cargo.lock")
     })
 }
 
@@ -210,7 +225,10 @@ fn current_unix_time() -> u64 {
 
 #[cfg(test)]
 mod tests {
-    use super::{approval_request_for_call, categorize_tool, should_request_approval, ApprovalMode, ToolCategory};
+    use super::{
+        approval_request_for_call, categorize_tool, should_request_approval, ApprovalMode,
+        ToolCategory,
+    };
     use crate::tool_call::{ToolCallRequest, ToolCallSource};
     use serde_json::json;
 
@@ -224,15 +242,29 @@ mod tests {
 
     #[test]
     fn requests_approval_for_file_writes() {
-        let call = ToolCallRequest::new("write_file", json!({"path":"src/main.rs"}), ToolCallSource::Manual);
+        let call = ToolCallRequest::new(
+            "write_file",
+            json!({"path":"src/main.rs"}),
+            ToolCallSource::Manual,
+        );
         let request = approval_request_for_call(&call);
-        assert!(should_request_approval(&ApprovalMode::ReviewWritesAndCommands, &request));
+        assert!(should_request_approval(
+            &ApprovalMode::ReviewWritesAndCommands,
+            &request
+        ));
     }
 
     #[test]
     fn does_not_request_approval_for_safe_reads() {
-        let call = ToolCallRequest::new("read_file", json!({"path":"README.md"}), ToolCallSource::Manual);
+        let call = ToolCallRequest::new(
+            "read_file",
+            json!({"path":"README.md"}),
+            ToolCallSource::Manual,
+        );
         let request = approval_request_for_call(&call);
-        assert!(!should_request_approval(&ApprovalMode::ReviewWritesAndCommands, &request));
+        assert!(!should_request_approval(
+            &ApprovalMode::ReviewWritesAndCommands,
+            &request
+        ));
     }
 }

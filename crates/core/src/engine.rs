@@ -7,7 +7,7 @@
 //! Sessions maintain full conversation history so the model has context across turns.
 
 use crate::agent::DeepSeekAgent;
-use crate::api_client::{Message, StreamDelta};
+use crate::api_client::{format_http_transport_error, Message, StreamDelta};
 use crate::approval::ReviewDecision;
 use crate::approval_card::{approval_cards_from_records, ApprovalCardView};
 use crate::approval_session::ApprovalSessionPolicy;
@@ -284,9 +284,10 @@ impl MobileEngine {
         {
             Ok(answer) => answer,
             Err(error) => {
-                turn.fail(error.to_string());
+                let formatted_error = format_http_transport_error(&error);
+                turn.fail(formatted_error.clone());
                 self.persist_turn(&turn)?;
-                self.push_event(&mut events, AgentEvent::Error(error.to_string()))?;
+                self.push_event(&mut events, AgentEvent::Error(formatted_error.clone()))?;
                 self.push_event(
                     &mut events,
                     AgentEvent::TurnFinished {
@@ -298,7 +299,7 @@ impl MobileEngine {
                 )?;
                 return Ok(EngineTurnResult {
                     events,
-                    final_text: turn.error.clone(),
+                    final_text: Some(formatted_error),
                     approval_cards: Vec::new(),
                     executed: Vec::new(),
                 });
@@ -562,7 +563,15 @@ impl MobileEngine {
                       or desktop-only toolchains — use it only when the user has \
                       paired it. Prefer workspace_overview before wide refactors. \
                       Large command output may be spilled to `.deepseek-mobile/tool-output/`; \
-                      use read_file to inspect the full file."
+                      use read_file to inspect the full file.\n\n\
+                      Tool-call contract: when you need current filesystem, shell, git, \
+                      workspace, MCP, or phone-native state, do not guess or describe a \
+                      command in prose. Emit exactly one valid JSON object and no prose around \
+                      it. Supported forms are \
+                      {\"tool\":\"exec_shell\",\"args\":{\"command\":\"pwd\",\"timeout_secs\":30}} \
+                      or {\"tool_calls\":[{\"tool\":\"read_file\",\"args\":{\"path\":\"README.md\"}}]}. \
+                      After the app returns tool results, answer normally. Never fabricate \
+                      tool output; if a real value is needed, call a tool first."
                 .to_string(),
         }];
 
@@ -1286,6 +1295,20 @@ mod tests {
         assert!(messages
             .iter()
             .any(|message| message.content.contains("Active Skills")));
+    }
+
+    #[test]
+    fn build_messages_includes_json_tool_call_contract() {
+        let engine = MobileEngine::new(Config::default());
+        let messages = engine.build_messages_for_turn("pwd", "deepseek-v4-flash");
+        let system = messages
+            .iter()
+            .find(|message| message.role == "system")
+            .expect("system prompt");
+        assert!(system.content.contains("Tool-call contract"));
+        assert!(system.content.contains(r#""tool":"exec_shell""#));
+        assert!(system.content.contains(r#""tool_calls""#));
+        assert!(system.content.contains("Never fabricate tool output"));
     }
 
     #[test]

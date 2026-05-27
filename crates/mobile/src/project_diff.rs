@@ -58,7 +58,8 @@ pub fn build_text_diff_preview(
     let mut suffix = 0;
     while suffix + prefix < before_lines.len()
         && suffix + prefix < after_lines.len()
-        && before_lines[before_lines.len() - 1 - suffix] == after_lines[after_lines.len() - 1 - suffix]
+        && before_lines[before_lines.len() - 1 - suffix]
+            == after_lines[after_lines.len() - 1 - suffix]
     {
         suffix += 1;
     }
@@ -131,8 +132,14 @@ mod tests {
         let diff = build_text_diff_preview("src/main.rs", "a\nb\nc\n", "a\nB\nc\n");
         assert_eq!(diff.added_lines, 1);
         assert_eq!(diff.removed_lines, 1);
-        assert!(diff.lines.iter().any(|line| line.kind == ProjectDiffLineKind::Added));
-        assert!(diff.lines.iter().any(|line| line.kind == ProjectDiffLineKind::Removed));
+        assert!(diff
+            .lines
+            .iter()
+            .any(|line| line.kind == ProjectDiffLineKind::Added));
+        assert!(diff
+            .lines
+            .iter()
+            .any(|line| line.kind == ProjectDiffLineKind::Removed));
     }
 
     #[test]

@@ -195,10 +195,7 @@ mod tests {
     #[test]
     fn pc_running_tasks_are_sorted_newest_first() {
         let mut state = TasksUiState::default();
-        state.apply_pc_running_tasks(vec![
-            pc_task("old", "Old", 10),
-            pc_task("new", "New", 20),
-        ]);
+        state.apply_pc_running_tasks(vec![pc_task("old", "Old", 10), pc_task("new", "New", 20)]);
 
         assert_eq!(state.pc_running_tasks[0].id, "new");
         assert_eq!(state.pc_running_tasks[1].id, "old");
@@ -233,7 +230,9 @@ mod tests {
     #[test]
     fn apply_pc_event_task_started_adds_to_list() {
         let mut state = TasksUiState::default();
-        state.apply_pc_event(&PcRunningTaskEvent::TaskStarted(pc_task("t1", "Task 1", 100)));
+        state.apply_pc_event(&PcRunningTaskEvent::TaskStarted(pc_task(
+            "t1", "Task 1", 100,
+        )));
         assert_eq!(state.pc_running_tasks.len(), 1);
         assert_eq!(state.pc_running_tasks[0].id, "t1");
         assert!(state.pc_last_synced_at_unix.is_some());

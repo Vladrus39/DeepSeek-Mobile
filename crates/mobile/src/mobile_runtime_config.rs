@@ -61,7 +61,9 @@ impl MobileRuntimeConfig {
     }
 
     pub fn session_file_path(&self) -> PathBuf {
-        self.runtime_store_root.join("session.json")
+        let sessions_dir = self.runtime_store_root.join("sessions");
+        let _ = std::fs::create_dir_all(&sessions_dir);
+        sessions_dir.join(format!("{}.json", self.thread_id))
     }
 
     pub fn workspace_root_display(&self) -> String {

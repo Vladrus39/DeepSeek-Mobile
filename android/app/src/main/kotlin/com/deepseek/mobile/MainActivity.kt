@@ -57,7 +57,7 @@ class MainActivity : ComponentActivity(), NativeBridgeBindings {
     }
 
     override fun onPause() {
-        hostHandler.removeCallbacks(drainRunnable)
+        // Keep draining in background (same as Dioxus MainActivity) so Termux callbacks flush.
         super.onPause()
     }
 

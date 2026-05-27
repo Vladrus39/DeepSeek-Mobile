@@ -1,6 +1,9 @@
 //! Mobile-safe file operation tools.
 
-use super::{required_str, optional_str, ApprovalRequirement, ToolCapability, ToolContext, ToolResult, ToolSpec};
+use super::{
+    optional_str, required_str, ApprovalRequirement, ToolCapability, ToolContext, ToolResult,
+    ToolSpec,
+};
 use crate::workspace_files::WorkspaceFileService;
 use anyhow::{anyhow, Result};
 use serde_json::{json, Value};
@@ -197,7 +200,10 @@ impl ToolSpec for CopyFileTool {
         let dest = required_str(&input, "dest")?;
         let service = WorkspaceFileService::new(context.workspace.clone());
         service.copy_file(source, dest)?;
-        Ok(ToolResult::success(format!("Copied {} to {}", source, dest)))
+        Ok(ToolResult::success(format!(
+            "Copied {} to {}",
+            source, dest
+        )))
     }
 }
 
@@ -394,7 +400,10 @@ impl ToolSpec for FileOpsTool {
     }
 
     fn capabilities(&self) -> Vec<ToolCapability> {
-        vec![ToolCapability::RequiresApproval, ToolCapability::Sandboxable]
+        vec![
+            ToolCapability::RequiresApproval,
+            ToolCapability::Sandboxable,
+        ]
     }
 
     fn execute(&self, input: Value, context: &ToolContext) -> Result<ToolResult> {

@@ -1,4 +1,6 @@
-use deepseek_mobile_core::{PcGatewayDiscoveryReport, PcGatewayDiscoveryService, PcGatewayMdnsRecord};
+use deepseek_mobile_core::{
+    PcGatewayDiscoveryReport, PcGatewayDiscoveryService, PcGatewayMdnsRecord,
+};
 use std::collections::BTreeMap;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -47,10 +49,22 @@ impl AndroidPcGatewayMdnsRecordPayload {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum AndroidPcGatewayDiscoveryCallback {
-    Started { request_id: String, service_type: String },
-    Candidate { request_id: String, record: AndroidPcGatewayMdnsRecordPayload },
-    Completed { request_id: String, records: Vec<AndroidPcGatewayMdnsRecordPayload> },
-    Failed { request_id: String, message: String },
+    Started {
+        request_id: String,
+        service_type: String,
+    },
+    Candidate {
+        request_id: String,
+        record: AndroidPcGatewayMdnsRecordPayload,
+    },
+    Completed {
+        request_id: String,
+        records: Vec<AndroidPcGatewayMdnsRecordPayload>,
+    },
+    Failed {
+        request_id: String,
+        message: String,
+    },
 }
 
 impl AndroidPcGatewayDiscoveryCallback {
@@ -66,11 +80,15 @@ impl AndroidPcGatewayDiscoveryCallback {
     pub fn into_discovery_report(self) -> Option<PcGatewayDiscoveryReport> {
         match self {
             Self::Candidate { record, .. } => Some(
-                PcGatewayDiscoveryService::default().from_mdns_records(vec![record.into_core_record()]),
+                PcGatewayDiscoveryService::default()
+                    .from_mdns_records(vec![record.into_core_record()]),
             ),
             Self::Completed { records, .. } => Some(
                 PcGatewayDiscoveryService::default().from_mdns_records(
-                    records.into_iter().map(AndroidPcGatewayMdnsRecordPayload::into_core_record).collect(),
+                    records
+                        .into_iter()
+                        .map(AndroidPcGatewayMdnsRecordPayload::into_core_record)
+                        .collect(),
                 ),
             ),
             Self::Started { .. } | Self::Failed { .. } => None,
@@ -90,6 +108,9 @@ mod tests {
         };
         let report = callback.into_discovery_report().expect("report");
         assert_eq!(report.candidates.len(), 1);
-        assert!(report.candidates[0].endpoint.base_url.contains("192.168.1.10"));
+        assert!(report.candidates[0]
+            .endpoint
+            .base_url
+            .contains("192.168.1.10"));
     }
 }

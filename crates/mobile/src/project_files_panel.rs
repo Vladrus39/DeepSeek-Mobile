@@ -46,7 +46,7 @@ pub fn project_files_panel(
                     .refresh_via_pc(&pc_connection.client, &pc_connection.workspace_id)
                     .await
                 {
-                    s.workspace_root = ".".to_string();
+                    s.workspace_root = default_phone_workspace_root().display().to_string();
                     s.set_backend(FileBrowserBackend::Local);
                     s.refresh();
                 }
@@ -56,7 +56,7 @@ pub fn project_files_panel(
         } else {
             // No PC client available – revert to local backend.
             let mut next = state();
-            next.workspace_root = ".".to_string();
+            next.workspace_root = default_phone_workspace_root().display().to_string();
             next.set_backend(FileBrowserBackend::Local);
             next.refresh();
             next.set_pending_diffs(&approval_cards);
@@ -145,10 +145,20 @@ fn transfer_card(
                         padding: "6px 10px",
                         font_size: "12px",
                         onclick: move |_| {
-                            let request = DocumentPickerRequest::project_import();
-                            picker.write().request(request.clone());
-                            native_bridge.write().enqueue_document_picker(request);
-                            transfer_state.write().request_import();
+                            #[cfg(target_os = "android")]
+                            {
+                                transfer_state.write().mark_error(
+                                    "Android ZIP picker is disabled in this preview to avoid Dioxus/Wry native-activity ANR. Push archives into the app workspace with adb or use PC Host sync.".to_string(),
+                                );
+                            }
+
+                            #[cfg(not(target_os = "android"))]
+                            {
+                                let request = DocumentPickerRequest::project_import();
+                                picker.write().request(request.clone());
+                                native_bridge.write().enqueue_document_picker(request);
+                                transfer_state.write().request_import();
+                            }
                         },
                         "Import ZIP"
                     }
@@ -171,11 +181,22 @@ fn transfer_card(
                                 ) {
                                     Ok(report) => {
                                         let archive_path = report.archive_path.clone();
+                                        #[cfg(target_os = "android")]
+                                        {
+                                            next_transfer.mark_error(format!(
+                                                "Export created at {}, but Android share sheet is disabled in this preview. Copy it with adb or PC Host.",
+                                                archive_path.display()
+                                            ));
+                                            transfer_signal.set(next_transfer);
+                                        }
+                                        #[cfg(not(target_os = "android"))]
+                                        {
                                         next_transfer.mark_share_queued(archive_path.clone());
                                         transfer_signal.set(next_transfer);
                                         bridge_signal
                                             .write()
                                             .enqueue_share_file(archive_path.display().to_string());
+                                        }
                                     }
                                     Err(error) => {
                                         next_transfer.mark_error(error.to_string());
@@ -212,7 +233,11 @@ fn transfer_card(
     }
 }
 
-fn header_card(snapshot: &ProjectTreeSnapshot, mut state: Signal<ProjectFilesUiState>, is_pc: bool) -> Element {
+fn header_card(
+    snapshot: &ProjectTreeSnapshot,
+    mut state: Signal<ProjectFilesUiState>,
+    is_pc: bool,
+) -> Element {
     let badge_label = if is_pc { "PC" } else { "Local" };
     let badge_color = if is_pc { "#7c3aed" } else { "#1d4ed8" };
 
@@ -468,17 +493,28 @@ fn diff_preview_card(state: &ProjectFilesUiState, approval_cards: &[ApprovalCard
     // Compute diff reactively from approval cards for the selected file
     let diff = state.selected_path.as_ref().and_then(|selected| {
         for card in approval_cards {
-            let card_path = first_string_arg(card, &["path", "file", "file_path", "relative_path", "target_path"]);
+            let card_path = first_string_arg(
+                card,
+                &["path", "file", "file_path", "relative_path", "target_path"],
+            );
             if card_path.as_deref() != Some(selected.as_str()) {
                 continue;
             }
-            if let Some(after) = first_string_arg(card, &["content", "new_content", "after", "replacement", "text"]) {
-                let before = first_string_arg(card, &["before", "old_content", "current_content"]).unwrap_or_default();
+            if let Some(after) = first_string_arg(
+                card,
+                &["content", "new_content", "after", "replacement", "text"],
+            ) {
+                let before = first_string_arg(card, &["before", "old_content", "current_content"])
+                    .unwrap_or_default();
                 return Some(build_text_diff_preview(selected.clone(), &before, &after));
             }
             if let Some(search) = first_string_arg(card, &["search", "old_text"]) {
                 let replace = first_string_arg(card, &["replace", "new_text"]).unwrap_or_default();
-                let current = state.preview.as_ref().map(|p| p.content.as_str()).unwrap_or("");
+                let current = state
+                    .preview
+                    .as_ref()
+                    .map(|p| p.content.as_str())
+                    .unwrap_or("");
                 let after = current.replacen(&search, &replace, 1);
                 return Some(build_text_diff_preview(selected.clone(), current, &after));
             }

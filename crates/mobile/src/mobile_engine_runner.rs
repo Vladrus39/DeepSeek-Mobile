@@ -65,7 +65,7 @@ where
     run_mobile_turn_with_runtime_and_observer(
         config,
         input,
-        MobileRuntimeConfig::default(),
+        crate::chat_session::runtime_for_active_thread(),
         on_event,
     )
     .await
@@ -94,7 +94,10 @@ where
         .with_session(session)
         .with_event_observer(on_event);
 
-    let result = engine.run_turn(input.to_prompt_text()).await?;
+    // Streaming: live TextDelta in the chat timeline on phone (non-streaming hid the reply).
+    let result = engine
+        .run_turn_with_streaming(input.to_prompt_text())
+        .await?;
     approval_session_store.save(runtime.thread_id.clone(), engine.approval_session())?;
 
     // Persist session history after turn
@@ -220,6 +223,23 @@ pub async fn continue_mobile_termux_result(
         MobileRuntimeConfig::default(),
     )
     .await
+}
+
+/// Continue the thread that originally queued the Termux request.
+///
+/// Chat history can switch between multiple threads while Android is executing
+/// the command in Termux. The callback only carries `request_id`, so resolve the
+/// pending record from the runtime store and continue that saved thread instead
+/// of assuming `mobile-default-thread`.
+pub async fn continue_mobile_termux_result_for_saved_request(
+    config: Config,
+    termux_result: TermuxExecResult,
+) -> anyhow::Result<MobileTurnUiResult> {
+    let base_runtime = MobileRuntimeConfig::default_mobile();
+    let store = RuntimeThreadStore::open(base_runtime.runtime_store_root.clone())?;
+    let pending = store.load_pending_termux(&termux_result.request_id)?;
+    let runtime = base_runtime.with_thread_id(pending.thread_id);
+    continue_mobile_termux_result_with_runtime(config, termux_result, runtime).await
 }
 
 /// Continue a turn that was paused waiting for a Termux command result,

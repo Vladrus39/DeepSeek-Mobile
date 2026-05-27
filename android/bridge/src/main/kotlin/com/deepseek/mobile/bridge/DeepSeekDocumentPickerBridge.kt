@@ -13,6 +13,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import java.io.File
 import java.io.IOException
 import java.util.UUID
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
 
 /**
  * Native Android implementation of the Rust-side AndroidDocumentPickerCommand contract.
@@ -35,6 +37,9 @@ class DeepSeekDocumentPickerBridge(
     }
 
     private var activeCommand: AndroidDocumentPickerCommandPayload? = null
+    private val resultExecutor: ExecutorService = Executors.newSingleThreadExecutor { runnable ->
+        Thread(runnable, "DeepSeekDocumentPicker").apply { isDaemon = true }
+    }
 
     private val launcher: ActivityResultLauncher<Intent> =
         activity.registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
@@ -49,36 +54,38 @@ class DeepSeekDocumentPickerBridge(
 
             activeCommand = null
 
-            if (result.resultCode != Activity.RESULT_OK) {
-                callback.onDocumentPickerCancelled(command.requestId)
-                return@registerForActivityResult
-            }
+            resultExecutor.execute {
+                if (result.resultCode != Activity.RESULT_OK) {
+                    callback.onDocumentPickerCancelled(command.requestId)
+                    return@execute
+                }
 
-            val data = result.data
-            if (data == null) {
-                callback.onDocumentPickerPicked(
-                    AndroidDocumentPickerPickedResult(
-                        requestId = command.requestId,
-                        documents = emptyList()
+                val data = result.data
+                if (data == null) {
+                    callback.onDocumentPickerPicked(
+                        AndroidDocumentPickerPickedResult(
+                            requestId = command.requestId,
+                            documents = emptyList()
+                        )
                     )
-                )
-                return@registerForActivityResult
-            }
+                    return@execute
+                }
 
-            try {
-                val uris = selectedUris(data)
-                val documents = uris.map { uri -> copyUriToSandbox(command.requestId, uri) }
-                callback.onDocumentPickerPicked(
-                    AndroidDocumentPickerPickedResult(
-                        requestId = command.requestId,
-                        documents = documents
+                try {
+                    val uris = selectedUris(data)
+                    val documents = uris.map { uri -> copyUriToSandbox(command.requestId, uri) }
+                    callback.onDocumentPickerPicked(
+                        AndroidDocumentPickerPickedResult(
+                            requestId = command.requestId,
+                            documents = documents
+                        )
                     )
-                )
-            } catch (error: Throwable) {
-                callback.onDocumentPickerFailed(
-                    requestId = command.requestId,
-                    message = error.message ?: error.javaClass.simpleName
-                )
+                } catch (error: Throwable) {
+                    callback.onDocumentPickerFailed(
+                        requestId = command.requestId,
+                        message = error.message ?: error.javaClass.simpleName
+                    )
+                }
             }
         }
 
@@ -95,6 +102,10 @@ class DeepSeekDocumentPickerBridge(
             putExtra(Intent.EXTRA_MIME_TYPES, mimeTypes.toTypedArray())
         }
         launcher.launch(intent)
+    }
+
+    fun shutdown() {
+        resultExecutor.shutdownNow()
     }
 
     private fun selectedUris(data: Intent): List<Uri> {

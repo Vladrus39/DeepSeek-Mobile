@@ -238,6 +238,7 @@ pub fn mobile_drawer(
     summary: MobileChromeSummary,
     lang: AppLanguage,
     on_select: EventHandler<CockpitSection>,
+    on_close: EventHandler<()>,
 ) -> Element {
     if !is_open {
         return rsx! {};
@@ -258,13 +259,24 @@ pub fn mobile_drawer(
             position: "absolute",
             left: "0",
             top: "0",
+            right: "0",
+            bottom: "0",
+            background_color: "rgba(0, 0, 0, 0.42)",
+            z_index: "9",
+            onclick: move |_| on_close.call(()),
+        }
+
+        div {
+            position: "absolute",
+            left: "0",
+            top: "0",
             bottom: "0",
             width: "86%",
             max_width: "420px",
             background_color: "#0b1018",
             color: "white",
             border_right: "1px solid #374151",
-            padding: "18px",
+            padding: "calc(18px + env(safe-area-inset-top, 0px)) 18px 18px",
             z_index: "10",
             display: "flex",
             flex_direction: "column",
@@ -452,24 +464,9 @@ pub fn default_nav_items(lang: AppLanguage) -> Vec<NavItem> {
             short: "📁",
         },
         NavItem {
-            section: CockpitSection::Terminal,
-            label: pick(lang, "Терм", "Term"),
-            short: ">",
-        },
-        NavItem {
-            section: CockpitSection::Approvals,
-            label: pick(lang, "Одобр.", "Approve"),
-            short: "✓",
-        },
-        NavItem {
             section: CockpitSection::Git,
             label: "Git",
             short: "⬡",
-        },
-        NavItem {
-            section: CockpitSection::Tasks,
-            label: CockpitSection::Tasks.localized_title(lang),
-            short: "⚙",
         },
     ]
 }
@@ -486,11 +483,11 @@ pub fn bottom_nav_bar(
         div {
             background_color: "#0b1018",
             border_top: "1px solid #1f2937",
-            padding: "6px 0 4px",
-            display: "flex",
-            justify_content: "flex-start",
-            gap: "8px",
-            overflow_x: "auto",
+            padding: "6px 4px 4px",
+            display: "grid",
+            grid_template_columns: "repeat(6, minmax(0, 1fr))",
+            gap: "4px",
+            overflow_x: "hidden",
 
             for item in items {
                 {
@@ -502,8 +499,8 @@ pub fn bottom_nav_bar(
                             flex_direction: "column",
                             align_items: "center",
                             gap: "2px",
-                            min_width: "64px",
-                            padding: "6px 10px",
+                            min_width: "0",
+                            padding: "6px 2px",
                             background_color: if item.section == active_section { "#111827" } else { "transparent" },
                             border: if item.section == active_section { "1px solid #1d4ed8" } else { "1px solid transparent" },
                             border_radius: "14px",
@@ -515,7 +512,7 @@ pub fn bottom_nav_bar(
                                 div {
                                     position: "absolute",
                                     top: "2px",
-                                    right: "6px",
+                                    right: "2px",
                                     background_color: badge_background(item.section, &badge),
                                     color: "white",
                                     border_radius: "999px",
@@ -533,7 +530,11 @@ pub fn bottom_nav_bar(
                                 "{item.short}"
                             }
                             div {
-                                font_size: "10px",
+                                font_size: "9px",
+                                max_width: "100%",
+                                overflow: "hidden",
+                                text_overflow: "ellipsis",
+                                white_space: "nowrap",
                                 "{item.label}"
                             }
                         }
@@ -580,7 +581,8 @@ mod tests {
         let labels: Vec<&str> = items.iter().map(|i| i.label).collect();
         assert!(labels.contains(&"MCP"));
         assert!(labels.contains(&"Skills"));
-        assert!(labels.contains(&"Tasks"));
+        assert!(labels.contains(&"Git"));
+        assert_eq!(items.len(), 6);
     }
 
     #[test]

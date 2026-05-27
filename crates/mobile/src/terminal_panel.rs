@@ -13,20 +13,39 @@ pub fn terminal_panel(
     let input_text = state.read().input_text.clone();
     let loading = state.read().loading;
     let error = state.read().error.clone();
-    let output_lines: Vec<String> = state.read().selected_output().iter().map(|l| l.to_string()).collect();
+    let output_lines: Vec<String> = state
+        .read()
+        .selected_output()
+        .iter()
+        .map(|l| l.to_string())
+        .collect();
     // Collect session open states into a snapshot to avoid temporary lifetime issues
-    let session_open_states: std::collections::HashMap<String, bool> = state.read().sessions.iter()
+    let session_open_states: std::collections::HashMap<String, bool> = state
+        .read()
+        .sessions
+        .iter()
         .map(|s| (s.id.clone(), s.is_open))
         .collect();
-    let selected_is_active = selected_id.as_ref()
+    let selected_is_active = selected_id
+        .as_ref()
         .and_then(|id| session_open_states.get(id))
         .copied()
         .unwrap_or(false);
 
     // Snapshot session data to avoid temporary lifetime issues
-    let sessions_snapshot: Vec<(String, bool, bool, String)> = state.read().sessions.iter().map(|s| {
-        (s.id.clone(), s.is_open, selected_id.as_deref() == Some(&s.id), s.title.clone())
-    }).collect();
+    let sessions_snapshot: Vec<(String, bool, bool, String)> = state
+        .read()
+        .sessions
+        .iter()
+        .map(|s| {
+            (
+                s.id.clone(),
+                s.is_open,
+                selected_id.as_deref() == Some(&s.id),
+                s.title.clone(),
+            )
+        })
+        .collect();
 
     let session_tabs: Vec<Element> = sessions_snapshot.iter().map(|(sid, is_active, is_selected, title)| {
         let sid0 = sid.clone();

@@ -176,7 +176,12 @@ mod tests {
         let output_dir = temp_dir();
         let export = PcPairingManager::export_zip(sample_request(), &output_dir).unwrap();
         assert!(export.zip_path.exists());
-        assert!(export.zip_path.file_name().unwrap().to_string_lossy().ends_with(".zip"));
+        assert!(export
+            .zip_path
+            .file_name()
+            .unwrap()
+            .to_string_lossy()
+            .ends_with(".zip"));
         let _ = fs::remove_dir_all(output_dir);
     }
 

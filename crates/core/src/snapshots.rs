@@ -70,7 +70,11 @@ impl WorkspaceSnapshotService {
 
     pub fn create_snapshot(&self, reason: impl Into<String>) -> Result<WorkspaceSnapshotRecord> {
         let created_unix = unix_time();
-        let id = format!("{}-{}", sanitize_component(&self.workspace.id), created_unix);
+        let id = format!(
+            "{}-{}",
+            sanitize_component(&self.workspace.id),
+            created_unix
+        );
         let snapshot_dir = self.snapshot_dir(&id);
         let files_dir = snapshot_dir.join(FILES_DIR);
         fs::create_dir_all(&files_dir)
@@ -78,7 +82,12 @@ impl WorkspaceSnapshotService {
 
         let mut files = Vec::new();
         let mut total_bytes = 0u64;
-        self.copy_workspace_tree(&self.workspace.root, &files_dir, &mut files, &mut total_bytes)?;
+        self.copy_workspace_tree(
+            &self.workspace.root,
+            &files_dir,
+            &mut files,
+            &mut total_bytes,
+        )?;
         files.sort_by(|left, right| left.path.cmp(&right.path));
 
         let record = WorkspaceSnapshotRecord {
@@ -104,7 +113,9 @@ impl WorkspaceSnapshotService {
         }
 
         let mut records = Vec::new();
-        for entry in fs::read_dir(&root).with_context(|| format!("read snapshot root {}", root.display()))? {
+        for entry in
+            fs::read_dir(&root).with_context(|| format!("read snapshot root {}", root.display()))?
+        {
             let entry = entry?;
             if !entry.file_type()?.is_dir() {
                 continue;
@@ -136,7 +147,10 @@ impl WorkspaceSnapshotService {
 
         let snapshot_files_dir = self.snapshot_dir(snapshot_id).join(FILES_DIR);
         if !snapshot_files_dir.is_dir() {
-            return Err(anyhow!("snapshot files directory is missing: {}", snapshot_files_dir.display()));
+            return Err(anyhow!(
+                "snapshot files directory is missing: {}",
+                snapshot_files_dir.display()
+            ));
         }
 
         let snapshot_paths = record
@@ -158,9 +172,8 @@ impl WorkspaceSnapshotService {
             if let Some(parent) = target.parent() {
                 fs::create_dir_all(parent)?;
             }
-            fs::copy(&source, &target).with_context(|| {
-                format!("restore {} to {}", source.display(), target.display())
-            })?;
+            fs::copy(&source, &target)
+                .with_context(|| format!("restore {} to {}", source.display(), target.display()))?;
             restored_files += 1;
         }
 
@@ -172,8 +185,9 @@ impl WorkspaceSnapshotService {
             if !snapshot_paths.contains(&existing) {
                 let target = self.safe_workspace_path(&existing)?;
                 if target.is_file() {
-                    fs::remove_file(&target)
-                        .with_context(|| format!("remove file not present in snapshot {}", target.display()))?;
+                    fs::remove_file(&target).with_context(|| {
+                        format!("remove file not present in snapshot {}", target.display())
+                    })?;
                     removed_files += 1;
                 }
             }
@@ -193,7 +207,8 @@ impl WorkspaceSnapshotService {
     }
 
     fn snapshot_dir(&self, snapshot_id: &str) -> PathBuf {
-        self.workspace_snapshot_root().join(sanitize_component(snapshot_id))
+        self.workspace_snapshot_root()
+            .join(sanitize_component(snapshot_id))
     }
 
     fn copy_workspace_tree(
@@ -206,7 +221,9 @@ impl WorkspaceSnapshotService {
         if self.should_skip_path(current) {
             return Ok(());
         }
-        for entry in fs::read_dir(current).with_context(|| format!("read workspace dir {}", current.display()))? {
+        for entry in fs::read_dir(current)
+            .with_context(|| format!("read workspace dir {}", current.display()))?
+        {
             let entry = entry?;
             let path = entry.path();
             if self.should_skip_path(&path) {
@@ -225,8 +242,9 @@ impl WorkspaceSnapshotService {
                 if let Some(parent) = target.parent() {
                     fs::create_dir_all(parent)?;
                 }
-                fs::copy(&path, &target)
-                    .with_context(|| format!("snapshot copy {} to {}", path.display(), target.display()))?;
+                fs::copy(&path, &target).with_context(|| {
+                    format!("snapshot copy {} to {}", path.display(), target.display())
+                })?;
                 *total_bytes += metadata.len();
                 files.push(WorkspaceSnapshotFile {
                     path: normalized,
@@ -299,8 +317,9 @@ impl WorkspaceSnapshotService {
             if age >= max_age_secs {
                 let dir = self.snapshot_dir(&snapshot.id);
                 if dir.exists() {
-                    fs::remove_dir_all(&dir)
-                        .with_context(|| format!("remove pruned snapshot directory {}", dir.display()))?;
+                    fs::remove_dir_all(&dir).with_context(|| {
+                        format!("remove pruned snapshot directory {}", dir.display())
+                    })?;
                 }
                 removed.push(snapshot.id.clone());
             }
@@ -309,8 +328,14 @@ impl WorkspaceSnapshotService {
     }
 
     fn should_skip_path(&self, path: &Path) -> bool {
-        let name = path.file_name().and_then(|value| value.to_str()).unwrap_or_default();
-        if matches!(name, ".git" | "target" | "node_modules" | ".deepseek" | ".deepseek-mobile") {
+        let name = path
+            .file_name()
+            .and_then(|value| value.to_str())
+            .unwrap_or_default();
+        if matches!(
+            name,
+            ".git" | "target" | "node_modules" | ".deepseek" | ".deepseek-mobile"
+        ) {
             return true;
         }
         if let (Ok(path), Ok(store)) = (path.canonicalize(), self.store_root.canonicalize()) {
@@ -322,7 +347,8 @@ impl WorkspaceSnapshotService {
 }
 
 fn read_manifest(path: &Path) -> Result<WorkspaceSnapshotRecord> {
-    let text = fs::read_to_string(path).with_context(|| format!("read snapshot manifest {}", path.display()))?;
+    let text = fs::read_to_string(path)
+        .with_context(|| format!("read snapshot manifest {}", path.display()))?;
     let record: WorkspaceSnapshotRecord = serde_json::from_str(&text)?;
     if record.schema_version != SNAPSHOT_SCHEMA_VERSION {
         return Err(anyhow!(
@@ -343,7 +369,10 @@ fn write_json<T: Serialize>(path: &Path, value: &T) -> Result<()> {
 
 fn normalize_relative_path(path: &Path) -> Result<PathBuf> {
     if path.is_absolute() {
-        return Err(anyhow!("absolute snapshot paths are not allowed: {}", path.display()));
+        return Err(anyhow!(
+            "absolute snapshot paths are not allowed: {}",
+            path.display()
+        ));
     }
     let mut out = PathBuf::new();
     for component in path.components() {
@@ -361,7 +390,13 @@ fn normalize_relative_path(path: &Path) -> Result<PathBuf> {
 fn sanitize_component(value: &str) -> String {
     let sanitized = value
         .chars()
-        .map(|ch| if ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '.') { ch } else { '_' })
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '.') {
+                ch
+            } else {
+                '_'
+            }
+        })
         .collect::<String>();
     if sanitized.is_empty() {
         "snapshot".to_string()
@@ -413,7 +448,12 @@ mod tests {
         let _ = fs::remove_dir_all(&base);
         fs::create_dir_all(&workspace_root).unwrap();
         (
-            Workspace::new("w1", "Workspace", workspace_root, ExecutorKind::LocalAndroid),
+            Workspace::new(
+                "w1",
+                "Workspace",
+                workspace_root,
+                ExecutorKind::LocalAndroid,
+            ),
             store_root,
         )
     }
@@ -444,7 +484,10 @@ mod tests {
 
         let report = service.restore_snapshot(&snapshot.id).unwrap();
         assert_eq!(report.restored_files, 1);
-        assert_eq!(fs::read_to_string(workspace.root.join("src/main.rs")).unwrap(), "fn main() {}\n");
+        assert_eq!(
+            fs::read_to_string(workspace.root.join("src/main.rs")).unwrap(),
+            "fn main() {}\n"
+        );
         assert!(!workspace.root.join("extra.txt").exists());
 
         let _ = fs::remove_dir_all(store_root.parent().unwrap());

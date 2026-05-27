@@ -11,69 +11,77 @@ struct SnapshotDisplayInfo {
 
 pub fn snapshots_panel(mut state: Signal<SnapshotsUiState>) -> Element {
     let latest = state.read().latest().cloned();
-    let pending_info = state.read().pending_restore_snapshot().map(|s| {
-        (s.id.clone(), s.file_count, s.total_bytes)
-    });
+    let pending_info = state
+        .read()
+        .pending_restore_snapshot()
+        .map(|s| (s.id.clone(), s.file_count, s.total_bytes));
     let error_text = state.read().last_error.clone();
     let report_text = state.read().last_restore_report.clone();
     let has_pending = state.read().pending_restore_snapshot_id.is_some();
     let restore_running = state.read().restore_in_progress;
 
-    let snapshot_list: Vec<SnapshotDisplayInfo> = state.read().snapshots.iter().take(12).map(|s| {
-        SnapshotDisplayInfo {
+    let snapshot_list: Vec<SnapshotDisplayInfo> = state
+        .read()
+        .snapshots
+        .iter()
+        .take(12)
+        .map(|s| SnapshotDisplayInfo {
             id: s.id.clone(),
             file_count: s.file_count,
             total_bytes: s.total_bytes,
             reason: s.reason.clone(),
-        }
-    }).collect();
+        })
+        .collect();
 
     // Build the snapshot cards outside rsx to avoid let-bindings inside the macro
-    let snapshot_cards: Vec<Element> = snapshot_list.iter().map(|info| {
-        let sid = info.id.clone();
-        let fc = info.file_count;
-        let tb = info.total_bytes;
-        let reason = info.reason.clone();
-        let disabled = has_pending || restore_running;
+    let snapshot_cards: Vec<Element> = snapshot_list
+        .iter()
+        .map(|info| {
+            let sid = info.id.clone();
+            let fc = info.file_count;
+            let tb = info.total_bytes;
+            let reason = info.reason.clone();
+            let disabled = has_pending || restore_running;
 
-        rsx! {
-            div {
-                key: "{sid}",
-                background_color: "#111827",
-                border: "1px solid #1f2937",
-                border_radius: "12px",
-                padding: "10px",
-                display: "flex",
-                flex_direction: "column",
-                gap: "4px",
-
+            rsx! {
                 div {
+                    key: "{sid}",
+                    background_color: "#111827",
+                    border: "1px solid #1f2937",
+                    border_radius: "12px",
+                    padding: "10px",
                     display: "flex",
-                    justify_content: "space_between",
-                    align_items: "center",
+                    flex_direction: "column",
+                    gap: "4px",
 
-                    div { font_size: "13px", font_weight: "bold", "{sid}" }
-                    button {
-                        background_color: "#b45309",
-                        border: "none",
-                        border_radius: "8px",
-                        padding: "4px 12px",
-                        color: "white",
-                        font_size: "12px",
-                        font_weight: "bold",
-                        onclick: move |_| {
-                            let mut s = state.write();
-                            s.request_restore(&sid);
-                        },
-                        disabled: if disabled { "true" } else { "false" },
-                        "Restore"
+                    div {
+                        display: "flex",
+                        justify_content: "space_between",
+                        align_items: "center",
+
+                        div { font_size: "13px", font_weight: "bold", "{sid}" }
+                        button {
+                            background_color: "#b45309",
+                            border: "none",
+                            border_radius: "8px",
+                            padding: "4px 12px",
+                            color: "white",
+                            font_size: "12px",
+                            font_weight: "bold",
+                            onclick: move |_| {
+                                let mut s = state.write();
+                                s.request_restore(&sid);
+                            },
+                            disabled: if disabled { "true" } else { "false" },
+                            "Restore"
+                        }
                     }
+                    div { color: "#9ca3af", font_size: "12px", "{fc} file(s) · {tb} bytes" }
+                    div { color: "#d1d5db", font_size: "12px", "{reason}" }
                 }
-                div { color: "#9ca3af", font_size: "12px", "{fc} file(s) · {tb} bytes" }
-                div { color: "#d1d5db", font_size: "12px", "{reason}" }
             }
-        }
-    }).collect();
+        })
+        .collect();
 
     rsx! {
         div {

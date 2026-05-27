@@ -6,18 +6,17 @@
 
 use crate::executor::CommandRequest;
 use crate::pc_gateway::{
-    PcGatewayConfig, PcGatewayEndpointCandidate, PcGatewayError, PcGatewayHealth,
-    PcGatewayRequest, PcGatewayRequestEnvelope, PcGatewayResponse, PcGatewayResponseEnvelope,
-    CommandStreamEvent, PcRunningTaskEvent,
-    PcGatewaySecurityPolicy,
+    CommandStreamEvent, PcGatewayConfig, PcGatewayEndpointCandidate, PcGatewayError,
+    PcGatewayHealth, PcGatewayRequest, PcGatewayRequestEnvelope, PcGatewayResponse,
+    PcGatewayResponseEnvelope, PcGatewaySecurityPolicy, PcRunningTaskEvent,
 };
 use anyhow::{anyhow, Result};
+use futures_util::StreamExt;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
-use futures_util::StreamExt;
 use tokio::sync::mpsc;
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
@@ -79,8 +78,14 @@ impl PcGatewayClient {
         let mut plan = self.config.endpoint_plan();
         let health = self.endpoint_health_snapshot_by_url();
         plan.sort_by(|left, right| {
-            let left_health = health.get(&left.base_url).map(PcGatewayEndpointHealth::score).unwrap_or(0);
-            let right_health = health.get(&right.base_url).map(PcGatewayEndpointHealth::score).unwrap_or(0);
+            let left_health = health
+                .get(&left.base_url)
+                .map(PcGatewayEndpointHealth::score)
+                .unwrap_or(0);
+            let right_health = health
+                .get(&right.base_url)
+                .map(PcGatewayEndpointHealth::score)
+                .unwrap_or(0);
             let left_score = left.priority as i64 + left_health;
             let right_score = right.priority as i64 + right_health;
             right_score
@@ -124,7 +129,11 @@ impl PcGatewayClient {
         self.send(PcGatewayRequest::ListWorkspaces).await
     }
 
-    pub async fn read_file(&self, workspace_id: impl Into<String>, path: impl Into<String>) -> Result<PcGatewayResponse> {
+    pub async fn read_file(
+        &self,
+        workspace_id: impl Into<String>,
+        path: impl Into<String>,
+    ) -> Result<PcGatewayResponse> {
         self.send(PcGatewayRequest::ReadFile {
             workspace_id: workspace_id.into(),
             path: path.into(),
@@ -146,7 +155,11 @@ impl PcGatewayClient {
         .await
     }
 
-    pub async fn delete_file(&self, workspace_id: impl Into<String>, path: impl Into<String>) -> Result<PcGatewayResponse> {
+    pub async fn delete_file(
+        &self,
+        workspace_id: impl Into<String>,
+        path: impl Into<String>,
+    ) -> Result<PcGatewayResponse> {
         self.send(PcGatewayRequest::DeleteFile {
             workspace_id: workspace_id.into(),
             path: path.into(),
@@ -154,7 +167,11 @@ impl PcGatewayClient {
         .await
     }
 
-    pub async fn list_dir(&self, workspace_id: impl Into<String>, path: impl Into<String>) -> Result<PcGatewayResponse> {
+    pub async fn list_dir(
+        &self,
+        workspace_id: impl Into<String>,
+        path: impl Into<String>,
+    ) -> Result<PcGatewayResponse> {
         self.send(PcGatewayRequest::ListDir {
             workspace_id: workspace_id.into(),
             path: path.into(),
@@ -162,7 +179,11 @@ impl PcGatewayClient {
         .await
     }
 
-    pub async fn open_path(&self, workspace_id: impl Into<String>, path: impl Into<String>) -> Result<PcGatewayResponse> {
+    pub async fn open_path(
+        &self,
+        workspace_id: impl Into<String>,
+        path: impl Into<String>,
+    ) -> Result<PcGatewayResponse> {
         self.send(PcGatewayRequest::OpenPath {
             workspace_id: workspace_id.into(),
             path: path.into(),
@@ -188,7 +209,6 @@ impl PcGatewayClient {
         .await
     }
 
-
     /// Execute a command with streaming output via SSE.
     /// Returns an mpsc receiver that produces CommandStreamEvent items.
     pub async fn stream_command(
@@ -196,7 +216,9 @@ impl PcGatewayClient {
         workspace_id: impl Into<String>,
         command: CommandRequest,
     ) -> Result<mpsc::Receiver<CommandStreamEvent>> {
-        self.policy.validate_command(&command).map_err(|m| anyhow!(m))?;
+        self.policy
+            .validate_command(&command)
+            .map_err(|m| anyhow!(m))?;
         let workspace_id = workspace_id.into();
         let (tx, rx) = mpsc::channel::<CommandStreamEvent>(64);
         let http = self.http.clone();
@@ -211,8 +233,13 @@ impl PcGatewayClient {
                     last_error = e;
                     continue;
                 }
-                let url = format!("{}/v1/gateway/exec/stream", endpoint.base_url.trim_end_matches('/'));
-                let mut builder = http.post(&url).json(&serde_json::json!({"workspace_id": workspace_id, "command": command}));
+                let url = format!(
+                    "{}/v1/gateway/exec/stream",
+                    endpoint.base_url.trim_end_matches('/')
+                );
+                let mut builder = http
+                    .post(&url)
+                    .json(&serde_json::json!({"workspace_id": workspace_id, "command": command}));
                 if let Some(ref token) = auth_token {
                     builder = builder.bearer_auth(token);
                 }
@@ -221,7 +248,12 @@ impl PcGatewayClient {
                         if !response.status().is_success() {
                             let status = response.status();
                             let text = response.text().await.unwrap_or_default();
-                            let _ = tx_err.send(CommandStreamEvent::Error(format!("HTTP {}: {}", status, text))).await;
+                            let _ = tx_err
+                                .send(CommandStreamEvent::Error(format!(
+                                    "HTTP {}: {}",
+                                    status, text
+                                )))
+                                .await;
                             continue;
                         }
                         let mut bytes_stream = response.bytes_stream();
@@ -248,7 +280,12 @@ impl PcGatewayClient {
                     }
                 }
             }
-            let _ = tx_err.send(CommandStreamEvent::Error(format!("all endpoints failed: {}", last_error))).await;
+            let _ = tx_err
+                .send(CommandStreamEvent::Error(format!(
+                    "all endpoints failed: {}",
+                    last_error
+                )))
+                .await;
         });
         Ok(rx)
     }
@@ -266,7 +303,11 @@ impl PcGatewayClient {
         .await
     }
 
-    pub async fn terminal_input(&self, session_id: impl Into<String>, input: impl Into<String>) -> Result<PcGatewayResponse> {
+    pub async fn terminal_input(
+        &self,
+        session_id: impl Into<String>,
+        input: impl Into<String>,
+    ) -> Result<PcGatewayResponse> {
         self.send(PcGatewayRequest::TerminalInput {
             session_id: session_id.into(),
             input: input.into(),
@@ -484,15 +525,25 @@ impl PcGatewayClient {
     }
 
     pub async fn restore_snapshot(
-        &self, workspace_id: impl Into<String>, snapshot_id: impl Into<String>,
+        &self,
+        workspace_id: impl Into<String>,
+        snapshot_id: impl Into<String>,
     ) -> Result<PcGatewayResponse> {
         self.send(PcGatewayRequest::SnapshotRestore {
-            workspace_id: workspace_id.into(), snapshot_id: snapshot_id.into(),
-        }).await
+            workspace_id: workspace_id.into(),
+            snapshot_id: snapshot_id.into(),
+        })
+        .await
     }
 
-    pub async fn list_snapshots(&self, workspace_id: impl Into<String>) -> Result<PcGatewayResponse> {
-        self.send(PcGatewayRequest::SnapshotList { workspace_id: workspace_id.into() }).await
+    pub async fn list_snapshots(
+        &self,
+        workspace_id: impl Into<String>,
+    ) -> Result<PcGatewayResponse> {
+        self.send(PcGatewayRequest::SnapshotList {
+            workspace_id: workspace_id.into(),
+        })
+        .await
     }
 
     pub async fn send(&self, request: PcGatewayRequest) -> Result<PcGatewayResponse> {
@@ -500,7 +551,10 @@ impl PcGatewayClient {
         for endpoint in self.endpoint_plan() {
             if let Err(error) = endpoint.validate(self.config.allow_http_on_local_network) {
                 self.record_endpoint_failure(&endpoint, error.clone());
-                errors.push(format!("{} {} rejected: {}", endpoint.label, endpoint.base_url, error));
+                errors.push(format!(
+                    "{} {} rejected: {}",
+                    endpoint.label, endpoint.base_url, error
+                ));
                 continue;
             }
             let started_at = Instant::now();
@@ -532,7 +586,10 @@ impl PcGatewayClient {
         endpoint: &PcGatewayEndpointCandidate,
     ) -> Result<PcGatewayResponse> {
         let envelope = PcGatewayRequestEnvelope::new(self.config.device_id.clone(), request);
-        let url = format!("{}/v1/gateway/request", endpoint.base_url.trim_end_matches('/'));
+        let url = format!(
+            "{}/v1/gateway/request",
+            endpoint.base_url.trim_end_matches('/')
+        );
         let mut builder = self.http.post(url).json(&envelope);
 
         if let Some(token) = self.config.auth_token.as_deref() {
@@ -597,15 +654,20 @@ fn health_record(endpoint: &PcGatewayEndpointCandidate) -> PcGatewayEndpointHeal
     }
 }
 
-
 /// Parse a single SSE event string (without the trailing `\n\n`).
 fn parse_sse_event(raw: &str) -> Option<CommandStreamEvent> {
     let data = raw.strip_prefix("data: ")?;
     let value: serde_json::Value = serde_json::from_str(data).ok()?;
     match value.get("kind")?.as_str()? {
-        "stdout" => Some(CommandStreamEvent::Stdout(value.get("data")?.as_str()?.to_string())),
-        "stderr" => Some(CommandStreamEvent::Stderr(value.get("data")?.as_str()?.to_string())),
-        "exit" => Some(CommandStreamEvent::Exit(value.get("code")?.as_i64().map(|c| c as i32))),
+        "stdout" => Some(CommandStreamEvent::Stdout(
+            value.get("data")?.as_str()?.to_string(),
+        )),
+        "stderr" => Some(CommandStreamEvent::Stderr(
+            value.get("data")?.as_str()?.to_string(),
+        )),
+        "exit" => Some(CommandStreamEvent::Exit(
+            value.get("code")?.as_i64().map(|c| c as i32),
+        )),
         _ => None,
     }
 }
@@ -632,12 +694,8 @@ mod tests {
 
     #[test]
     fn keeps_gateway_config() {
-        let mut config = PcGatewayConfig::new(
-            "pc-1",
-            "Laptop",
-            "http://192.168.1.10:8787",
-            "phone-1",
-        );
+        let mut config =
+            PcGatewayConfig::new("pc-1", "Laptop", "http://192.168.1.10:8787", "phone-1");
         config.transport_mode = PcGatewayTransportMode::LocalNetworkHttp;
         config.allow_http_on_local_network = true;
         let client = PcGatewayClient::new(config.clone());
@@ -647,22 +705,18 @@ mod tests {
 
     #[test]
     fn client_endpoint_plan_prefers_offline_local_routes() {
-        let config = PcGatewayConfig::tunnel_https(
-            "pc-1",
-            "Laptop",
-            "https://pc.example.test",
-            "phone-1",
-        )
-        .with_endpoint_candidate(PcGatewayEndpointCandidate::new(
-            "same-lan",
-            "http://192.168.1.10:8787",
-            PcGatewayTransportMode::LocalNetworkHttp,
-        ))
-        .with_endpoint_candidate(PcGatewayEndpointCandidate::new(
-            "direct-link",
-            "http://169.254.12.10:8787",
-            PcGatewayTransportMode::DirectWifiHttp,
-        ));
+        let config =
+            PcGatewayConfig::tunnel_https("pc-1", "Laptop", "https://pc.example.test", "phone-1")
+                .with_endpoint_candidate(PcGatewayEndpointCandidate::new(
+                    "same-lan",
+                    "http://192.168.1.10:8787",
+                    PcGatewayTransportMode::LocalNetworkHttp,
+                ))
+                .with_endpoint_candidate(PcGatewayEndpointCandidate::new(
+                    "direct-link",
+                    "http://169.254.12.10:8787",
+                    PcGatewayTransportMode::DirectWifiHttp,
+                ));
         let client = PcGatewayClient::new(config);
         let plan = client.endpoint_plan();
         assert_eq!(plan[0].label, "direct-link");
@@ -695,12 +749,8 @@ mod tests {
 
     #[test]
     fn policy_rejects_blocked_command_before_transport() {
-        let mut config = PcGatewayConfig::new(
-            "pc-1",
-            "Laptop",
-            "http://192.168.1.10:8787",
-            "phone-1",
-        );
+        let mut config =
+            PcGatewayConfig::new("pc-1", "Laptop", "http://192.168.1.10:8787", "phone-1");
         config.transport_mode = PcGatewayTransportMode::LocalNetworkHttp;
         config.allow_http_on_local_network = true;
         let client = PcGatewayClient::new(config);

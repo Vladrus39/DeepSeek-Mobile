@@ -74,7 +74,10 @@ impl SkillRegistry {
             for entry in walk_skill_dirs(root)? {
                 let manifest = SkillManifest::load_from_file(&entry)?;
                 // Avoid duplicates by name (first found wins)
-                if skills.iter().any(|s: &SkillManifest| s.name == manifest.name) {
+                if skills
+                    .iter()
+                    .any(|s: &SkillManifest| s.name == manifest.name)
+                {
                     continue;
                 }
                 skills.push(manifest);
@@ -257,7 +260,11 @@ mod tests {
         let skill_dir = dir.join("my-skill");
         fs::create_dir_all(&skill_dir).unwrap();
         let mut f = fs::File::create(skill_dir.join("SKILL.md")).unwrap();
-        writeln!(f, "---\nname: my-skill\ndescription: Test\n---\n\nDo things.").unwrap();
+        writeln!(
+            f,
+            "---\nname: my-skill\ndescription: Test\n---\n\nDo things."
+        )
+        .unwrap();
 
         let registry = SkillRegistry::discover(&[dir.clone()]).unwrap();
         assert_eq!(registry.skills.len(), 1);

@@ -18,7 +18,10 @@ impl ChatAttachmentKind {
             if mime_type.starts_with("image/") {
                 return Self::Image;
             }
-            if mime_type == "application/zip" || mime_type == "application/x-tar" || mime_type == "application/gzip" {
+            if mime_type == "application/zip"
+                || mime_type == "application/x-tar"
+                || mime_type == "application/gzip"
+            {
                 return Self::Archive;
             }
             if mime_type.starts_with("text/") || mime_type == "application/json" {
@@ -30,9 +33,17 @@ impl ChatAttachmentKind {
         }
 
         let lower = display_name.to_ascii_lowercase();
-        if lower.ends_with(".png") || lower.ends_with(".jpg") || lower.ends_with(".jpeg") || lower.ends_with(".webp") {
+        if lower.ends_with(".png")
+            || lower.ends_with(".jpg")
+            || lower.ends_with(".jpeg")
+            || lower.ends_with(".webp")
+        {
             Self::Image
-        } else if lower.ends_with(".zip") || lower.ends_with(".tar") || lower.ends_with(".gz") || lower.ends_with(".tgz") {
+        } else if lower.ends_with(".zip")
+            || lower.ends_with(".tar")
+            || lower.ends_with(".gz")
+            || lower.ends_with(".tgz")
+        {
             Self::Archive
         } else if lower.ends_with(".rs")
             || lower.ends_with(".py")
@@ -93,7 +104,10 @@ impl ChatAttachmentDraft {
     }
 
     pub fn from_picked_document(document: PickedDocument) -> Self {
-        let kind = ChatAttachmentKind::from_mime_or_name(document.mime_type.as_deref(), &document.display_name);
+        let kind = ChatAttachmentKind::from_mime_or_name(
+            document.mime_type.as_deref(),
+            &document.display_name,
+        );
         Self {
             id: document.id,
             display_name: document.display_name,
@@ -142,7 +156,8 @@ impl ChatAttachmentDraft {
 
     pub fn with_mime_type(mut self, mime_type: impl Into<String>) -> Self {
         self.mime_type = Some(mime_type.into());
-        self.kind = ChatAttachmentKind::from_mime_or_name(self.mime_type.as_deref(), &self.display_name);
+        self.kind =
+            ChatAttachmentKind::from_mime_or_name(self.mime_type.as_deref(), &self.display_name);
         self
     }
 
@@ -265,15 +280,27 @@ mod tests {
             .with_size_bytes(1024);
         let attachment = ChatAttachmentDraft::from_picked_document(document);
         assert_eq!(attachment.kind, ChatAttachmentKind::Archive);
-        assert_eq!(attachment.uri.as_deref(), Some("content://docs/project.zip"));
+        assert_eq!(
+            attachment.uri.as_deref(),
+            Some("content://docs/project.zip")
+        );
         assert_eq!(attachment.size_bytes, Some(1024));
     }
 
     #[test]
     fn attachment_kind_detects_source_files() {
-        assert_eq!(ChatAttachmentKind::from_mime_or_name(None, "main.rs"), ChatAttachmentKind::SourceFile);
-        assert_eq!(ChatAttachmentKind::from_mime_or_name(Some("image/png"), "photo"), ChatAttachmentKind::Image);
-        assert_eq!(ChatAttachmentKind::from_mime_or_name(Some("application/pdf"), "manual"), ChatAttachmentKind::Document);
+        assert_eq!(
+            ChatAttachmentKind::from_mime_or_name(None, "main.rs"),
+            ChatAttachmentKind::SourceFile
+        );
+        assert_eq!(
+            ChatAttachmentKind::from_mime_or_name(Some("image/png"), "photo"),
+            ChatAttachmentKind::Image
+        );
+        assert_eq!(
+            ChatAttachmentKind::from_mime_or_name(Some("application/pdf"), "manual"),
+            ChatAttachmentKind::Document
+        );
     }
 
     #[test]
@@ -306,7 +333,10 @@ mod tests {
 
         let (input, statuses) = state.to_core_input_with_ingestion();
         assert_eq!(input.attachments.len(), 1);
-        assert_eq!(input.attachments[0].extracted_text.as_deref(), Some("real attachment text"));
+        assert_eq!(
+            input.attachments[0].extracted_text.as_deref(),
+            Some("real attachment text")
+        );
         assert!(statuses[0].contains("Read attachment text"));
 
         let _ = fs::remove_file(path);

@@ -2,9 +2,15 @@ package com.deepseek.mobile.bridge
 
 import android.app.PendingIntent
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.net.Uri
+import android.os.Build
+import android.provider.Settings
+import android.util.Log
 import androidx.activity.ComponentActivity
-import androidx.core.content.FileProvider
 import java.io.File
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
 
 /**
  * Drains Rust native-bridge commands and dispatches them to the Kotlin bridge adapters.
@@ -19,6 +25,8 @@ class DeepSeekMobileHostCoordinator(
     private val discoveryBridge: DeepSeekPcGatewayDiscoveryBridge,
     private val termuxBridge: DeepSeekTermuxBridge,
     private val termuxPendingIntentFactory: (String) -> PendingIntent,
+    private val callbackExecutor: ExecutorService,
+    private val onExternalActivityLaunched: () -> Unit,
 ) {
     fun pollAndHandleNextAction(): Boolean {
         val actionJson = bindings.pollNextHostActionJson() ?: return false
@@ -27,48 +35,60 @@ class DeepSeekMobileHostCoordinator(
     }
 
     fun deliverCallbackJson(payload: String) {
-        bindings.deliverHostCallbackJson(payload)
+        activity.runOnUiThread {
+            bindings.deliverHostCallbackJson(payload)
+        }
+    }
+
+    fun shutdown() {
+        documentPickerBridge.shutdown()
+        callbackExecutor.shutdownNow()
     }
 
     fun handleActionJson(actionJson: String) {
         val action = AndroidHostActionJson.parse(actionJson) ?: return
         when (action.kind) {
             "open_document_picker" -> {
-                documentPickerBridge.open(
-                    AndroidDocumentPickerCommandPayload(
-                        requestId = action.requestId ?: return,
-                        action = action.androidAction ?: Intent.ACTION_OPEN_DOCUMENT,
-                        category = action.androidCategory ?: Intent.CATEGORY_OPENABLE,
-                        allowMultiple = action.allowMultiple ?: false,
-                        mimeTypes = action.mimeTypes ?: listOf("*/*"),
-                    )
+                val requestId = action.requestId ?: return
+                Log.w(TAG, "Rejecting Android document picker request $requestId in preview-safe mode")
+                deliverCallbackJson(
+                    """{"kind":"document_picker_failed","request_id":"$requestId","message":"Android system picker is disabled in this preview because Dioxus/Wry can ANR after returning from external activities on tested Samsung Android 13 devices. Use PC Host, adb push, or the app-private workspace path instead."}"""
                 )
             }
             "start_pc_gateway_discovery" -> {
-                discoveryBridge.startDiscovery(
-                    AndroidPcGatewayDiscoveryCommandPayload(
-                        requestId = action.requestId ?: return,
-                        serviceType = action.serviceType ?: "_deepseek-pc-gateway._tcp.",
+                val requestId = action.requestId ?: return
+                val serviceType = action.serviceType ?: "_deepseek-pc-gateway._tcp."
+                // NSD must run on the main looper; host drain uses a background executor.
+                activity.runOnUiThread {
+                    Log.i(TAG, "Starting PC gateway NSD discovery requestId=$requestId")
+                    discoveryBridge.startDiscovery(
+                        AndroidPcGatewayDiscoveryCommandPayload(
+                            requestId = requestId,
+                            serviceType = serviceType,
+                        ),
                     )
-                )
+                }
             }
             "run_termux_command" -> {
                 val requestId = action.requestId ?: return
                 val command = action.command ?: return
                 val workingDir = action.workingDir ?: return
                 val pending = termuxPendingIntentFactory(requestId)
-                termuxBridge.run(
-                    AndroidTermuxCommandPayload(
-                        requestId = requestId,
-                        commandPath = "/data/data/com.termux/files/usr/bin/sh",
-                        arguments = listOf("-lc", command),
-                        workingDir = workingDir,
-                        background = true,
-                        label = "DeepSeek Mobile",
-                        description = command,
-                    ),
-                    pending,
+                val payload = AndroidTermuxCommandPayload(
+                    requestId = requestId,
+                    commandPath = "/data/data/com.termux/files/usr/bin/sh",
+                    arguments = listOf("-lc", command),
+                    workingDir = workingDir,
+                    background = true,
+                    label = "DeepSeek Mobile",
+                    description = command,
                 )
+                val startError = termuxBridge.run(payload, pending)
+                if (startError != null) {
+                    deliverCallbackJson(
+                        """{"kind":"termux_failed","request_id":"$requestId","message":${org.json.JSONObject.quote(startError)}}""",
+                    )
+                }
             }
             "share_file" -> {
                 val path = action.path ?: return
@@ -79,41 +99,77 @@ class DeepSeekMobileHostCoordinator(
                     )
                     return
                 }
-                val uri = FileProvider.getUriForFile(
-                    activity,
-                    "${activity.packageName}.fileprovider",
-                    file,
+                deliverCallbackJson(
+                    """{"kind":"share_failed","message":"Android external share sheet is disabled in this preview to avoid Dioxus/Wry focus ANR after returning from external activities."}"""
                 )
-                val intent = Intent(Intent.ACTION_SEND).apply {
-                    type = action.mimeType ?: "application/octet-stream"
-                    putExtra(Intent.EXTRA_STREAM, uri)
-                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                }
-                activity.startActivity(Intent.createChooser(intent, "Share project"))
-                deliverCallbackJson("""{"kind":"file_shared"}""")
             }
             "open_url" -> {
                 val url = action.url ?: return
-                val intent = Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url))
-                activity.startActivity(intent)
+                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                return try {
+                    onExternalActivityLaunched()
+                    activity.startActivity(intent)
+                    deliverCallbackJson("""{"kind":"url_opened","url":${org.json.JSONObject.quote(url)}}""")
+                } catch (e: Exception) {
+                    deliverCallbackJson(
+                        """{"kind":"url_open_failed","url":${org.json.JSONObject.quote(url)},"message":${org.json.JSONObject.quote(e.message ?: "open failed")}}""",
+                    )
+                }
             }
             "open_system_settings" -> {
-                val intent = Intent(android.provider.Settings.ACTION_SETTINGS)
-                activity.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-                deliverCallbackJson("""{"kind":"settings_opened"}""")
+                val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                    data = Uri.fromParts("package", activity.packageName, null)
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                return try {
+                    onExternalActivityLaunched()
+                    activity.startActivity(intent)
+                    deliverCallbackJson("""{"kind":"system_settings_opened"}""")
+                } catch (e: Exception) {
+                    deliverCallbackJson(
+                        """{"kind":"system_settings_failed","message":${org.json.JSONObject.quote(e.message ?: "settings failed")}}""",
+                    )
+                }
             }
             "launch_app" -> {
-                val packageName = action.packageName ?: return
-                val intent = activity.packageManager.getLaunchIntentForPackage(packageName)
-                if (intent == null) {
-                    deliverCallbackJson(
-                        """{"kind":"launch_app_failed","package":${org.json.JSONObject.quote(packageName)},"message":"no launch intent"}"""
-                    )
-                    return
+                val pkg = action.packageName ?: return
+                val launch = activity.packageManager.getLaunchIntentForPackage(pkg)
+                if (launch != null) {
+                    return try {
+                        onExternalActivityLaunched()
+                        launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        activity.startActivity(launch)
+                        deliverCallbackJson("""{"kind":"app_launched","package":"$pkg"}""")
+                    } catch (e: Exception) {
+                        deliverCallbackJson(
+                            """{"kind":"app_launch_failed","package":"$pkg","message":${org.json.JSONObject.quote(e.message ?: "launch failed")}}""",
+                        )
+                    }
                 }
-                activity.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                val market = Intent(Intent.ACTION_VIEW, Uri.parse("https://f-droid.org/packages/$pkg/")).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                return try {
+                    onExternalActivityLaunched()
+                    activity.startActivity(market)
+                    deliverCallbackJson("""{"kind":"app_store_opened","package":"$pkg"}""")
+                } catch (e: Exception) {
+                    deliverCallbackJson(
+                        """{"kind":"app_launch_failed","package":"$pkg","message":${org.json.JSONObject.quote(e.message ?: "store open failed")}}""",
+                    )
+                }
+            }
+            "request_termux_permission" -> {
+                val pkg = DeepSeekTermuxBridge.TERMUX_PACKAGE_NAME
+                val granted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    activity.checkSelfPermission("com.termux.permission.RUN_COMMAND") == PackageManager.PERMISSION_GRANTED
+                } else {
+                    true
+                }
                 deliverCallbackJson(
-                    """{"kind":"launch_app_started","package":${org.json.JSONObject.quote(packageName)}}"""
+                    """{"kind":"termux_permission_status","package":"$pkg","granted":$granted}""",
                 )
             }
             else -> Unit
@@ -121,11 +177,28 @@ class DeepSeekMobileHostCoordinator(
     }
 
     companion object {
+        private const val TAG = "DeepSeekHostCoordinator"
+
+        /** Binder/NSD/Termux threads must not call JNI directly; Wry/Dioxus expects the UI thread. */
+        private fun postHostCallbackOnUiThread(
+            activity: ComponentActivity,
+            bindings: NativeBridgeBindings,
+            payload: String,
+        ) {
+            activity.runOnUiThread {
+                bindings.deliverHostCallbackJson(payload)
+            }
+        }
+
         fun create(
             activity: ComponentActivity,
             bindings: NativeBridgeBindings,
+            onExternalActivityLaunched: () -> Unit,
             termuxPendingIntentFactory: (String) -> PendingIntent,
         ): DeepSeekMobileHostCoordinator {
+            val callbackExecutor = Executors.newSingleThreadExecutor { runnable ->
+                Thread(runnable, "DeepSeekNativeCallbacks").apply { isDaemon = true }
+            }
             return DeepSeekMobileHostCoordinator(
                 activity = activity,
                 bindings = bindings,
@@ -133,20 +206,26 @@ class DeepSeekMobileHostCoordinator(
                     activity = activity,
                     callback = object : DeepSeekDocumentPickerBridge.Callback {
                         override fun onDocumentPickerPicked(result: AndroidDocumentPickerPickedResult) {
-                            bindings.deliverHostCallbackJson(
-                                """{"kind":"document_picker_picked","callback":${result.toJson()}}"""
+                            postHostCallbackOnUiThread(
+                                activity,
+                                bindings,
+                                """{"kind":"document_picker_picked","callback":${result.toJson()}}""",
                             )
                         }
 
                         override fun onDocumentPickerCancelled(requestId: String) {
-                            bindings.deliverHostCallbackJson(
-                                """{"kind":"document_picker_cancelled","request_id":"$requestId"}"""
+                            postHostCallbackOnUiThread(
+                                activity,
+                                bindings,
+                                """{"kind":"document_picker_cancelled","request_id":"$requestId"}""",
                             )
                         }
 
                         override fun onDocumentPickerFailed(requestId: String, message: String) {
-                            bindings.deliverHostCallbackJson(
-                                """{"kind":"document_picker_failed","request_id":"$requestId","message":${org.json.JSONObject.quote(message)}}"""
+                            postHostCallbackOnUiThread(
+                                activity,
+                                bindings,
+                                """{"kind":"document_picker_failed","request_id":"$requestId","message":${org.json.JSONObject.quote(message)}}""",
                             )
                         }
                     },
@@ -155,8 +234,10 @@ class DeepSeekMobileHostCoordinator(
                     context = activity,
                     callback = object : DeepSeekPcGatewayDiscoveryBridge.Callback {
                         override fun onPcGatewayDiscoveryStarted(requestId: String, serviceType: String) {
-                            bindings.deliverHostCallbackJson(
-                                """{"kind":"pc_discovery","callback":{"type":"started","request_id":"$requestId","service_type":"$serviceType"}}"""
+                            postHostCallbackOnUiThread(
+                                activity,
+                                bindings,
+                                """{"kind":"pc_discovery","callback":{"type":"started","request_id":"$requestId","service_type":"$serviceType"}}""",
                             )
                         }
 
@@ -164,8 +245,10 @@ class DeepSeekMobileHostCoordinator(
                             requestId: String,
                             record: AndroidPcGatewayMdnsRecordPayload,
                         ) {
-                            bindings.deliverHostCallbackJson(
-                                """{"kind":"pc_discovery","callback":{"type":"updated","request_id":"$requestId","record":${record.toJson()}}}"""
+                            postHostCallbackOnUiThread(
+                                activity,
+                                bindings,
+                                """{"kind":"pc_discovery","callback":{"type":"updated","request_id":"$requestId","record":${record.toJson()}}}""",
                             )
                         }
 
@@ -174,20 +257,26 @@ class DeepSeekMobileHostCoordinator(
                             records: List<AndroidPcGatewayMdnsRecordPayload>,
                         ) {
                             val array = records.joinToString(prefix = "[", postfix = "]") { it.toJson() }
-                            bindings.deliverHostCallbackJson(
-                                """{"kind":"pc_discovery","callback":{"type":"completed","request_id":"$requestId","records":$array}}"""
+                            postHostCallbackOnUiThread(
+                                activity,
+                                bindings,
+                                """{"kind":"pc_discovery","callback":{"type":"completed","request_id":"$requestId","records":$array}}""",
                             )
                         }
 
                         override fun onPcGatewayDiscoveryFailed(requestId: String, message: String) {
-                            bindings.deliverHostCallbackJson(
-                                """{"kind":"pc_discovery","callback":{"type":"failed","request_id":"$requestId","message":${org.json.JSONObject.quote(message)}}}"""
+                            postHostCallbackOnUiThread(
+                                activity,
+                                bindings,
+                                """{"kind":"pc_discovery","callback":{"type":"failed","request_id":"$requestId","message":${org.json.JSONObject.quote(message)}}}""",
                             )
                         }
                     },
                 ),
                 termuxBridge = DeepSeekTermuxBridge(activity),
                 termuxPendingIntentFactory = termuxPendingIntentFactory,
+                callbackExecutor = callbackExecutor,
+                onExternalActivityLaunched = onExternalActivityLaunched,
             )
         }
     }

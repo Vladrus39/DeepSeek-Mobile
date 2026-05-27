@@ -3,8 +3,7 @@ use crate::mobile_runtime_config::MobileRuntimeConfig;
 use deepseek_mobile_core::tool_call::ToolCallRequest;
 use deepseek_mobile_core::tools::{default_mobile_tool_registry, ToolResult};
 use deepseek_mobile_core::{
-    ExecutorKind, PcGatewayClient, ToolContext, ToolExecutionCoordinator, ToolCallSource,
-    Workspace,
+    ExecutorKind, PcGatewayClient, ToolCallSource, ToolContext, ToolExecutionCoordinator, Workspace,
 };
 use serde_json::{json, Value};
 
@@ -36,7 +35,10 @@ pub async fn run_mobile_git_action(
         branches_after: None,
     };
 
-    if matches!(action, GitPanelAction::Commit | GitPanelAction::Push | GitPanelAction::Pull) {
+    if matches!(
+        action,
+        GitPanelAction::Commit | GitPanelAction::Push | GitPanelAction::Pull
+    ) {
         action_result.status_after = Some(successful_git_content(
             execute_git(&runtime, json!({"operation": "status"})).await?,
         )?);
@@ -156,11 +158,7 @@ mod tests {
     async fn status_action_uses_existing_git_tool_route() {
         let root = temp_git_repo("status");
         fs::write(root.join("README.md"), "# Test").unwrap();
-        let runtime = MobileRuntimeConfig::new(
-            "thread",
-            root.join(".runtime"),
-            root.clone(),
-        );
+        let runtime = MobileRuntimeConfig::new("thread", root.join(".runtime"), root.clone());
 
         let result = run_mobile_git_action(
             GitPanelAction::RefreshStatus,
@@ -183,11 +181,7 @@ mod tests {
         let root = temp_git_repo("commit");
         configure_git_identity(&root);
         fs::write(root.join("README.md"), "# Test").unwrap();
-        let runtime = MobileRuntimeConfig::new(
-            "thread",
-            root.join(".runtime"),
-            root.clone(),
-        );
+        let runtime = MobileRuntimeConfig::new("thread", root.join(".runtime"), root.clone());
         let mut state = GitUiState::default();
         state.apply_status("?? README.md\n");
         state.set_commit_message("initial commit");

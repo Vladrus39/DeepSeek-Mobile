@@ -60,7 +60,10 @@ impl SnapshotsUiState {
                 if result.success {
                     self.last_restore_report = Some(format!(
                         "Restore completed: {} files restored",
-                        metadata.get("restored_files").and_then(|v| v.as_i64()).unwrap_or(0)
+                        metadata
+                            .get("restored_files")
+                            .and_then(|v| v.as_i64())
+                            .unwrap_or(0)
                     ));
                 } else {
                     self.last_error = Some(format!("Restore failed: {}", result.output));
@@ -156,7 +159,10 @@ mod tests {
         state.snapshots.push(snapshot);
 
         state.request_restore("snap-1");
-        assert_eq!(state.pending_restore_snapshot_id, Some("snap-1".to_string()));
+        assert_eq!(
+            state.pending_restore_snapshot_id,
+            Some("snap-1".to_string())
+        );
         assert!(state.pending_restore_snapshot().is_some());
 
         state.cancel_restore();

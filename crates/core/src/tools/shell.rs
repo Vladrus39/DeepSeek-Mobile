@@ -4,9 +4,9 @@
 //! concrete executor is selected. Android builds should route commands through
 //! Termux or a remote backend instead of spawning arbitrary local processes.
 
-use super::{ApprovalRequirement, ToolCapability, ToolContext, ToolResult, ToolSpec, required_str};
+use super::{required_str, ApprovalRequirement, ToolCapability, ToolContext, ToolResult, ToolSpec};
 use anyhow::Result;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 
 pub struct ShellTool;
 

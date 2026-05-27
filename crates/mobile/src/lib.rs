@@ -1,18 +1,25 @@
 mod agent_event_adapter;
+mod agent_mode_bar;
 mod agent_timeline;
 mod agent_timeline_panel;
+mod agent_turn_probe;
 mod android_host;
 #[cfg(target_os = "android")]
 mod android_plugin;
+mod api_probe;
 mod approval_diff_preview;
 mod attachment_ingestion;
 mod chat_attachment;
+mod chat_history_panel;
 mod chat_quick_actions;
+pub mod chat_session;
+mod chat_toolbar;
 mod cockpit_section_panel;
 #[cfg(not(target_os = "android"))]
 mod desktop_native_host;
 mod dev_api_key;
 mod dev_bootstrap;
+mod device_calibration;
 mod diagnostics_panel;
 mod diagnostics_state;
 mod document_picker;
@@ -38,6 +45,7 @@ mod native_host_runtime;
 mod native_pc_discovery;
 mod native_termux;
 mod onboarding_panel;
+mod pc_discovery_probe;
 mod pc_pairing_manager;
 mod pc_pairing_panel;
 mod pc_pairing_state;
@@ -58,19 +66,25 @@ mod snapshots_panel;
 mod snapshots_state;
 mod tasks_panel;
 mod tasks_state;
+mod termux_provisioning;
 mod terminal_panel;
 mod terminal_state;
 mod termux_state;
 mod ui_layout;
 
 use agent_event_adapter::push_agent_event;
-use agent_timeline::MobileTimelineState;
+use agent_timeline::{MobileTimelineItemKind, MobileTimelineItemStatus, MobileTimelineState};
 use agent_timeline_panel::agent_timeline_panel;
 use chat_attachment::ChatComposerState;
+use chat_history_panel::chat_history_panel;
 use chat_quick_actions::chat_quick_actions_bar;
+use chat_session::{clear_active_timeline_display, load_index, start_new_chat, switch_chat_thread};
+use chat_toolbar::chat_toolbar;
 use cockpit_section_panel::cockpit_section_panel;
-use deepseek_mobile_core::config::ExecutionMode;
-use deepseek_mobile_core::{AgentEvent, ApprovalCardView, ReviewDecision};
+use deepseek_mobile_core::config::{ExecutionMode, ModelMode, ThinkingLevel};
+use deepseek_mobile_core::{
+    format_http_transport_error, AgentEvent, ApprovalCardView, ReviewDecision,
+};
 use diagnostics_state::DiagnosticsUiState;
 use dioxus::prelude::*;
 use document_picker::{DocumentPickerPurpose, DocumentPickerRequest, DocumentPickerState};
@@ -82,15 +96,15 @@ use mcp_state::McpUiState;
 use mobile_approval_panel::mobile_approval_panel;
 use mobile_drawer::{bottom_nav_bar, mobile_drawer, CockpitSection, MobileChromeSummary};
 use mobile_engine_runner::{
-    continue_mobile_approval_with_runtime_and_observer, load_default_mobile_approval_cards,
-    run_mobile_turn_streaming, MobileApprovalContinuationUiResult,
+    continue_mobile_approval_with_runtime_and_observer, load_mobile_approval_cards,
+    run_mobile_turn_streaming, MobileApprovalContinuationUiResult, MobileTurnUiResult,
 };
 use native_bridge::{NativeBridgeState, NativeMobileCommand, NativeMobileEvent};
 use pc_pairing_state::{PcPairingUiState, PcPairingUiStatus};
 use project_files_state::ProjectFilesUiState;
 use project_transfer_state::{default_phone_workspace_root, ProjectTransferState};
-use saved_timeline_loader::load_default_saved_events;
-use settings_state::{save_config, SettingsFormState};
+use saved_timeline_loader::load_active_saved_events;
+use settings_state::{save_config as save_settings_config, SettingsFormState};
 use setup_panel::setup_panel;
 use setup_status::{
     complete_first_login, initial_api_key_draft, initial_termux_path_draft, SetupSnapshot,
@@ -105,6 +119,47 @@ use ui_layout::screen_layout;
 /// Launch the Dioxus mobile cockpit (desktop and Android).
 pub fn launch() {
     dioxus::launch(app);
+}
+
+fn apply_mobile_turn_ui_result(
+    mut messages: Signal<Vec<(String, String)>>,
+    mut timeline: Signal<MobileTimelineState>,
+    mut approval_cards: Signal<Vec<ApprovalCardView>>,
+    result: MobileTurnUiResult,
+) {
+    if let Some(final_text) = result.final_text.clone() {
+        let mut msgs = messages();
+        msgs.push(("assistant".to_string(), final_text));
+        messages.set(msgs);
+    }
+
+    let mut next_timeline = timeline();
+    next_timeline.finish_live_assistant_message();
+    if let Some(text) = result.final_text.as_deref() {
+        next_timeline.publish_assistant_reply(text);
+    }
+    next_timeline.seal_agent_status_items();
+    next_timeline.push(
+        MobileTimelineItemKind::Status,
+        MobileTimelineItemStatus::Done,
+        "Agent status",
+        format!(
+            "Готово · workspace: {} · thread: {}",
+            result.workspace_root, result.thread_id
+        ),
+    );
+    if result.has_pending_approvals() {
+        push_agent_event(
+            &mut next_timeline,
+            &AgentEvent::Status(
+                "Нужно подтверждение: нажмите карточку одобрения выше.".to_string(),
+            ),
+        );
+    }
+    next_timeline.seal_open_work_items();
+    next_timeline.retain_recent(120);
+    timeline.set(next_timeline);
+    approval_cards.set(result.approval_cards);
 }
 
 fn apply_approval_continuation_ui(
@@ -123,6 +178,7 @@ fn apply_approval_continuation_ui(
         timeline,
         &AgentEvent::Status("Approval continuation finished".to_string()),
     );
+    timeline.seal_open_work_items();
     if let Some(final_text) = result.final_text.clone() {
         messages.push(("assistant".to_string(), final_text));
     }
@@ -232,19 +288,27 @@ fn build_chrome_summary(
     }
 }
 
-fn status_chip(label: String, colors: (&'static str, &'static str, &'static str)) -> Element {
+fn status_chip(
+    label: String,
+    colors: (&'static str, &'static str, &'static str),
+    title: &'static str,
+    on_click: EventHandler<()>,
+) -> Element {
     let (background, border, color) = colors;
     let border_style = format!("1px solid {border}");
     rsx! {
-        div {
+        button {
             background_color: background,
             color,
             border: "{border_style}",
             border_radius: "999px",
-            padding: "7px 9px",
-            font_size: "11px",
+            padding: "4px 7px",
+            font_size: "10px",
             font_weight: "bold",
             white_space: "nowrap",
+            cursor: "pointer",
+            title,
+            onclick: move |_| on_click.call(()),
             "{label}"
         }
     }
@@ -263,6 +327,9 @@ fn app() -> Element {
     let mut picker = use_signal(DocumentPickerState::default);
     let mut native_bridge = use_signal(NativeBridgeState::default);
     let mut is_loading = use_signal(|| false);
+    let mut templates_open = use_signal(|| false);
+    let mut worklog_open = use_signal(|| false);
+    let mut chat_history_open = use_signal(|| false);
     let mut drawer_open = use_signal(|| false);
     let mut active_section = use_signal(|| CockpitSection::Chat);
     let pc_pairing_state = use_signal(PcPairingUiState::default);
@@ -439,20 +506,99 @@ fn app() -> Element {
     // result back into the engine so the model can respond to the actual output.
     let termux_continuation_bridge = native_bridge;
     let termux_continuation_settings = settings_state;
-    let termux_continuation_timeline = timeline;
+    let mut termux_continuation_timeline = timeline;
     let termux_continuation_cards = approval_cards;
-    let termux_continuation_loading = is_loading;
+    let mut termux_continuation_loading = is_loading;
+    let mut termux_continuation_last_event = use_signal(|| 0u64);
     use_effect(move || {
-        let event = termux_continuation_bridge().last_event.clone();
-        if let Some(NativeMobileEvent::TermuxCommandCompleted(result)) = event {
+        let event_id = termux_continuation_bridge().last_event_id;
+        if event_id == 0 || event_id == termux_continuation_last_event() {
+            return;
+        }
+        let bridge_snapshot = termux_continuation_bridge();
+        let Some(event) = bridge_snapshot.last_event.clone() else {
+            return;
+        };
+
+        if let NativeMobileEvent::TermuxCommandFailed {
+            request_id,
+            message,
+        } = &event
+        {
+            termux_continuation_last_event.set(event_id);
+            if device_calibration::is_calibration_request(request_id)
+                || device_calibration::is_health_probe_request(request_id)
+            {
+                let mut next_timeline = termux_continuation_timeline();
+                push_agent_event(
+                    &mut next_timeline,
+                    &AgentEvent::Error(format!("Termux: {message}")),
+                );
+                termux_continuation_timeline.set(next_timeline);
+                return;
+            }
+            let mut next_timeline = termux_continuation_timeline();
+            push_agent_event(
+                &mut next_timeline,
+                &AgentEvent::Error(format!("Termux command failed: {message}")),
+            );
+            termux_continuation_timeline.set(next_timeline);
+            termux_continuation_loading.set(false);
+            return;
+        }
+
+        if let NativeMobileEvent::TermuxCommandCompleted(result) = event {
+            termux_continuation_last_event.set(event_id);
+            if device_calibration::is_calibration_request(&result.request_id) {
+                let ok = device_calibration::note_calibration_result(
+                    &result.stdout,
+                    &result.stderr,
+                    result.error.as_deref(),
+                    result.exit_code,
+                );
+                let mut next_timeline = termux_continuation_timeline();
+                let msg = if ok {
+                    "Калибровка Termux завершена: проект готов, shell работает."
+                } else if device_calibration::needs_allow_external_apps() {
+                    "Termux: откройте приложение Termux и выполните: echo allow-external-apps=true >> ~/.termux/termux.properties && termux-reload-settings"
+                } else {
+                    "Калибровка Termux: проверьте allow-external-apps и разрешение RUN_COMMAND."
+                };
+                push_agent_event(&mut next_timeline, &AgentEvent::Status(msg.to_string()));
+                termux_continuation_timeline.set(next_timeline);
+                return;
+            }
+            if device_calibration::is_health_probe_request(&result.request_id) {
+                let mut next_timeline = termux_continuation_timeline();
+                let body = format!(
+                    "stdout:\n{}\nstderr:\n{}\nexit={:?}",
+                    result.stdout, result.stderr, result.exit_code
+                );
+                if result.exit_code == Some(0) || result.stdout.contains("DEEPSEEK_TERMUX_PROBE_OK")
+                {
+                    push_agent_event(
+                        &mut next_timeline,
+                        &AgentEvent::Status("Termux OK (фоновая проверка).".to_string()),
+                    );
+                } else {
+                    push_agent_event(
+                        &mut next_timeline,
+                        &AgentEvent::Error(format!("Termux probe failed: {}", body)),
+                    );
+                }
+                termux_continuation_timeline.set(next_timeline);
+                return;
+            }
             let config = termux_continuation_settings().to_config();
             let mut event_timeline = termux_continuation_timeline;
             let mut event_cards = termux_continuation_cards;
             let mut loading_signal = termux_continuation_loading;
             spawn(async move {
                 loading_signal.set(true);
-                match crate::mobile_engine_runner::continue_mobile_termux_result(config, result)
-                    .await
+                match crate::mobile_engine_runner::continue_mobile_termux_result_for_saved_request(
+                    config, result,
+                )
+                .await
                 {
                     Ok(result) => {
                         let mut next_timeline = event_timeline();
@@ -466,6 +612,11 @@ fn app() -> Element {
                         for event in &result.events {
                             push_agent_event(&mut next_timeline, event);
                         }
+                        if let Some(text) = result.final_text.as_deref() {
+                            next_timeline.publish_assistant_reply(text);
+                        }
+                        next_timeline.seal_open_work_items();
+                        next_timeline.retain_recent(120);
                         event_timeline.set(next_timeline);
 
                         if let Some(final_text) = result.final_text.clone() {
@@ -536,9 +687,32 @@ fn app() -> Element {
         }
     });
 
+    let mut did_sync_setup_gate = use_signal(|| false);
+    #[cfg_attr(not(target_os = "android"), allow(unused_mut))]
+    let mut setup_gate_settings = settings_state;
+    #[cfg_attr(not(target_os = "android"), allow(unused_mut))]
+    let mut setup_gate_termux = termux_state;
+    let mut setup_gate_complete = setup_complete;
+    use_effect(move || {
+        if did_sync_setup_gate() {
+            return;
+        }
+        did_sync_setup_gate.set(true);
+        #[cfg(target_os = "android")]
+        {
+            mobile_data_dir::ensure_android_storage_initialized();
+            setup_gate_settings.set(SettingsFormState::default());
+            setup_gate_termux.set(TermuxWorkspaceState::default());
+        }
+        let snapshot = SetupSnapshot::collect(&setup_gate_settings(), &setup_gate_termux());
+        if snapshot.full_agent_ready {
+            setup_gate_complete.set(true);
+        }
+    });
+
     if !did_load_saved_runtime() {
         did_load_saved_runtime.set(true);
-        match load_default_saved_events() {
+        match load_active_saved_events() {
             Ok(saved_events) => {
                 if !saved_events.is_empty() {
                     let mut restored_timeline = MobileTimelineState::default();
@@ -549,22 +723,33 @@ fn app() -> Element {
                         restored_snapshots.apply_agent_event(event);
                         restored_diagnostics.apply_agent_event(event);
                     }
+                    restored_timeline.compact_for_display();
+                    restored_timeline.seal_open_work_items();
+                    restored_timeline.soften_stale_errors();
+                    restored_timeline.retain_recent(100);
                     timeline.set(restored_timeline);
                     snapshots_state.set(restored_snapshots);
                     diagnostics_state.set(restored_diagnostics);
                 }
             }
             Err(error) => {
-                let mut next_timeline = timeline();
-                push_agent_event(
-                    &mut next_timeline,
-                    &AgentEvent::Error(format!("Failed to restore saved timeline: {}", error)),
-                );
-                timeline.set(next_timeline);
+                if saved_timeline_loader::is_benign_restore_error(&error) {
+                    // Empty/corrupt runtime store: start fresh without alarming the user.
+                } else {
+                    let mut next_timeline = timeline();
+                    push_agent_event(
+                        &mut next_timeline,
+                        &AgentEvent::Error(format!(
+                            "Failed to restore saved timeline: {}",
+                            error
+                        )),
+                    );
+                    timeline.set(next_timeline);
+                }
             }
         }
 
-        match load_default_mobile_approval_cards() {
+        match load_mobile_approval_cards(chat_session::runtime_for_active_thread()) {
             Ok(cards) => approval_cards.set(cards),
             Err(error) => {
                 let mut next_timeline = timeline();
@@ -577,22 +762,173 @@ fn app() -> Element {
         }
     }
 
-    // Native host loop: desktop executes picker/share immediately; Android uses JNI + coordinator.
-    let mut host_bridge = native_bridge;
-    let mut host_timeline = timeline;
+    #[cfg(target_os = "android")]
+    let did_schedule_calibration = use_signal(|| false);
+
+    // Mirror JNI/native runtime into the UI bridge on a timer — NOT in a bare use_effect
+    // (that re-ran every render and caused UI freeze / «перезагрузку» on Android).
+    let mut host_bridge_sync = native_bridge;
+    #[cfg(not(target_os = "android"))]
+    let mut host_timeline_sync = timeline;
     use_effect(move || {
-        if sync_bridge_from_runtime(&mut host_bridge.write()) {
-            // JNI/desktop callbacks updated global runtime; mirror into the UI signal.
-        }
-        let notes = run_host_tick(&mut host_bridge.write());
-        if !notes.is_empty() {
-            let mut next_timeline = host_timeline();
-            for note in notes {
-                push_agent_event(&mut next_timeline, &AgentEvent::Status(note));
+        spawn(async move {
+            loop {
+                tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+                let mut bridge = host_bridge_sync.write();
+                sync_bridge_from_runtime(&mut bridge);
+                #[cfg(not(target_os = "android"))]
+                {
+                    let notes = run_host_tick(&mut bridge);
+                    if !notes.is_empty() {
+                        let mut next_timeline = host_timeline_sync();
+                        for note in notes {
+                            push_agent_event(&mut next_timeline, &AgentEvent::Status(note));
+                        }
+                        host_timeline_sync.set(next_timeline);
+                    }
+                }
             }
-            host_timeline.set(next_timeline);
-        }
+        });
     });
+
+    #[cfg(target_os = "android")]
+    {
+        let mut android_bridge_poll = native_bridge;
+        let mut android_timeline_poll = timeline;
+        let mut android_cal_announced = use_signal(|| device_calibration::is_calibrated());
+        let android_setup = setup_complete;
+        let android_termux = termux_state;
+        let android_settings = settings_state;
+        let mut android_cal_scheduled = did_schedule_calibration;
+        let mut android_warmup_done = use_signal(|| false);
+        let mut android_poll_started = use_signal(|| false);
+        let mut android_is_loading = is_loading;
+        let mut android_loading_since = use_signal(|| None::<u64>);
+        use_effect(move || {
+            if android_poll_started() {
+                return;
+            }
+            android_poll_started.set(true);
+            spawn(async move {
+                // Let WebView/Dioxus paint before any native Termux work.
+                tokio::time::sleep(std::time::Duration::from_secs(4)).await;
+                loop {
+                    tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+                    let now_unix = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map(|d| d.as_secs())
+                        .unwrap_or(0);
+                    if android_is_loading() {
+                        if android_loading_since().is_none() {
+                            android_loading_since.set(Some(now_unix));
+                        } else if now_unix
+                            .saturating_sub(android_loading_since().unwrap_or(now_unix))
+                            >= 125
+                        {
+                            android_is_loading.set(false);
+                            android_loading_since.set(None);
+                            let mut next_timeline = android_timeline_poll();
+                            push_agent_event(
+                                &mut next_timeline,
+                                &AgentEvent::Error(
+                                    "Таймаут ответа API (125 с). Проверьте сеть и ключ DeepSeek."
+                                        .to_string(),
+                                ),
+                            );
+                            next_timeline.fail_live_assistant_message();
+                            next_timeline.seal_open_work_items();
+                            android_timeline_poll.set(next_timeline);
+                        }
+                    } else {
+                        android_loading_since.set(None);
+                    }
+                    // ADB E2E probes only — never run in normal use (avoids surprise API turns / reload feel).
+                    if api_probe::is_probe_requested() {
+                        api_probe::run_if_requested().await;
+                    }
+                    if agent_turn_probe::is_probe_requested() {
+                        agent_turn_probe::run_if_requested().await;
+                    }
+                    pc_discovery_probe::recover_stale_running_marker();
+                    if pc_discovery_probe::is_probe_requested() {
+                        pc_discovery_probe::tick();
+                    }
+                    {
+                        let mut bridge = android_bridge_poll.write();
+                        sync_bridge_from_runtime(&mut bridge);
+                        let mut bridge_changed = false;
+                        if let Some(message) = bridge.expire_stale_termux_wait(90) {
+                            let mut next_timeline = android_timeline_poll();
+                            push_agent_event(&mut next_timeline, &AgentEvent::Error(message));
+                            android_timeline_poll.set(next_timeline);
+                            bridge_changed = true;
+                        }
+                        if let Some(message) = bridge.expire_stale_pc_discovery(45) {
+                            let mut next_timeline = android_timeline_poll();
+                            push_agent_event(&mut next_timeline, &AgentEvent::Status(message));
+                            android_timeline_poll.set(next_timeline);
+                            bridge_changed = true;
+                        }
+                        if bridge_changed {
+                            crate::native_host_runtime::replace(bridge.clone());
+                        }
+                    }
+                    let termux_ready = android_termux().is_valid() && android_termux().saved;
+                    if device_calibration::should_retry_calibration() {
+                        android_cal_scheduled.set(false);
+                        android_bridge_poll
+                            .write()
+                            .active_termux_request_ids
+                            .clear();
+                    }
+                    if !android_setup()
+                        || (!device_calibration::is_calibration_requested()
+                            && !termux_provisioning::is_onboarding_provision_pending())
+                    {
+                        continue;
+                    }
+                    if termux_ready
+                        && !device_calibration::is_calibrated()
+                        && !android_cal_scheduled()
+                    {
+                        let mut bridge = android_bridge_poll.write();
+                        if device_calibration::schedule_android_calibration(
+                            &mut bridge,
+                            &android_termux(),
+                            &android_settings(),
+                        ) {
+                            android_cal_scheduled.set(true);
+                            let mut next_timeline = android_timeline_poll();
+                            push_agent_event(
+                                &mut next_timeline,
+                                &AgentEvent::Status(
+                                    "Калибровка агента: настройка Termux и проверка shell…"
+                                        .to_string(),
+                                ),
+                            );
+                            android_timeline_poll.set(next_timeline);
+                        }
+                    }
+                    if device_calibration::is_calibrated() && !android_cal_announced() {
+                        android_cal_announced.set(true);
+                        let mut next_timeline = android_timeline_poll();
+                        push_agent_event(
+                            &mut next_timeline,
+                            &AgentEvent::Status(
+                                "Калибровка Termux завершена: проект готов, shell работает."
+                                    .to_string(),
+                            ),
+                        );
+                        android_timeline_poll.set(next_timeline);
+                    }
+                    // Background Termux health probe removed from startup: it queued RUN_COMMAND
+                    // on every launch and left the «Ожидание ответа Android» banner stuck when the
+                    // UI bridge was not synced after JNI callbacks. Use Health panel or ADB probes.
+                    let _ = android_warmup_done;
+                }
+            });
+        });
+    }
 
     if !did_load_terminal_state() {
         did_load_terminal_state.set(true);
@@ -611,6 +947,7 @@ fn app() -> Element {
         let mut settings_signal = settings_state;
         let mut termux_signal = termux_state;
         let lang_signal = ui_lang;
+        let mut setup_native_bridge = native_bridge;
         return rsx! {
             {setup_panel(
                 lang_signal,
@@ -630,9 +967,13 @@ fn app() -> Element {
                         false,
                     ) {
                         Ok(()) => {
+                            let termux_ready = termux.is_valid() && termux.saved;
                             settings_signal.set(settings);
                             termux_signal.set(termux);
                             setup_error.set(None);
+                            if termux_ready {
+                                termux_provisioning::on_setup_saved_termux_path();
+                            }
                             setup_complete.set(true);
                         }
                         Err(code) => {
@@ -675,6 +1016,34 @@ fn app() -> Element {
                         }
                     }
                 }),
+                EventHandler::new(move |_| {
+                    let mut bridge = setup_native_bridge.write();
+                    termux_provisioning::enqueue_install_termux(&mut bridge);
+                    crate::native_host_runtime::replace(bridge.clone());
+                }),
+                EventHandler::new(move |_| {
+                    let mut bridge = setup_native_bridge.write();
+                    termux_provisioning::enqueue_open_termux(&mut bridge);
+                    crate::native_host_runtime::replace(bridge.clone());
+                }),
+                EventHandler::new(move |_| {
+                    let mut bridge = setup_native_bridge.write();
+                    let termux = termux_signal();
+                    if !termux.saved {
+                        let mut draft = termux;
+                        draft.set_path(crate::setup_status::DEFAULT_TERMUX_PROJECT_PATH);
+                        draft.set_label("Termux Project");
+                        if draft.is_valid() {
+                            let _ = draft.save();
+                            termux_signal.set(draft);
+                        }
+                    }
+                    termux_provisioning::enqueue_run_command_permission_probe(
+                        &mut bridge,
+                        &termux_signal(),
+                    );
+                    crate::native_host_runtime::replace(bridge.clone());
+                }),
             )}
         };
     }
@@ -693,21 +1062,33 @@ fn app() -> Element {
     let api_chip = status_chip(
         chrome_summary.api_chip_label(ui_lang()).to_string(),
         chrome_summary.api_chip_colors(),
+        "Open health",
+        EventHandler::new(move |_| active_section.set(CockpitSection::Health)),
     );
     let pc_chip = status_chip(
         chrome_summary.pc_label.clone(),
         chrome_summary.pc_chip_colors(),
+        "Open PC Host",
+        EventHandler::new(move |_| active_section.set(CockpitSection::PcHost)),
     );
     let drawer_summary = chrome_summary.clone();
     let bottom_nav_summary = chrome_summary.clone();
 
     let shell_layout = screen_layout();
     let shell_style = format!(
-        "{}background:#0f0f0f;color:white;position:relative;",
+        "{}position:relative;",
         ui_layout::stack_shell_style(&shell_layout)
     );
+    let mut chat_sessions = use_signal(load_index);
+    let chat_title = {
+        let idx = chat_sessions();
+        idx.threads
+            .iter()
+            .find(|t| t.id == idx.active_thread_id)
+            .map(|t| t.title.clone())
+            .unwrap_or_else(|| pick(ui_lang(), "Чат", "Chat").to_string())
+    };
     let lang_now = ui_lang();
-    let label_active_workspace = pick(lang_now, "АКТИВНЫЙ ПРОЕКТ", "ACTIVE WORKSPACE");
     let msg_wait_native = pick(
         lang_now,
         "Ожидание ответа Android…",
@@ -719,10 +1100,18 @@ fn app() -> Element {
         "Scanning local network for DeepSeek PC Host...",
     );
     let msg_bridge_error = pick(lang_now, "Ошибка моста:", "Native bridge error:");
+    let templates_button_style = if templates_open() {
+        "background:#2563eb;color:white;width:38px;height:42px;border-radius:999px;border:1px solid #60a5fa;flex-shrink:0;font-size:17px;"
+    } else {
+        "background:#172033;color:#e5e7eb;width:38px;height:42px;border-radius:999px;border:1px solid #334155;flex-shrink:0;font-size:17px;"
+    };
 
     rsx! {
         div {
             style: "{shell_style}",
+            style {
+                "html,body,#main{{margin:0;padding:0;width:100%;height:100%;background:#05070c;overflow:hidden;}}body{{overscroll-behavior:none;}}*{{box-sizing:border-box;}}button,textarea,input{{font-family:inherit;}}textarea::placeholder{{color:#6b7280;}}"
+            }
 
             {mobile_drawer(
                 drawer_open(),
@@ -732,14 +1121,15 @@ fn app() -> Element {
                 EventHandler::new(move |section| {
                     active_section.set(section);
                     drawer_open.set(false);
-                })
+                }),
+                EventHandler::new(move |_| drawer_open.set(false))
             )}
 
             div {
-                style: "display:flex;align-items:center;justify-content:space-between;margin-bottom:clamp(8px,2vw,12px);gap:clamp(6px,2vw,10px);flex-wrap:wrap;",
+                style: "{ui_layout::app_header_style()}",
 
                 button {
-                    style: "background:#1f2937;color:white;width:44px;height:44px;border-radius:999px;border:1px solid #374151;flex-shrink:0;",
+                    style: "background:#1f2937;color:white;width:38px;height:38px;border-radius:999px;border:1px solid #374151;flex-shrink:0;font-size:18px;line-height:1;",
                     title: "{tr(ui_lang(), Tr::DrawerMenu)}",
                     onclick: move |_| drawer_open.set(!drawer_open()),
                     "☰"
@@ -748,82 +1138,218 @@ fn app() -> Element {
                 div {
                     style: "display:flex;flex-direction:column;align-items:center;min-width:0;flex:1;",
                     div {
-                        style: "font-size:{shell_layout.header_title_font};font-weight:bold;text-align:center;",
+                        style: "font-size:{shell_layout.header_title_font};font-weight:bold;text-align:center;line-height:1.2;",
                         "{tr(ui_lang(), Tr::AppTitle)}"
                     }
-                    div {
-                        style: "color:#9ca3af;font-size:{shell_layout.subtitle_font};text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:min(50vw,14rem);",
-                        "{active_section().localized_subtitle(ui_lang())}"
+                    if active_section() != CockpitSection::Chat {
+                        div {
+                            style: "color:#9ca3af;font-size:{shell_layout.caption_font};text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:min(52vw,15rem);",
+                            "{active_section().localized_subtitle(ui_lang())}"
+                        }
                     }
                 }
 
                 div {
                     display: "flex",
                     align_items: "center",
-                    gap: "6px",
+                    gap: "4px",
+                    flex_shrink: "0",
                     {api_chip}
                     {pc_chip}
                 }
             }
 
-            div {
-                background_color: "#101827",
-                border: "1px solid #1f2937",
-                border_radius: "16px",
-                padding: "10px 12px",
-                margin_bottom: "12px",
-                display: "flex",
-                align_items: "center",
-                justify_content: "space-between",
-                gap: "10px",
-
+            if active_section() != CockpitSection::Chat {
                 div {
-                    min_width: "0",
+                    style: "{ui_layout::workspace_strip_compact_style(&shell_layout)}",
                     div {
-                        color: "#6b7280",
-                        font_size: "10px",
-                        font_weight: "bold",
-                        letter_spacing: "0.08em",
-                        "{label_active_workspace}"
+                        style: "min-width:0;flex:1;",
+                        div {
+                            style: "color:#f1f5f9;font-size:{shell_layout.subtitle_font};font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;",
+                            "{chrome_summary.active_project_title}"
+                        }
+                        div {
+                            style: "color:#64748b;font-size:{shell_layout.caption_font};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;",
+                            "{chrome_summary.active_project_subtitle}"
+                        }
                     }
                     div {
-                        color: "white",
-                        font_size: "14px",
-                        font_weight: "bold",
-                        white_space: "nowrap",
-                        overflow: "hidden",
-                        text_overflow: "ellipsis",
-                        "{chrome_summary.active_project_title}"
-                    }
-                    div {
-                        color: "#9ca3af",
-                        font_size: "11px",
-                        white_space: "nowrap",
-                        overflow: "hidden",
-                        text_overflow: "ellipsis",
-                        "{chrome_summary.active_project_subtitle}"
+                        style: "color:#60a5fa;font-size:{shell_layout.caption_font};font-weight:600;white-space:nowrap;flex-shrink:0;",
+                        "{active_section().localized_title(ui_lang())}"
                     }
                 }
+            }
 
+            if active_section() == CockpitSection::Chat {
                 div {
-                    color: "#60a5fa",
-                    font_size: "12px",
-                    font_weight: "bold",
-                    white_space: "nowrap",
-                    "{active_section().localized_title(ui_lang())}"
+                    style: "{ui_layout::chat_sticky_chrome_style()}",
+                    {chat_toolbar(
+                        ui_lang(),
+                        &shell_layout,
+                        &chrome_summary.active_project_title,
+                        &chat_title,
+                        chat_history_open(),
+                        &settings_state(),
+                        EventHandler::new(move |_| {
+                            match start_new_chat(None) {
+                                Ok((_id, empty_timeline)) => {
+                                    timeline.set(empty_timeline);
+                                    messages.set(Vec::new());
+                                    approval_cards.set(Vec::new());
+                                    worklog_open.set(false);
+                                    chat_history_open.set(false);
+                                    chat_sessions.set(load_index());
+                                    let mut next = timeline();
+                                    next.push(
+                                        MobileTimelineItemKind::Status,
+                                        MobileTimelineItemStatus::Done,
+                                        "Agent status",
+                                        pick(
+                                            ui_lang(),
+                                            "Новый чат. История предыдущего сохранена на устройстве.",
+                                            "New chat. Previous history remains on device.",
+                                        ),
+                                    );
+                                    timeline.set(next);
+                                }
+                                Err(err) => {
+                                    let mut next = timeline();
+                                    push_agent_event(
+                                        &mut next,
+                                        &AgentEvent::Error(format!("New chat failed: {}", err)),
+                                    );
+                                    timeline.set(next);
+                                }
+                            }
+                        }),
+                        EventHandler::new(move |_| {
+                            timeline.set(clear_active_timeline_display());
+                            messages.set(Vec::new());
+                            worklog_open.set(false);
+                            let mut next = timeline();
+                            next.push(
+                                MobileTimelineItemKind::Status,
+                                MobileTimelineItemStatus::Done,
+                                "Agent status",
+                                pick(
+                                    ui_lang(),
+                                    "Экран очищен. События на диске не удалены.",
+                                    "Screen cleared. Events on disk are kept.",
+                                ),
+                            );
+                            timeline.set(next);
+                        }),
+                        EventHandler::new(move |_| chat_history_open.set(!chat_history_open())),
+                        EventHandler::new(move |mode: ExecutionMode| {
+                            let mut next = settings_state();
+                            next.execution_mode = mode;
+                            let config = next.to_config();
+                            match save_settings_config(&config) {
+                                Ok(()) => {
+                                    next.saved = true;
+                                    next.save_error = None;
+                                }
+                                Err(error) => {
+                                    next.saved = false;
+                                    next.save_error = Some(error);
+                                }
+                            }
+                            settings_state.set(next);
+                        }),
+                        EventHandler::new(move |mode: ModelMode| {
+                            let mut next = settings_state();
+                            next.model_mode = mode;
+                            let config = next.to_config();
+                            match save_settings_config(&config) {
+                                Ok(()) => {
+                                    next.saved = true;
+                                    next.save_error = None;
+                                }
+                                Err(error) => {
+                                    next.saved = false;
+                                    next.save_error = Some(error);
+                                }
+                            }
+                            settings_state.set(next);
+                        }),
+                        EventHandler::new(move |level: ThinkingLevel| {
+                            let mut next = settings_state();
+                            next.thinking_level = level;
+                            let config = next.to_config();
+                            match save_settings_config(&config) {
+                                Ok(()) => {
+                                    next.saved = true;
+                                    next.save_error = None;
+                                }
+                                Err(error) => {
+                                    next.saved = false;
+                                    next.save_error = Some(error);
+                                }
+                            }
+                            settings_state.set(next);
+                        }),
+                    )}
+
+                    if chat_history_open() {
+                        div {
+                            style: "max-height:min(40vh,320px);overflow-y:auto;flex-shrink:0;",
+                            {chat_history_panel(
+                            ui_lang(),
+                            &chat_sessions(),
+                            &chrome_summary.active_project_title,
+                            &chrome_summary.active_project_subtitle,
+                            EventHandler::new(move |thread_id: String| {
+                                match switch_chat_thread(&thread_id) {
+                                    Ok(saved_timeline) => {
+                                        timeline.set(saved_timeline);
+                                        messages.set(Vec::new());
+                                        approval_cards.set(Vec::new());
+                                        worklog_open.set(false);
+                                        chat_history_open.set(false);
+                                        chat_sessions.set(load_index());
+                                    }
+                                    Err(error) => {
+                                        let mut next = timeline();
+                                        push_agent_event(
+                                            &mut next,
+                                            &AgentEvent::Error(format!("Open chat failed: {}", error)),
+                                        );
+                                        timeline.set(next);
+                                    }
+                                }
+                            }),
+                            EventHandler::new(move |_| {
+                                match start_new_chat(None) {
+                                    Ok((_id, empty_timeline)) => {
+                                        timeline.set(empty_timeline);
+                                        messages.set(Vec::new());
+                                        approval_cards.set(Vec::new());
+                                        worklog_open.set(false);
+                                        chat_history_open.set(false);
+                                        chat_sessions.set(load_index());
+                                    }
+                                    Err(error) => {
+                                        let mut next = timeline();
+                                        push_agent_event(
+                                            &mut next,
+                                            &AgentEvent::Error(format!("New chat failed: {}", error)),
+                                        );
+                                        timeline.set(next);
+                                    }
+                                }
+                            }),
+                            EventHandler::new(move |_| {
+                                active_section.set(CockpitSection::Files);
+                                chat_history_open.set(false);
+                            }),
+                            )}
+                        }
+                    }
                 }
             }
 
             div {
-                flex: "1",
-                background_color: "#111827",
-                padding: "12px",
-                border_radius: "18px",
-                overflow_y: "auto",
-                display: "flex",
-                flex_direction: "column",
-                gap: "8px",
-
+                style: "{ui_layout::main_scroll_panel_style()}",
                 if active_section() == CockpitSection::Chat {
                     {mobile_approval_panel(
                         &approval_cards(),
@@ -841,7 +1367,7 @@ fn app() -> Element {
                                     config,
                                     approval_id.clone(),
                                     decision.clone(),
-                                    crate::mobile_runtime_config::MobileRuntimeConfig::default(),
+                                    chat_session::runtime_for_active_thread(),
                                     move |event| {
                                         let mut timeline_signal = event_timeline;
                                         let mut next_timeline = timeline_signal();
@@ -918,14 +1444,12 @@ fn app() -> Element {
                         })
                     )}
 
-                    {agent_timeline_panel(ui_lang(), &timeline())}
-
-                    if is_loading() {
-                        div {
-                            style: "color:#9ca3af;font-size:{shell_layout.subtitle_font};",
-                            "{tr(ui_lang(), Tr::Thinking)}"
-                        }
-                    }
+                    {agent_timeline_panel(
+                        ui_lang(),
+                        &timeline(),
+                        worklog_open(),
+                        EventHandler::new(move |_| worklog_open.set(!worklog_open())),
+                    )}
                 } else {
                     {cockpit_section_panel(
                         active_section(),
@@ -961,7 +1485,7 @@ fn app() -> Element {
                                     config,
                                     approval_id.clone(),
                                     decision.clone(),
-                                    crate::mobile_runtime_config::MobileRuntimeConfig::default(),
+                                    chat_session::runtime_for_active_thread(),
                                     move |event| {
                                         let mut timeline_signal = event_timeline;
                                         let mut next_timeline = timeline_signal();
@@ -1043,19 +1567,33 @@ fn app() -> Element {
                                     drawer_open.set(false);
                                 }
                                 HealthQuickAction::RunTermuxCheck => {
-                                    let mut settings = settings_state();
-                                    if settings.execution_mode != ExecutionMode::Agent {
-                                        settings.execution_mode = ExecutionMode::Agent;
-                                        let config = settings.to_config();
-                                        settings_state.set(settings);
-                                        let _ = save_config(&config);
-                                    }
-                                    input.set(
-                                        "Run pwd and ls -la in the active Termux workspace via exec_shell and summarize the environment."
-                                            .to_string(),
+                                    let mut bridge = native_bridge.write();
+                                    let workdir = termux_state().workspace_path.clone();
+                                    bridge.enqueue_termux_command(
+                                        deepseek_mobile_core::TermuxExecRequest {
+                                            request_id: device_calibration::HEALTH_TERMUX_PROBE_ID
+                                                .to_string(),
+                                            command: "pwd && ls -la".to_string(),
+                                            working_dir: std::path::PathBuf::from(workdir),
+                                            timeout_secs: Some(90),
+                                        },
                                     );
+                                    drop(bridge);
                                     active_section.set(CockpitSection::Chat);
                                     drawer_open.set(false);
+                                    let mut next_timeline = timeline();
+                                    push_agent_event(
+                                        &mut next_timeline,
+                                        &AgentEvent::Status(
+                                            pick(
+                                                ui_lang(),
+                                                "Проверка Termux: команда pwd отправлена в фоне…",
+                                                "Termux check: pwd command queued in background…",
+                                            )
+                                            .to_string(),
+                                        ),
+                                    );
+                                    timeline.set(next_timeline);
                                 }
                             }
                         }),
@@ -1118,39 +1656,66 @@ fn app() -> Element {
                 }
             }
 
-            {chat_quick_actions_bar(EventHandler::new(move |prompt: String| {
-                let mut next = composer();
-                next.draft_text = prompt.clone();
-                composer.set(next);
-                input.set(prompt);
-            }))}
+            if active_section() == CockpitSection::Chat && templates_open() {
+                {chat_quick_actions_bar(
+                    ui_lang(),
+                    EventHandler::new(move |prompt: String| {
+                        let mut next = composer();
+                        next.draft_text = prompt.clone();
+                        composer.set(next);
+                        input.set(prompt);
+                        templates_open.set(false);
+                    }),
+                    EventHandler::new(move |_| templates_open.set(false)),
+                )}
+            }
 
             div {
-                style: "display:flex;gap:clamp(6px,2vw,10px);margin-top:clamp(8px,2vw,12px);align-items:center;max-width:100%;",
+                style: "display:flex;gap:6px;margin-top:8px;align-items:center;max-width:100%;",
 
                 button {
-                    style: "background:#1f2937;color:white;width:44px;height:44px;border-radius:999px;border:1px solid #4b5563;flex-shrink:0;",
+                    style: "background:#1f2937;color:white;width:38px;height:42px;border-radius:999px;border:1px solid #4b5563;flex-shrink:0;font-size:18px;",
                     onclick: move |_| {
-                        let request = DocumentPickerRequest::chat_attachment();
+                        #[cfg(target_os = "android")]
+                        {
+                            let mut next_timeline = timeline();
+                            next_timeline.push_assistant_message(
+                                "Прикрепление файлов через системный Android-пикер временно отключено в preview-сборке: на тестовом Samsung связка Dioxus/Wry может ловить ANR после внешних picker/share окон. Сейчас безопасные варианты — PC Host, adb push или импорт через рабочую область приложения.",
+                            );
+                            timeline.set(next_timeline);
+                        }
 
-                        let mut picker_state = picker();
-                        picker_state.request(request.clone());
-                        picker.set(picker_state);
+                        #[cfg(not(target_os = "android"))]
+                        {
+                            let request = DocumentPickerRequest::chat_attachment();
 
-                        let mut bridge_state = native_bridge();
-                        bridge_state.enqueue(NativeMobileCommand::OpenDocumentPicker(request));
-                        native_bridge.set(bridge_state);
+                            let mut picker_state = picker();
+                            picker_state.request(request.clone());
+                            picker.set(picker_state);
 
-                        let mut next_timeline = timeline();
-                        next_timeline.push_native_command("Request Android OPEN_DOCUMENT picker for chat attachment");
-                        push_agent_event(&mut next_timeline, &AgentEvent::Status("Document picker request queued for native Android layer".to_string()));
-                        timeline.set(next_timeline);
+                            let mut bridge_state = native_bridge();
+                            bridge_state.enqueue(NativeMobileCommand::OpenDocumentPicker(request));
+                            native_bridge.set(bridge_state);
+
+                            let mut next_timeline = timeline();
+                            next_timeline.push_native_command("Request Android OPEN_DOCUMENT picker for chat attachment");
+                            push_agent_event(&mut next_timeline, &AgentEvent::Status("Document picker request queued for native Android layer".to_string()));
+                            timeline.set(next_timeline);
+                        }
                     },
                     "+"
                 }
 
-                input {
-                    style: "flex:1;min-width:0;background:#1f2937;color:white;padding:{shell_layout.button_padding};border:1px solid #4b5563;border-radius:999px;font-size:{shell_layout.body_font};min-height:{shell_layout.chat_input_min_height};box-sizing:border-box;",
+                if active_section() == CockpitSection::Chat {
+                    button {
+                        style: "{templates_button_style}",
+                        onclick: move |_| templates_open.set(!templates_open()),
+                        "⚡"
+                    }
+                }
+
+                textarea {
+                    style: "flex:1 1 auto;min-width:0;background:#172033;color:white;padding:10px 12px;border:1px solid #334155;border-radius:20px;font-size:{shell_layout.body_font};min-height:{shell_layout.chat_input_min_height};max-height:128px;resize:none;box-sizing:border-box;line-height:1.35;",
                     placeholder: "{tr(ui_lang(), Tr::ChatPlaceholder)}",
                     value: "{input}",
                     oninput: move |e| {
@@ -1163,11 +1728,45 @@ fn app() -> Element {
                 }
 
                 button {
-                    style: "background:#3b82f6;color:white;padding:0 clamp(14px,4vw,20px);min-height:44px;border-radius:999px;font-size:{shell_layout.body_font};flex-shrink:0;",
+                    style: "background:#3b82f6;color:white;width:46px;min-height:42px;border-radius:999px;font-size:21px;line-height:1;flex-shrink:0;",
+                    title: "{tr(ui_lang(), Tr::Send)}",
                     disabled: is_loading() || !composer().has_content(),
                     onclick: move |_| {
                         let draft = composer();
                         if !draft.has_content() { return; }
+
+                        let config = crate::settings_state::load_config_for_agent_turn();
+                        if config.execution_mode == deepseek_mobile_core::config::ExecutionMode::Plan {
+                            let mut next_timeline = timeline();
+                            push_agent_event(
+                                &mut next_timeline,
+                                &AgentEvent::Status(
+                                    pick(
+                                        ui_lang(),
+                                        "Режим «план»: инструменты не выполняются. Нажмите A·агент для exec_shell, файлов, git…",
+                                        "Plan mode: tools are not executed. Tap A·agent for exec_shell, files, git…",
+                                    )
+                                    .to_string(),
+                                ),
+                            );
+                            timeline.set(next_timeline);
+                        }
+                        if !config.api_key.trim().starts_with("sk-") {
+                            let mut next_timeline = timeline();
+                            push_agent_event(
+                                &mut next_timeline,
+                                &AgentEvent::Error(
+                                    pick(
+                                        ui_lang(),
+                                        "Нет API-ключа DeepSeek. ☰ → Настройки → вставьте sk-… и сохраните.",
+                                        "DeepSeek API key missing. Open ☰ → Settings, paste sk-… and save.",
+                                    )
+                                    .to_string(),
+                                ),
+                            );
+                            timeline.set(next_timeline);
+                            return;
+                        }
 
                         let (user_input, ingestion_statuses) = draft.to_core_input_with_ingestion();
                         let user_message = user_input.clone().into_message();
@@ -1178,15 +1777,27 @@ fn app() -> Element {
                         next_timeline.push_user_message(prompt);
                         for status in ingestion_statuses { push_agent_event(&mut next_timeline, &AgentEvent::Status(status)); }
                         push_agent_event(&mut next_timeline, &AgentEvent::Started);
-                        push_agent_event(&mut next_timeline, &AgentEvent::Status("MobileEngine turn started".to_string()));
+                        push_agent_event(
+                            &mut next_timeline,
+                            &AgentEvent::Status(
+                                pick(
+                                    ui_lang(),
+                                    "Ход агента запущен…",
+                                    "Agent turn started…",
+                                )
+                                .to_string(),
+                            ),
+                        );
+                        chat_session::touch_active_thread();
                         timeline.set(next_timeline);
 
                         input.set(String::new());
                         composer.set(ChatComposerState::default());
+                        worklog_open.set(false);
                         is_loading.set(true);
 
                         spawn(async move {
-                            let config = settings_state().to_config();
+                            let config = config;
                             let event_timeline = timeline;
                             let event_snapshots = snapshots_state;
                             let event_diagnostics = diagnostics_state;
@@ -1216,28 +1827,27 @@ fn app() -> Element {
                                 }
                             }).await {
                                 Ok(result) => {
-                                    if let Some(final_text) = result.final_text.clone() {
-                                        messages.push(("assistant".to_string(), final_text));
-                                    }
-
-                                    let mut next_timeline = timeline();
-                                    push_agent_event(&mut next_timeline, &AgentEvent::Status(format!("Runtime store: {} | workspace: {} | thread: {}", result.runtime_store_root, result.workspace_root, result.thread_id)));
-                                    if result.has_pending_approvals() {
-                                        push_agent_event(&mut next_timeline, &AgentEvent::Status("Waiting for user approval".to_string()));
-                                    }
-                                    timeline.set(next_timeline);
-                                    approval_cards.set(result.approval_cards);
+                                    apply_mobile_turn_ui_result(
+                                        messages,
+                                        timeline,
+                                        approval_cards,
+                                        result,
+                                    );
                                 }
                                 Err(err) => {
                                     let mut next_timeline = timeline();
-                                    push_agent_event(&mut next_timeline, &AgentEvent::Error(format!("MobileEngine error: {}", err)));
+                                    next_timeline.fail_live_assistant_message();
+                                    push_agent_event(
+                                        &mut next_timeline,
+                                        &AgentEvent::Error(format_http_transport_error(&err)),
+                                    );
                                     timeline.set(next_timeline);
                                 }
                             }
                             is_loading.set(false);
                         });
                     },
-                    "{tr(ui_lang(), Tr::Send)}"
+                    "➤"
                 }
             }
 

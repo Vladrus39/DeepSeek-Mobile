@@ -102,7 +102,12 @@ impl ToolSpec for ApplyPatchTool {
             "Applied {} patch operation(s) across {} file(s): {}",
             summary.operations_applied,
             summary.changed_files.len(),
-            summary.changed_files.iter().cloned().collect::<Vec<_>>().join(", ")
+            summary
+                .changed_files
+                .iter()
+                .cloned()
+                .collect::<Vec<_>>()
+                .join(", ")
         ))
         .with_metadata(json!({
             "operations_applied": summary.operations_applied,
@@ -132,7 +137,9 @@ fn parse_operations(input: &Value) -> Result<Vec<PatchOperation>> {
         .get("unified_diff")
         .or_else(|| input.get("patch"))
         .and_then(Value::as_str)
-        .ok_or_else(|| anyhow!("apply_patch requires either an operations array or unified_diff string"))?;
+        .ok_or_else(|| {
+            anyhow!("apply_patch requires either an operations array or unified_diff string")
+        })?;
     parse_unified_diff_operations(unified_diff)
 }
 
@@ -178,7 +185,11 @@ fn parse_operation(index: usize, operation: &Value) -> Result<PatchOperation> {
                 .get("overwrite")
                 .and_then(Value::as_bool)
                 .unwrap_or(false);
-            Ok(PatchOperation::Create { path, content, overwrite })
+            Ok(PatchOperation::Create {
+                path,
+                content,
+                overwrite,
+            })
         }
         "append" => {
             let content = required_str(operation, "content")?.to_string();
@@ -224,7 +235,9 @@ fn parse_unified_diff_operations(diff: &str) -> Result<Vec<PatchOperation>> {
         index += 1;
 
         if index >= lines.len() || !lines[index].starts_with("+++ ") {
-            return Err(anyhow!("unified diff file header is missing matching +++ line"));
+            return Err(anyhow!(
+                "unified diff file header is missing matching +++ line"
+            ));
         }
         let new_path = parse_diff_header_path(lines[index], "+++ ")?;
         index += 1;
@@ -245,10 +258,14 @@ fn parse_unified_diff_operations(diff: &str) -> Result<Vec<PatchOperation>> {
     }
 
     if !saw_file_header {
-        return Err(anyhow!("unified diff must contain --- and +++ file headers"));
+        return Err(anyhow!(
+            "unified diff must contain --- and +++ file headers"
+        ));
     }
     if operations.is_empty() {
-        return Err(anyhow!("unified diff did not contain supported file changes"));
+        return Err(anyhow!(
+            "unified diff did not contain supported file changes"
+        ));
     }
 
     Ok(operations)
@@ -308,7 +325,8 @@ fn parse_unified_hunk(lines: &[&str], index: &mut usize) -> Result<ParsedUnified
             .as_bytes()
             .first()
             .copied()
-            .ok_or_else(|| anyhow!("invalid empty unified diff hunk line"))? as char;
+            .ok_or_else(|| anyhow!("invalid empty unified diff hunk line"))?
+            as char;
         let content = &line[1..];
 
         match prefix {
@@ -357,7 +375,10 @@ fn parse_hunk_lengths(line: &str) -> Result<(usize, usize)> {
     let mut parts = line.split_whitespace();
     let marker = parts.next().unwrap_or_default();
     if marker != "@@" {
-        return Err(anyhow!("invalid unified diff hunk header: {}", line.trim_end()));
+        return Err(anyhow!(
+            "invalid unified diff hunk header: {}",
+            line.trim_end()
+        ));
     }
     let old_range = parts
         .next()
@@ -501,7 +522,10 @@ fn patch_operation_to_value(operation: &PatchOperation) -> Value {
     }
 }
 
-fn apply_operations_atomically(operations: &[PatchOperation], context: &ToolContext) -> Result<AppliedPatchSummary> {
+fn apply_operations_atomically(
+    operations: &[PatchOperation],
+    context: &ToolContext,
+) -> Result<AppliedPatchSummary> {
     let service = WorkspaceFileService::new(context.workspace.clone());
     let mut originals: BTreeMap<String, Option<String>> = BTreeMap::new();
     let mut changed_files = BTreeSet::new();
@@ -561,7 +585,10 @@ fn apply_operation(operation: &PatchOperation, service: &WorkspaceFileService) -
             overwrite,
         } => {
             if !*overwrite && service.read_text_file(path).is_ok() {
-                return Err(anyhow!("create operation refuses to overwrite existing file: {}", path));
+                return Err(anyhow!(
+                    "create operation refuses to overwrite existing file: {}",
+                    path
+                ));
             }
             service.write_text_file(path, content)
         }
@@ -574,7 +601,10 @@ fn apply_operation(operation: &PatchOperation, service: &WorkspaceFileService) -
     }
 }
 
-fn rollback(service: &WorkspaceFileService, originals: BTreeMap<String, Option<String>>) -> Result<()> {
+fn rollback(
+    service: &WorkspaceFileService,
+    originals: BTreeMap<String, Option<String>>,
+) -> Result<()> {
     for (path, original) in originals.into_iter().rev() {
         match original {
             Some(content) => service.write_text_file(&path, &content)?,
@@ -635,8 +665,13 @@ mod tests {
             )
             .unwrap();
 
-        assert_eq!(fs::read_to_string(root.join("README.md")).unwrap(), "hello mobile\ndone\n");
-        assert!(fs::read_to_string(root.join("src/lib.rs")).unwrap().contains("pub fn ok"));
+        assert_eq!(
+            fs::read_to_string(root.join("README.md")).unwrap(),
+            "hello mobile\ndone\n"
+        );
+        assert!(fs::read_to_string(root.join("src/lib.rs"))
+            .unwrap()
+            .contains("pub fn ok"));
         let _ = fs::remove_dir_all(root);
     }
 

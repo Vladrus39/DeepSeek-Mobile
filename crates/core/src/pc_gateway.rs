@@ -76,7 +76,10 @@ pub enum PcGatewayTransportMode {
 
 impl PcGatewayTransportMode {
     pub fn requires_internet(&self) -> bool {
-        matches!(self, PcGatewayTransportMode::InternetHttps | PcGatewayTransportMode::TunnelHttps)
+        matches!(
+            self,
+            PcGatewayTransportMode::InternetHttps | PcGatewayTransportMode::TunnelHttps
+        )
     }
 
     pub fn allows_plain_http(&self) -> bool {
@@ -103,7 +106,8 @@ impl PcGatewayTransportMode {
         match self {
             PcGatewayTransportMode::LoopbackHttp => 130,
             PcGatewayTransportMode::DirectWifiHttps | PcGatewayTransportMode::DirectWifiHttp => 120,
-            PcGatewayTransportMode::LocalNetworkHttps | PcGatewayTransportMode::LocalNetworkHttp => 110,
+            PcGatewayTransportMode::LocalNetworkHttps
+            | PcGatewayTransportMode::LocalNetworkHttp => 110,
             PcGatewayTransportMode::TunnelHttps => 60,
             PcGatewayTransportMode::InternetHttps => 40,
         }
@@ -266,7 +270,9 @@ impl PcGatewayConfig {
     }
 
     pub fn can_use_without_internet(&self) -> bool {
-        self.endpoint_plan().iter().any(|candidate| candidate.is_local_only())
+        self.endpoint_plan()
+            .iter()
+            .any(|candidate| candidate.is_local_only())
     }
 
     pub fn is_local_only(&self) -> bool {
@@ -274,12 +280,20 @@ impl PcGatewayConfig {
     }
 
     pub fn validate_base_url(&self) -> Result<(), String> {
-        validate_gateway_base_url_for_transport(&self.base_url, &self.transport_mode, self.allow_http_on_local_network)
+        validate_gateway_base_url_for_transport(
+            &self.base_url,
+            &self.transport_mode,
+            self.allow_http_on_local_network,
+        )
     }
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
-pub enum PolicyPreset { ReadOnly, Developer, Admin }
+pub enum PolicyPreset {
+    ReadOnly,
+    Developer,
+    Admin,
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct PcGatewaySecurityPolicy {
@@ -332,9 +346,16 @@ impl Default for PcGatewaySecurityPolicy {
 
 impl PcGatewaySecurityPolicy {
     pub fn read_only() -> Self {
-        Self { max_command_seconds: 0, max_output_bytes: 64 * 1024, allowed_programs: vec![], ..Self::default() }
+        Self {
+            max_command_seconds: 0,
+            max_output_bytes: 64 * 1024,
+            allowed_programs: vec![],
+            ..Self::default()
+        }
     }
-    pub fn developer() -> Self { Self::default() }
+    pub fn developer() -> Self {
+        Self::default()
+    }
     pub fn admin() -> Self {
         Self {
             require_tls: false,
@@ -368,12 +389,18 @@ impl PcGatewaySecurityPolicy {
 
     pub fn validate_command(&self, request: &CommandRequest) -> Result<(), String> {
         if !self.allows_program(&request.program) {
-            return Err(format!("program is not allowed by gateway policy: {}", request.program));
+            return Err(format!(
+                "program is not allowed by gateway policy: {}",
+                request.program
+            ));
         }
         if let Some(working_dir) = request.working_dir.as_ref() {
             let path = working_dir.to_string_lossy();
             if !self.allows_path(&path) {
-                return Err(format!("working directory is blocked by gateway policy: {}", path));
+                return Err(format!(
+                    "working directory is blocked by gateway policy: {}",
+                    path
+                ));
             }
         }
         Ok(())
@@ -554,34 +581,107 @@ impl PcGatewayRequestEnvelope {
 pub enum PcGatewayRequest {
     Health,
     ListWorkspaces,
-    ListEnvironments { workspace_id: String },
-    DetectTasks { workspace_id: String },
-    IndexWorkspace { workspace_id: String },
-    ReadFile { workspace_id: String, path: String },
-    WriteFile { workspace_id: String, path: String, content: String },
-    DeleteFile { workspace_id: String, path: String },
-    ListDir { workspace_id: String, path: String },
-    OpenTerminal { workspace_id: String, cwd: Option<String>, environment_id: Option<String> },
-    TerminalInput { session_id: String, input: String },
-    CloseTerminal { session_id: String },
-    ExecuteCommand { workspace_id: String, command: CommandRequest, environment_id: Option<String> },
-    RunTask { task_id: String },
-    StopTask { task_id: String },
+    ListEnvironments {
+        workspace_id: String,
+    },
+    DetectTasks {
+        workspace_id: String,
+    },
+    IndexWorkspace {
+        workspace_id: String,
+    },
+    ReadFile {
+        workspace_id: String,
+        path: String,
+    },
+    WriteFile {
+        workspace_id: String,
+        path: String,
+        content: String,
+    },
+    DeleteFile {
+        workspace_id: String,
+        path: String,
+    },
+    ListDir {
+        workspace_id: String,
+        path: String,
+    },
+    OpenTerminal {
+        workspace_id: String,
+        cwd: Option<String>,
+        environment_id: Option<String>,
+    },
+    TerminalInput {
+        session_id: String,
+        input: String,
+    },
+    CloseTerminal {
+        session_id: String,
+    },
+    ExecuteCommand {
+        workspace_id: String,
+        command: CommandRequest,
+        environment_id: Option<String>,
+    },
+    RunTask {
+        task_id: String,
+    },
+    StopTask {
+        task_id: String,
+    },
     ListTasks,
-    StartDevServer { workspace_id: String, command: CommandRequest, environment_id: Option<String> },
-    StopDevServer { preview_id: String },
-    GetDiagnostics { workspace_id: String, path: Option<String> },
-    GitStatus { workspace_id: String },
-    GitDiff { workspace_id: String },
-    GitCommit { workspace_id: String, message: String },
-    GitPush { workspace_id: String, remote: Option<String>, branch: Option<String> },
-    GitPull { workspace_id: String, remote: Option<String>, branch: Option<String> },
-    GitBranch { workspace_id: String },
-    SnapshotCreate { workspace_id: String, reason: String },
-    SnapshotRestore { workspace_id: String, snapshot_id: String },
-    SnapshotList { workspace_id: String },
+    StartDevServer {
+        workspace_id: String,
+        command: CommandRequest,
+        environment_id: Option<String>,
+    },
+    StopDevServer {
+        preview_id: String,
+    },
+    GetDiagnostics {
+        workspace_id: String,
+        path: Option<String>,
+    },
+    GitStatus {
+        workspace_id: String,
+    },
+    GitDiff {
+        workspace_id: String,
+    },
+    GitCommit {
+        workspace_id: String,
+        message: String,
+    },
+    GitPush {
+        workspace_id: String,
+        remote: Option<String>,
+        branch: Option<String>,
+    },
+    GitPull {
+        workspace_id: String,
+        remote: Option<String>,
+        branch: Option<String>,
+    },
+    GitBranch {
+        workspace_id: String,
+    },
+    SnapshotCreate {
+        workspace_id: String,
+        reason: String,
+    },
+    SnapshotRestore {
+        workspace_id: String,
+        snapshot_id: String,
+    },
+    SnapshotList {
+        workspace_id: String,
+    },
     /// Open a file or folder in the OS shell (explorer / xdg-open / open).
-    OpenPath { workspace_id: String, path: String },
+    OpenPath {
+        workspace_id: String,
+        path: String,
+    },
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -598,26 +698,52 @@ pub enum PcGatewayResponse {
     Environments(Vec<PcEnvironmentDescriptor>),
     Tasks(Vec<PcTaskDescriptor>),
     WorkspaceIndex(PcWorkspaceIndexSummary),
-    FileContent { path: String, content: String },
-    FileWritten { path: String, bytes: usize },
-    FileDeleted { path: String },
+    FileContent {
+        path: String,
+        content: String,
+    },
+    FileWritten {
+        path: String,
+        bytes: usize,
+    },
+    FileDeleted {
+        path: String,
+    },
     DirEntries(Vec<PcGatewayDirEntry>),
     TerminalOpened(PcTerminalSession),
-    TerminalOutput { session_id: String, chunk: String },
-    TerminalClosed { session_id: String, exit_code: Option<i32> },
+    TerminalOutput {
+        session_id: String,
+        chunk: String,
+    },
+    TerminalClosed {
+        session_id: String,
+        exit_code: Option<i32>,
+    },
     CommandOutput(CommandOutput),
-    TaskStarted { task_id: String, process_id: String },
-    TaskStopped { task_id: String },
+    TaskStarted {
+        task_id: String,
+        process_id: String,
+    },
+    TaskStopped {
+        task_id: String,
+    },
     TaskList(Vec<PcRunningTaskInfo>),
     PreviewStarted(PcPreviewDescriptor),
-    PreviewStopped { preview_id: String },
+    PreviewStopped {
+        preview_id: String,
+    },
     Diagnostics(Vec<PcDiagnostic>),
-    GitText { operation: String, output: String },
+    GitText {
+        operation: String,
+        output: String,
+    },
     Error(PcGatewayError),
     SnapshotRecord(WorkspaceSnapshotRecord),
     SnapshotList(Vec<WorkspaceSnapshotRecord>),
     SnapshotRestoreReport(WorkspaceRestoreReport),
-    PathOpened { path: String },
+    PathOpened {
+        path: String,
+    },
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -659,7 +785,10 @@ impl PcGatewayError {
     }
 }
 
-pub fn validate_gateway_base_url(base_url: &str, allow_http_on_local_network: bool) -> Result<(), String> {
+pub fn validate_gateway_base_url(
+    base_url: &str,
+    allow_http_on_local_network: bool,
+) -> Result<(), String> {
     let mode = if allow_http_on_local_network {
         PcGatewayTransportMode::LocalNetworkHttp
     } else {
@@ -694,7 +823,11 @@ pub fn is_private_or_loopback_http_url(base_url: &str) -> bool {
         return false;
     };
     let host_port = host_port_path.split('/').next().unwrap_or_default();
-    let host = host_port.split(':').next().unwrap_or_default().to_ascii_lowercase();
+    let host = host_port
+        .split(':')
+        .next()
+        .unwrap_or_default()
+        .to_ascii_lowercase();
 
     host == "localhost"
         || host == "127.0.0.1"
@@ -719,7 +852,6 @@ fn current_unix_time() -> u64 {
         .unwrap_or_default()
 }
 
-
 /// Streaming event from a long-running command execution.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub enum CommandStreamEvent {
@@ -733,17 +865,26 @@ pub enum CommandStreamEvent {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub enum PcRunningTaskEvent {
     TaskStarted(PcRunningTaskInfo),
-    TaskCompleted { task_id: String, exit_code: Option<i32> },
-    TaskFailed { task_id: String, error: String },
-    TaskStopped { task_id: String },
+    TaskCompleted {
+        task_id: String,
+        exit_code: Option<i32>,
+    },
+    TaskFailed {
+        task_id: String,
+        error: String,
+    },
+    TaskStopped {
+        task_id: String,
+    },
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
-        is_private_or_loopback_http_url, validate_gateway_base_url, validate_gateway_base_url_for_transport,
-        PcGatewayCapability, PcGatewayConfig, PcGatewayEndpointCandidate, PcGatewaySecurityPolicy,
-        PcGatewayTransportMode, PcWorkspaceGrant,
+        is_private_or_loopback_http_url, validate_gateway_base_url,
+        validate_gateway_base_url_for_transport, PcGatewayCapability, PcGatewayConfig,
+        PcGatewayEndpointCandidate, PcGatewaySecurityPolicy, PcGatewayTransportMode,
+        PcWorkspaceGrant,
     };
     use crate::executor::CommandRequest;
     use std::path::PathBuf;
@@ -796,22 +937,18 @@ mod tests {
 
     #[test]
     fn endpoint_plan_prefers_direct_and_local_routes_before_internet() {
-        let config = PcGatewayConfig::tunnel_https(
-            "pc-1",
-            "Laptop",
-            "https://pc.example.test",
-            "phone-1",
-        )
-        .with_endpoint_candidate(PcGatewayEndpointCandidate::new(
-            "same-lan",
-            "http://192.168.1.10:8787",
-            PcGatewayTransportMode::LocalNetworkHttp,
-        ))
-        .with_endpoint_candidate(PcGatewayEndpointCandidate::new(
-            "direct-link",
-            "http://169.254.12.10:8787",
-            PcGatewayTransportMode::DirectWifiHttp,
-        ));
+        let config =
+            PcGatewayConfig::tunnel_https("pc-1", "Laptop", "https://pc.example.test", "phone-1")
+                .with_endpoint_candidate(PcGatewayEndpointCandidate::new(
+                    "same-lan",
+                    "http://192.168.1.10:8787",
+                    PcGatewayTransportMode::LocalNetworkHttp,
+                ))
+                .with_endpoint_candidate(PcGatewayEndpointCandidate::new(
+                    "direct-link",
+                    "http://169.254.12.10:8787",
+                    PcGatewayTransportMode::DirectWifiHttp,
+                ));
         let plan = config.endpoint_plan();
         assert_eq!(plan[0].label, "direct-link");
         assert_eq!(plan[1].label, "same-lan");

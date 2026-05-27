@@ -148,8 +148,12 @@ fn extract_json_code_blocks(text: &str) -> Vec<String> {
                 current.clear();
                 in_json_block = false;
             } else {
-                let fence_lang = trimmed.trim_start_matches("```").trim().to_ascii_lowercase();
-                in_json_block = fence_lang == "json" || fence_lang == "tool" || fence_lang == "tool_call";
+                let fence_lang = trimmed
+                    .trim_start_matches("```")
+                    .trim()
+                    .to_ascii_lowercase();
+                in_json_block =
+                    fence_lang == "json" || fence_lang == "tool" || fence_lang == "tool_call";
             }
             continue;
         }
@@ -181,7 +185,8 @@ mod tests {
 
     #[test]
     fn parses_single_inline_tool_call() {
-        let result = parse_tool_calls_from_text(r#"{"tool":"read_file","args":{"path":"README.md"}}"#);
+        let result =
+            parse_tool_calls_from_text(r#"{"tool":"read_file","args":{"path":"README.md"}}"#);
         assert!(result.has_tool_calls());
         assert_eq!(result.tool_calls[0].name, "read_file");
         assert_eq!(result.tool_calls[0].arguments, json!({"path":"README.md"}));

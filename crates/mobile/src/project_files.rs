@@ -30,11 +30,17 @@ pub struct ProjectTreeSnapshot {
 
 impl ProjectTreeSnapshot {
     pub fn file_count(&self) -> usize {
-        self.entries.iter().filter(|entry| matches!(entry.kind, ProjectEntryKind::File)).count()
+        self.entries
+            .iter()
+            .filter(|entry| matches!(entry.kind, ProjectEntryKind::File))
+            .count()
     }
 
     pub fn directory_count(&self) -> usize {
-        self.entries.iter().filter(|entry| matches!(entry.kind, ProjectEntryKind::Directory)).count()
+        self.entries
+            .iter()
+            .filter(|entry| matches!(entry.kind, ProjectEntryKind::Directory))
+            .count()
     }
 }
 
@@ -48,7 +54,10 @@ pub struct ProjectFilePreview {
     pub truncated: bool,
 }
 
-pub fn scan_project_tree(root: impl AsRef<Path>, max_entries: usize) -> Result<ProjectTreeSnapshot> {
+pub fn scan_project_tree(
+    root: impl AsRef<Path>,
+    max_entries: usize,
+) -> Result<ProjectTreeSnapshot> {
     let root = root.as_ref().to_path_buf();
     let mut entries = Vec::new();
     let mut truncated = false;
@@ -77,15 +86,27 @@ pub fn read_project_file(
         return Err(anyhow!("not a file: {}", relative_path.display()));
     }
     if metadata.len() > max_bytes {
-        return Err(anyhow!("file too large for mobile preview: {} > {} bytes", metadata.len(), max_bytes));
+        return Err(anyhow!(
+            "file too large for mobile preview: {} > {} bytes",
+            metadata.len(),
+            max_bytes
+        ));
     }
 
-    let text = fs::read_to_string(&file_path)
-        .map_err(|error| anyhow!("failed to read UTF-8 project file {}: {}", relative_path.display(), error))?;
+    let text = fs::read_to_string(&file_path).map_err(|error| {
+        anyhow!(
+            "failed to read UTF-8 project file {}: {}",
+            relative_path.display(),
+            error
+        )
+    })?;
     let line_count = text.lines().count();
     let truncated = text.chars().count() > DEFAULT_MAX_FILE_CHARS;
     let content = if truncated {
-        let mut out = text.chars().take(DEFAULT_MAX_FILE_CHARS).collect::<String>();
+        let mut out = text
+            .chars()
+            .take(DEFAULT_MAX_FILE_CHARS)
+            .collect::<String>();
         out.push_str("\n...[project file preview truncated]...");
         out
     } else {
@@ -94,7 +115,11 @@ pub fn read_project_file(
 
     Ok(ProjectFilePreview {
         path: normalize_relative_path(relative_path)?,
-        display_name: relative_path.file_name().and_then(|name| name.to_str()).unwrap_or_default().to_string(),
+        display_name: relative_path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or_default()
+            .to_string(),
         content,
         size_bytes: metadata.len(),
         line_count,
@@ -152,7 +177,11 @@ pub async fn scan_pc_gateway_tree(
                     tree_entries.push(ProjectTreeEntry {
                         path: sub.path.clone(),
                         name: sub_name,
-                        kind: if sub.is_dir { ProjectEntryKind::Directory } else { ProjectEntryKind::File },
+                        kind: if sub.is_dir {
+                            ProjectEntryKind::Directory
+                        } else {
+                            ProjectEntryKind::File
+                        },
                         depth: 1,
                         size_bytes: None,
                     });
@@ -197,13 +226,20 @@ pub async fn read_pc_gateway_file(
     };
 
     if content.len() as u64 > max_bytes {
-        return Err(anyhow!("file too large for mobile preview: {} > {} bytes", content.len(), max_bytes));
+        return Err(anyhow!(
+            "file too large for mobile preview: {} > {} bytes",
+            content.len(),
+            max_bytes
+        ));
     }
 
     let line_count = content.lines().count();
     let truncated = content.chars().count() > DEFAULT_MAX_FILE_CHARS;
     let display_content = if truncated {
-        let mut out = content.chars().take(DEFAULT_MAX_FILE_CHARS).collect::<String>();
+        let mut out = content
+            .chars()
+            .take(DEFAULT_MAX_FILE_CHARS)
+            .collect::<String>();
         out.push_str("\n...[project file preview truncated]...");
         out
     } else {
@@ -228,7 +264,9 @@ pub fn choose_default_preview_file(snapshot: &ProjectTreeSnapshot) -> Option<Str
     snapshot
         .entries
         .iter()
-        .find(|entry| matches!(entry.kind, ProjectEntryKind::File) && is_previewable_text_path(&entry.path))
+        .find(|entry| {
+            matches!(entry.kind, ProjectEntryKind::File) && is_previewable_text_path(&entry.path)
+        })
         .map(|entry| entry.path.clone())
 }
 
@@ -310,7 +348,10 @@ fn scan_dir(
 }
 
 fn is_ignored_name(name: &str) -> bool {
-    matches!(name, ".git" | "target" | "node_modules" | ".gradle" | "build" | "dist" | ".idea")
+    matches!(
+        name,
+        ".git" | "target" | "node_modules" | ".gradle" | "build" | "dist" | ".idea"
+    )
 }
 
 fn safe_join(root: &Path, relative_path: &Path) -> Result<PathBuf> {
@@ -349,10 +390,17 @@ mod tests {
     fn scans_project_tree_and_reads_file_preview() {
         let root = unique_dir("tree");
         fs::create_dir_all(root.join("src")).expect("create test dir");
-        fs::write(root.join("src/main.rs"), "fn main() { println!(\"hi\"); }\n").expect("write file");
+        fs::write(
+            root.join("src/main.rs"),
+            "fn main() { println!(\"hi\"); }\n",
+        )
+        .expect("write file");
         let snapshot = scan_project_tree(&root, 50).expect("scan tree");
         assert_eq!(snapshot.file_count(), 1);
-        assert_eq!(choose_default_preview_file(&snapshot).as_deref(), Some("src/main.rs"));
+        assert_eq!(
+            choose_default_preview_file(&snapshot).as_deref(),
+            Some("src/main.rs")
+        );
         let preview = read_project_file(&root, "src/main.rs", 4096).expect("read preview");
         assert_eq!(preview.path, "src/main.rs");
         assert!(preview.content.contains("fn main"));

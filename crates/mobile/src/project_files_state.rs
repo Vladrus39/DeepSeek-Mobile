@@ -1,12 +1,12 @@
+use crate::project_diff::{build_text_diff_preview, ProjectDiffPreview};
 use crate::project_files::{
-    choose_default_preview_file, read_project_file, scan_project_tree, scan_pc_gateway_tree,
-    read_pc_gateway_file, ProjectFilePreview, ProjectTreeSnapshot, DEFAULT_MAX_FILE_BYTES,
+    choose_default_preview_file, read_pc_gateway_file, read_project_file, scan_pc_gateway_tree,
+    scan_project_tree, ProjectFilePreview, ProjectTreeSnapshot, DEFAULT_MAX_FILE_BYTES,
     DEFAULT_MAX_TREE_ENTRIES,
 };
+use deepseek_mobile_core::{ApprovalCardView, PcGatewayClient};
 use std::fmt;
 use std::path::{Path, PathBuf};
-use deepseek_mobile_core::{ApprovalCardView, PcGatewayClient};
-use crate::project_diff::{ProjectDiffPreview, build_text_diff_preview};
 
 const DEFAULT_WORKSPACE_ROOT: &str = ".";
 
@@ -16,9 +16,7 @@ pub enum FileBrowserBackend {
     /// Local / Termux filesystem.
     Local,
     /// Remote PC gateway with an active client session.
-    PcGateway {
-        workspace_id: String,
-    },
+    PcGateway { workspace_id: String },
 }
 
 impl fmt::Display for FileBrowserBackend {
@@ -86,9 +84,7 @@ impl ProjectFilesUiState {
                 // This path is taken when the state is reset or navigated without
                 // the async PC refresh pathway. The panel should call
                 // refresh_via_pc instead when a client is available.
-                self.last_error = Some(
-                    "PC gateway refresh requires refresh_via_pc (async)".into(),
-                );
+                self.last_error = Some("PC gateway refresh requires refresh_via_pc (async)".into());
             }
             FileBrowserBackend::Local => {
                 self.do_local_refresh();
@@ -157,9 +153,8 @@ impl ProjectFilesUiState {
                 // open_file_via_pc needs a client reference.
                 // Caller must use open_file_via_pc when a client is available.
                 self.selected_path = Some(path.clone());
-                self.last_error = Some(
-                    "PC gateway file open requires open_file_via_pc (async)".into(),
-                );
+                self.last_error =
+                    Some("PC gateway file open requires open_file_via_pc (async)".into());
                 self.preview = None;
             }
             FileBrowserBackend::Local => {
@@ -200,27 +195,37 @@ impl ProjectFilesUiState {
         };
 
         for card in cards {
-            let card_path = first_string_arg(card, &["path", "file", "file_path", "relative_path", "target_path"]);
+            let card_path = first_string_arg(
+                card,
+                &["path", "file", "file_path", "relative_path", "target_path"],
+            );
             if card_path.as_deref() != Some(selected.as_str()) {
                 continue;
             }
 
             // Try write_file-style diff (before vs content)
-            if let Some(after) = first_string_arg(card, &["content", "new_content", "after", "replacement", "text"]) {
+            if let Some(after) = first_string_arg(
+                card,
+                &["content", "new_content", "after", "replacement", "text"],
+            ) {
                 let before = first_string_arg(card, &["before", "old_content", "current_content"])
                     .unwrap_or_default();
-                self.pending_diff = Some(build_text_diff_preview(selected.clone(), &before, &after));
+                self.pending_diff =
+                    Some(build_text_diff_preview(selected.clone(), &before, &after));
                 return;
             }
 
             // Try edit_file-style diff (search vs replace on current content)
             if let Some(search) = first_string_arg(card, &["search", "old_text"]) {
                 let replace = first_string_arg(card, &["replace", "new_text"]).unwrap_or_default();
-                let current = self.preview.as_ref()
+                let current = self
+                    .preview
+                    .as_ref()
                     .map(|p| p.content.as_str())
                     .unwrap_or("");
                 let after = current.replacen(&search, &replace, 1);
-                self.pending_diff = Some(build_text_diff_preview(selected.clone(), current, &after));
+                self.pending_diff =
+                    Some(build_text_diff_preview(selected.clone(), current, &after));
                 return;
             }
         }
@@ -252,11 +257,7 @@ impl ProjectFilesUiState {
 impl ProjectFilesUiState {
     /// Refresh the tree using the PC gateway client.
     /// Returns `true` on success, `false` on error (also sets last_error).
-    pub async fn refresh_via_pc(
-        &mut self,
-        client: &PcGatewayClient,
-        workspace_id: &str,
-    ) -> bool {
+    pub async fn refresh_via_pc(&mut self, client: &PcGatewayClient, workspace_id: &str) -> bool {
         self.set_backend(FileBrowserBackend::PcGateway {
             workspace_id: workspace_id.to_string(),
         });
@@ -268,12 +269,18 @@ impl ProjectFilesUiState {
                 if !self.browsing_dir.is_empty() {
                     let prefix = format!("{}/", self.browsing_dir);
                     let prefix_len = prefix.len();
-                    snapshot.entries.retain(|e| e.path.starts_with(&prefix) || e.path == self.browsing_dir);
+                    snapshot
+                        .entries
+                        .retain(|e| e.path.starts_with(&prefix) || e.path == self.browsing_dir);
                     for e in &mut snapshot.entries {
                         if e.path.starts_with(&prefix) {
                             e.path = e.path[prefix_len..].to_string();
                         }
-                        if e.path == self.browsing_dir && e.kind == crate::project_files::ProjectEntryKind::Directory { continue; }
+                        if e.path == self.browsing_dir
+                            && e.kind == crate::project_files::ProjectEntryKind::Directory
+                        {
+                            continue;
+                        }
                     }
                     snapshot.root = format!("{}/{}", workspace_id, self.browsing_dir);
                 } else {
@@ -374,7 +381,12 @@ mod tests {
 
         assert!(state.loaded);
         assert_eq!(state.selected_path.as_deref(), Some("src/lib.rs"));
-        assert!(state.preview.as_ref().unwrap().content.contains("pub fn ok"));
+        assert!(state
+            .preview
+            .as_ref()
+            .unwrap()
+            .content
+            .contains("pub fn ok"));
         assert!(state.last_error.is_none());
 
         let _ = fs::remove_dir_all(root);
@@ -391,7 +403,11 @@ mod tests {
 
         assert_eq!(state.selected_path.as_deref(), Some("missing.rs"));
         assert!(state.preview.is_none());
-        assert!(state.last_error.as_ref().unwrap().contains("Failed to open"));
+        assert!(state
+            .last_error
+            .as_ref()
+            .unwrap()
+            .contains("Failed to open"));
 
         let _ = fs::remove_dir_all(root);
     }

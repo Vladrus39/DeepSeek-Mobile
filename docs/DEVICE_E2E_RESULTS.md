@@ -1,0 +1,77 @@
+# Device E2E results
+
+**Updated:** 2026-05-28  
+**Device:** Samsung SM_G781B · `RFCNC0PWD4E`  
+**Package:** `com.deepseek.mobile`
+
+## Automated probes (ADB)
+
+| Check | Status | Notes |
+|-------|--------|-------|
+| API HTTP (`api_probe`) | PASS (last run) | `http=200` in `.api_probe_result` |
+| Agent turn (`agent_turn_probe`) | PASS (last run) | `PROBE_OK` in `.agent_turn_probe_result` |
+| Termux calibration | PASS | `.agent_calibrated_v1` present |
+| PC mDNS discovery | Intermittent | `.pc_discovery_probe_running` can stick; requires `deepseek-pc-host` on `0.0.0.0:8787`, same Wi‑Fi |
+
+Run: `. .\tools\android\env.ps1; .\scripts\device-full-verify.ps1 -Serial RFCNC0PWD4E`
+
+## UI / logic fixes (this checkpoint)
+
+| Issue | Fix |
+|-------|-----|
+| **#8** Work log «выполняется» forever | `MobileTimelineState::seal_open_work_items()` on turn end, tool finish, restore; status rows move to **done**; badge «Ход работы … выполняется» clears when idle |
+| **#6** `Failed to restore saved timeline: EOF` | Corrupt/empty runtime JSON skipped; benign EOF → fresh timeline, no error banner |
+| «98 ходов» on «привет» | Reasoning stream merged into one **Reasoning** row |
+| Duplicate Termux continuation events | Removed second replay of `result.events` in `lib.rs` |
+| Stuck «Ожидание ответа Android» | JNI/UI bridge sync for Termux/PC/picker wait flags |
+| Stuck «Работаю…» | `is_loading` cleared on turn complete, approval continuation, Termux continuation, API timeout (125 s) |
+| Noisy work log | Skip internal statuses (`streaming opened/completed`, duplicate Started/Finished cards) |
+
+## Verified on device (2026-05-28)
+
+| Flow | Status |
+|------|--------|
+| Chat PONG (agent turn) | PASS via `agent_turn_probe` / manual chat |
+| Termux pwd (quick template / probe) | PASS when Termux configured |
+| Setup Termux buttons | Install/open F-Droid, RUN_COMMAND probe from setup screen |
+
+**Manual testing:** do **not** run `device-*-verify.ps1` with force-stop while using the app interactively — probes are for scripted E2E only.
+
+## Header chips (M·Auto/Flash/Pro, A·agent/plan/yolo, T·thinking)
+
+| Chip | Works? | How |
+|------|--------|-----|
+| **M·model** | Yes | Saves `config.json` on tap; each chat turn calls `load_config_for_agent_turn()` |
+| **A·execution** | Yes | Same save path; Plan disables tools in core |
+| **T·thinking** | Yes | Saved to config; engine `ModelRouter` applies level for Pro/auto routes |
+
+Engine selects API model per turn via `ModelRouter::route_prompt` (Flash/Pro/Auto), not only the static `config.model` string.
+
+## Real-tool test (Termux pwd)
+
+Script (does **not** force-stop by default):
+
+```powershell
+. .\tools\android\env.ps1
+.\scripts\device-termux-pwd-probe.ps1 -Serial RFCNC0PWD4E
+```
+
+Uses isolated thread `__deepseek_adb_probe__`, YOLO auto-approve, built-in pwd prompt.  
+Keep app in foreground ~2 min. Expect `.agent_turn_probe_result` line `PASS termux_tool …`.
+
+Last automated run: **no result file** (app background or API hang) — re-run after install with app open.
+
+## Manual verification still required
+
+- [ ] OPEN_DOCUMENT picker → chat attachment (picker disabled in preview coordinator — use workspace path / adb)
+- [ ] Import / export project ZIP
+- [x] Chat: «привет» → work log ~2 significant steps (Чат 4)
+- [ ] Chat: «выполни pwd в termux» → approval → Termux → continuation (user + agent mode)
+- [ ] PC Host pairing from phone (same LAN)
+- [ ] All bottom-nav sections open without crash
+
+## Known product gaps (not blocking chat)
+
+- MCP external execution hardening
+- Release APK signing
+- LSP / symbol search (roadmap)

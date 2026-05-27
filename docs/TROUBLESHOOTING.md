@@ -56,6 +56,37 @@ Cause: Dioxus packages the Rust native activity library as `libmain.so`, not `li
 
 Fix: `android/bridge/.../NativeBridge.kt` loads `main` first and only then falls back to `deepseek_mobile`.
 
+### App «перезагружается», виснет, само закрывается
+
+**Перезапуск процесса**
+
+- `adb install` / `dx build --device` перезапускает приложение — нормально при разработке.
+- Скрипты `device-*-probe.ps1` и `device-full-verify.ps1` делают `am force-stop` — **не гоняйте их**, пока пользуетесь чатом.
+- Удалите зависший маркер PC discovery (если висит «Поиск PC» / «Ожидание Android»):
+  ```text
+  adb shell run-as com.deepseek.mobile rm -f files/deepseek-mobile/.pc_discovery_probe_running
+  ```
+
+**Виснет UI / ощущение постоянной перезагрузки**
+
+- Исправлено: host-loop больше не крутится в `use_effect` на каждом кадре (вызывал лишние перерисовки на Android).
+- Режим **A·план** — инструменты **не выполняются** (как в TUI plan). Для shell/git/файлов нужен **A·агент** или **A·yolo**.
+- Termux: `allow-external-apps=true`, режим агента, чат «+ Новый» после обновления APK.
+
+**«Ход работы … выполняется» не исчезает (#8)**
+
+- Исправлено: при `TurnFinished` / конце хода статусы и инструменты в work log переводятся в **done**.
+- Если видите старое состояние после обновления APK: «+ Новый» чат или очистите только отображение (история на диске остаётся).
+
+**`Failed to restore saved timeline: EOF` (#6)**
+
+- Пустой/битый JSON в `runtime_store/events/` больше не показывает красный баннер — начинается пустая лента.
+- При необходимости удалите повреждённый файл: `adb shell run-as com.deepseek.mobile ls files/deepseek-mobile/runtime_store/events/`
+
+**ADB / диагностика телефона**
+
+- Канонический скрипт: [`scripts/adb-control.ps1`](./ADB_CONTROL.md) (см. также [`docs/ADB_CONTROL.md`](./ADB_CONTROL.md)).
+
 ### Android crash after first frame: destroyed pthread mutex / native restart
 
 Observed symptom: app launches, then Android restarts the Dioxus activity during startup/config change and native code crashes with a destroyed mutex.

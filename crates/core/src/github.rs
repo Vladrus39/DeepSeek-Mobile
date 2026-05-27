@@ -129,19 +129,11 @@ impl GitHubClient {
         let mut headers = reqwest::header::HeaderMap::new();
         headers.insert(
             "Authorization",
-            format!("Bearer {}", self.token)
-                .parse()
-                .unwrap(),
+            format!("Bearer {}", self.token).parse().unwrap(),
         );
-        headers.insert(
-            "Accept",
-            "application/vnd.github+json".parse().unwrap(),
-        );
+        headers.insert("Accept", "application/vnd.github+json".parse().unwrap());
         headers.insert("X-GitHub-Api-Version", "2022-11-28".parse().unwrap());
-        headers.insert(
-            "User-Agent",
-            "DeepSeek-Mobile/0.1.0".parse().unwrap(),
-        );
+        headers.insert("User-Agent", "DeepSeek-Mobile/0.1.0".parse().unwrap());
         headers
     }
 
@@ -236,10 +228,7 @@ impl GitHubClient {
         }
         let response = request.send().await.context("list contents")?;
         check_response(&response)?;
-        Ok(response
-            .json()
-            .await
-            .context("parse directory contents")?)
+        Ok(response.json().await.context("parse directory contents")?)
     }
 
     /// Create or update a file via GitHub API (commits directly)
@@ -277,10 +266,7 @@ impl GitHubClient {
         check_response(&response)?;
         let value: Value = response.json().await.context("parse commit result")?;
         Ok(GitHubCommitResult {
-            sha: value["content"]["sha"]
-                .as_str()
-                .unwrap_or("")
-                .to_string(),
+            sha: value["content"]["sha"].as_str().unwrap_or("").to_string(),
             html_url: value["content"]["html_url"]
                 .as_str()
                 .unwrap_or("")

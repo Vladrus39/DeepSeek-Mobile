@@ -4,7 +4,9 @@ import android.app.Activity
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.os.Build
 import android.os.Bundle
+import android.util.Log
 
 /**
  * Android adapter for Termux RUN_COMMAND intents.
@@ -37,11 +39,26 @@ class DeepSeekTermuxBridge(
         }
     }
 
+  /**
+   * Starts Termux RunCommandService in the background (no Termux UI required when configured).
+   * @return null on success, or an error message if the service could not be started.
+   */
     fun run(
         command: AndroidTermuxCommandPayload,
         resultPendingIntent: PendingIntent
-    ) {
-        context.startService(buildRunCommandIntent(command, resultPendingIntent))
+    ): String? {
+        val intent = buildRunCommandIntent(command, resultPendingIntent)
+        return try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(intent)
+            } else {
+                context.startService(intent)
+            }
+            null
+        } catch (e: Exception) {
+            Log.e(TAG, "Termux RUN_COMMAND failed for ${command.requestId}", e)
+            e.message ?: e.javaClass.simpleName
+        }
     }
 
     fun parseResult(
@@ -81,6 +98,7 @@ class DeepSeekTermuxBridge(
     }
 
     companion object {
+        private const val TAG = "DeepSeekTermuxBridge"
         const val TERMUX_PACKAGE_NAME = "com.termux"
         const val TERMUX_RUN_COMMAND_SERVICE = "com.termux.app.RunCommandService"
         const val TERMUX_RUN_COMMAND_ACTION = "com.termux.RUN_COMMAND"

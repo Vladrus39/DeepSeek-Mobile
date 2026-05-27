@@ -51,6 +51,7 @@ pub struct MobileTimelineState {
     next_id: u64,
     pub items: Vec<MobileTimelineItem>,
     live_assistant_item_id: Option<String>,
+    live_reasoning_item_id: Option<String>,
 }
 
 impl MobileTimelineState {
@@ -123,6 +124,48 @@ impl MobileTimelineState {
                 item.status = MobileTimelineItemStatus::Done;
             }
         }
+        self.finish_live_reasoning();
+    }
+
+    pub fn append_live_reasoning_delta(&mut self, delta: &str) -> String {
+        if delta.is_empty() {
+            return self
+                .live_reasoning_item_id
+                .clone()
+                .unwrap_or_else(|| self.start_live_reasoning());
+        }
+        let id = self.start_live_reasoning();
+        if let Some(item) = self.items.iter_mut().find(|item| item.id == id) {
+            item.body.push_str(delta);
+            item.status = MobileTimelineItemStatus::Running;
+        }
+        id
+    }
+
+    fn start_live_reasoning(&mut self) -> String {
+        if let Some(id) = self.live_reasoning_item_id.clone() {
+            return id;
+        }
+        let id = self.push(
+            MobileTimelineItemKind::Status,
+            MobileTimelineItemStatus::Running,
+            "Reasoning",
+            "",
+        );
+        self.live_reasoning_item_id = Some(id.clone());
+        id
+    }
+
+    pub fn finish_live_reasoning(&mut self) {
+        if let Some(id) = self.live_reasoning_item_id.take() {
+            if let Some(item) = self.items.iter_mut().find(|item| item.id == id) {
+                if item.body.trim().is_empty() {
+                    self.items.retain(|existing| existing.id != id);
+                } else {
+                    item.status = MobileTimelineItemStatus::Done;
+                }
+            }
+        }
     }
 
     pub fn fail_live_assistant_message(&mut self) {
@@ -152,12 +195,141 @@ impl MobileTimelineState {
     }
 
     pub fn push_status(&mut self, body: impl Into<String>) -> String {
+        self.seal_agent_status_items();
         self.push(
             MobileTimelineItemKind::Status,
             MobileTimelineItemStatus::Running,
             "Agent status",
             body,
         )
+    }
+
+    /// Mark in-flight agent status / tool rows as finished (end of turn or restore).
+    pub fn seal_open_work_items(&mut self) {
+        self.finish_live_assistant_message();
+        self.finish_live_reasoning();
+        for item in &mut self.items {
+            match item.status {
+                MobileTimelineItemStatus::Running | MobileTimelineItemStatus::Pending => {
+                    match item.kind {
+                        MobileTimelineItemKind::Status
+                        | MobileTimelineItemKind::NativeCommand
+                        | MobileTimelineItemKind::ToolCall => {
+                            item.status = MobileTimelineItemStatus::Done;
+                        }
+                        _ => {}
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    /// Close the previous running «Agent status» line before appending another.
+    pub fn seal_agent_status_items(&mut self) {
+        for item in &mut self.items {
+            if item.kind == MobileTimelineItemKind::Status
+                && item.status == MobileTimelineItemStatus::Running
+                && item.title == "Agent status"
+            {
+                item.status = MobileTimelineItemStatus::Done;
+            }
+        }
+    }
+
+    /// Pair a finished tool result with its matching in-flight tool row.
+    pub fn seal_tool_call(&mut self, tool_name: &str) {
+        let title = format!("Tool: {tool_name}");
+        if let Some(item) = self.items.iter_mut().rev().find(|item| {
+            item.kind == MobileTimelineItemKind::ToolCall
+                && item.status == MobileTimelineItemStatus::Running
+                && item.title == title
+        }) {
+            item.status = MobileTimelineItemStatus::Done;
+        }
+    }
+
+    /// Keep the chat usable when many old failures were persisted on disk.
+    pub fn retain_recent(&mut self, max_items: usize) {
+        if self.items.len() > max_items {
+            let drop = self.items.len() - max_items;
+            self.items.drain(0..drop);
+        }
+    }
+
+    /// After reloading persisted events: merge legacy per-chunk Reasoning rows, drop probe noise.
+    pub fn compact_for_display(&mut self) {
+        self.items.retain(|item| {
+            !(item.kind == MobileTimelineItemKind::AssistantMessage
+                && item.body.trim() == "PROBE_OK")
+        });
+
+        let mut merged: Vec<MobileTimelineItem> = Vec::new();
+        for item in self.items.drain(..) {
+            if let Some(last) = merged.last_mut() {
+                if last.kind == MobileTimelineItemKind::Status
+                    && last.title == "Reasoning"
+                    && item.kind == MobileTimelineItemKind::Status
+                    && item.title == "Reasoning"
+                {
+                    last.body.push_str(&item.body);
+                    last.status = item.status;
+                    continue;
+                }
+            }
+            merged.push(item);
+        }
+        self.items = merged;
+        self.live_assistant_item_id = None;
+        self.live_reasoning_item_id = None;
+    }
+
+    /// Drop stale boot errors so the chat column is not a wall of red after fixes.
+    pub fn soften_stale_errors(&mut self) {
+        let errors = self
+            .items
+            .iter()
+            .filter(|item| item.kind == MobileTimelineItemKind::Error)
+            .count();
+        if errors > 2 {
+            self.items
+                .retain(|item| item.kind != MobileTimelineItemKind::Error);
+        }
+    }
+
+    /// Ensure the model reply is visible in the conversation column (not only in status/worklog).
+    pub fn publish_assistant_reply(&mut self, text: &str) {
+        let text = text.trim();
+        if text.is_empty() {
+            return;
+        }
+        if let Some(id) = self.live_assistant_item_id.clone() {
+            if let Some(item) = self.items.iter_mut().find(|item| item.id == id) {
+                if item.body.trim().is_empty() {
+                    item.body = text.to_string();
+                }
+                item.status = MobileTimelineItemStatus::Done;
+            }
+            self.live_assistant_item_id = None;
+            return;
+        }
+        if let Some(item) = self
+            .items
+            .iter_mut()
+            .rev()
+            .find(|item| item.kind == MobileTimelineItemKind::AssistantMessage)
+        {
+            if item.body.trim().is_empty() {
+                item.body = text.to_string();
+                item.status = MobileTimelineItemStatus::Done;
+                return;
+            }
+            if item.body.contains(text) || text.contains(item.body.as_str()) {
+                item.status = MobileTimelineItemStatus::Done;
+                return;
+            }
+        }
+        self.push_assistant_message(text);
     }
 
     pub fn push_error(&mut self, body: impl Into<String>) -> String {
@@ -168,6 +340,19 @@ impl MobileTimelineState {
             "Error",
             body,
         )
+    }
+
+    /// Status lines that describe a finished turn should not keep the work log in «выполняется».
+    pub fn status_message_is_terminal(message: &str) -> bool {
+        let lower = message.to_lowercase();
+        lower.contains("готово")
+            || lower.contains("finished")
+            || lower.contains("completed")
+            || lower.contains("turn finished")
+            || lower.contains("approval continuation finished")
+            || lower.contains("калибровка termux завершена")
+            || lower.contains("termux result injected")
+            || lower.starts_with("done ·")
     }
 
     pub fn is_empty(&self) -> bool {
@@ -204,7 +389,9 @@ pub fn timeline_status_label(status: &MobileTimelineItemStatus) -> &'static str 
 
 #[cfg(test)]
 mod tests {
-    use super::{timeline_kind_label, MobileTimelineItemKind, MobileTimelineItemStatus, MobileTimelineState};
+    use super::{
+        timeline_kind_label, MobileTimelineItemKind, MobileTimelineItemStatus, MobileTimelineState,
+    };
 
     #[test]
     fn timeline_pushes_items_in_order() {
@@ -219,8 +406,14 @@ mod tests {
 
     #[test]
     fn timeline_labels_are_stable() {
-        assert_eq!(timeline_kind_label(&MobileTimelineItemKind::ToolCall), "TOOL");
-        assert_eq!(timeline_kind_label(&MobileTimelineItemKind::Approval), "APPROVAL");
+        assert_eq!(
+            timeline_kind_label(&MobileTimelineItemKind::ToolCall),
+            "TOOL"
+        );
+        assert_eq!(
+            timeline_kind_label(&MobileTimelineItemKind::Approval),
+            "APPROVAL"
+        );
     }
 
     #[test]

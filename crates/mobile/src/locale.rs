@@ -37,6 +37,10 @@ pub enum Tr {
     SetupApiPlaceholder,
     SetupTermuxLabel,
     SetupTermuxHint,
+    SetupTermuxSteps,
+    SetupInstallTermux,
+    SetupOpenTermux,
+    SetupProbeTermux,
     SetupContinue,
     SetupSandboxOnly,
     SetupErrApiPrefix,
@@ -77,6 +81,18 @@ pub fn tr(lang: AppLanguage, key: Tr) -> &'static str {
         (AppLanguage::En, Tr::SetupTermuxHint) => {
             "In Termux: mkdir -p ~/deepseek-project and allow-external-apps=true in ~/.termux/termux.properties"
         }
+        (AppLanguage::Ru, Tr::SetupTermuxSteps) => {
+            "1) Установите Termux (F-Droid) 2) В Termux: allow-external-apps=true 3) Нажмите «Проверить RUN_COMMAND»"
+        }
+        (AppLanguage::En, Tr::SetupTermuxSteps) => {
+            "1) Install Termux (F-Droid) 2) In Termux: allow-external-apps=true 3) Tap «Test RUN_COMMAND»"
+        }
+        (AppLanguage::Ru, Tr::SetupInstallTermux) => "Установить Termux",
+        (AppLanguage::En, Tr::SetupInstallTermux) => "Install Termux",
+        (AppLanguage::Ru, Tr::SetupOpenTermux) => "Открыть Termux",
+        (AppLanguage::En, Tr::SetupOpenTermux) => "Open Termux",
+        (AppLanguage::Ru, Tr::SetupProbeTermux) => "Проверить RUN_COMMAND",
+        (AppLanguage::En, Tr::SetupProbeTermux) => "Test RUN_COMMAND",
         (AppLanguage::Ru, Tr::SetupContinue) => "Продолжить",
         (AppLanguage::En, Tr::SetupContinue) => "Continue",
         (AppLanguage::Ru, Tr::SetupSandboxOnly) => "Только песочница (без Termux)",
@@ -149,6 +165,44 @@ pub fn pick(lang: AppLanguage, ru: &'static str, en: &'static str) -> &'static s
     match lang {
         AppLanguage::Ru => ru,
         AppLanguage::En => en,
+    }
+}
+
+use crate::agent_timeline::{MobileTimelineItemKind, MobileTimelineItemStatus};
+
+pub fn timeline_kind_label(lang: AppLanguage, kind: &MobileTimelineItemKind) -> &'static str {
+    match (lang, kind) {
+        (AppLanguage::Ru, MobileTimelineItemKind::UserMessage) => "ВЫ",
+        (AppLanguage::Ru, MobileTimelineItemKind::AssistantMessage) => "ИИ",
+        (AppLanguage::Ru, MobileTimelineItemKind::Attachment) => "ФАЙЛ",
+        (AppLanguage::Ru, MobileTimelineItemKind::NativeCommand) => "СИСТЕМА",
+        (AppLanguage::Ru, MobileTimelineItemKind::ToolCall) => "ИНСТР",
+        (AppLanguage::Ru, MobileTimelineItemKind::Approval) => "ОДОБР",
+        (AppLanguage::Ru, MobileTimelineItemKind::Status) => "СТАТУС",
+        (AppLanguage::Ru, MobileTimelineItemKind::Error) => "ОШИБКА",
+        (AppLanguage::En, MobileTimelineItemKind::UserMessage) => "YOU",
+        (AppLanguage::En, MobileTimelineItemKind::AssistantMessage) => "AI",
+        (AppLanguage::En, MobileTimelineItemKind::Attachment) => "FILE",
+        (AppLanguage::En, MobileTimelineItemKind::NativeCommand) => "NATIVE",
+        (AppLanguage::En, MobileTimelineItemKind::ToolCall) => "TOOL",
+        (AppLanguage::En, MobileTimelineItemKind::Approval) => "APPROVAL",
+        (AppLanguage::En, MobileTimelineItemKind::Status) => "STATUS",
+        (AppLanguage::En, MobileTimelineItemKind::Error) => "ERROR",
+    }
+}
+
+pub fn timeline_status_label(lang: AppLanguage, status: &MobileTimelineItemStatus) -> &'static str {
+    match (lang, status) {
+        (AppLanguage::Ru, MobileTimelineItemStatus::Pending) => "ожидание",
+        (AppLanguage::Ru, MobileTimelineItemStatus::Running) => "выполняется",
+        (AppLanguage::Ru, MobileTimelineItemStatus::Done) => "готово",
+        (AppLanguage::Ru, MobileTimelineItemStatus::Failed) => "ошибка",
+        (AppLanguage::Ru, MobileTimelineItemStatus::WaitingForApproval) => "одобрение",
+        (AppLanguage::En, MobileTimelineItemStatus::Pending) => "pending",
+        (AppLanguage::En, MobileTimelineItemStatus::Running) => "running",
+        (AppLanguage::En, MobileTimelineItemStatus::Done) => "done",
+        (AppLanguage::En, MobileTimelineItemStatus::Failed) => "failed",
+        (AppLanguage::En, MobileTimelineItemStatus::WaitingForApproval) => "approval",
     }
 }
 

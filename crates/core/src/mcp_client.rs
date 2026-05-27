@@ -47,7 +47,9 @@ struct StdioSession {
 static STDIO_SESSIONS: Mutex<Option<HashMap<String, StdioSession>>> = Mutex::new(None);
 
 fn stdio_sessions() -> std::sync::MutexGuard<'static, Option<HashMap<String, StdioSession>>> {
-    STDIO_SESSIONS.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+    STDIO_SESSIONS
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
 /// Connect to an MCP server and return discovered tools.
@@ -131,9 +133,17 @@ fn connect_stdio_sync(
     for (key, value) in env {
         child.env(key, value);
     }
-    child.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null());
-    let mut child = child.spawn().with_context(|| format!("spawn MCP stdio server {command}"))?;
-    let stdin = child.stdin.take().ok_or_else(|| anyhow!("stdio stdin unavailable"))?;
+    child
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null());
+    let mut child = child
+        .spawn()
+        .with_context(|| format!("spawn MCP stdio server {command}"))?;
+    let stdin = child
+        .stdin
+        .take()
+        .ok_or_else(|| anyhow!("stdio stdin unavailable"))?;
     let stdout = child
         .stdout
         .take()
@@ -191,7 +201,9 @@ fn connect_stdio_sync(
 
 fn invoke_stdio_tool(server: &str, tool_name: &str, arguments: Value) -> Result<Option<String>> {
     let mut sessions = stdio_sessions();
-    let map = sessions.as_mut().ok_or_else(|| anyhow!("no stdio MCP sessions"))?;
+    let map = sessions
+        .as_mut()
+        .ok_or_else(|| anyhow!("no stdio MCP sessions"))?;
     let session = map
         .get_mut(server)
         .ok_or_else(|| anyhow!("stdio MCP server '{}' is not connected", server))?;
@@ -243,7 +255,9 @@ async fn invoke_http_tool_with_config(
     if let Some(error) = response.error {
         return Err(anyhow!("MCP tools/call error: {}", error.message));
     }
-    Ok(serde_json::to_string_pretty(&response.result.unwrap_or(Value::Null))?)
+    Ok(serde_json::to_string_pretty(
+        &response.result.unwrap_or(Value::Null),
+    )?)
 }
 
 fn invoke_stdio_tool_with_config(
@@ -272,9 +286,17 @@ fn invoke_stdio_tool_ephemeral(
     for (key, value) in env {
         child.env(key, value);
     }
-    child.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null());
-    let mut child = child.spawn().with_context(|| format!("spawn MCP stdio server {command}"))?;
-    let mut stdin = child.stdin.take().ok_or_else(|| anyhow!("stdio stdin unavailable"))?;
+    child
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null());
+    let mut child = child
+        .spawn()
+        .with_context(|| format!("spawn MCP stdio server {command}"))?;
+    let mut stdin = child
+        .stdin
+        .take()
+        .ok_or_else(|| anyhow!("stdio stdin unavailable"))?;
     let stdout = child
         .stdout
         .take()
@@ -370,12 +392,7 @@ async fn list_tools_http(
         .collect())
 }
 
-fn write_json_rpc(
-    stdin: &mut ChildStdin,
-    id: u64,
-    method: &str,
-    params: Value,
-) -> Result<()> {
+fn write_json_rpc(stdin: &mut ChildStdin, id: u64, method: &str, params: Value) -> Result<()> {
     let line = serde_json::to_string(&json!({
         "jsonrpc": "2.0",
         "id": id,
@@ -468,7 +485,13 @@ mod tests {
 
     #[test]
     fn mcp_endpoint_appends_suffix_when_missing() {
-        assert_eq!(mcp_endpoint("http://localhost:3000"), "http://localhost:3000/mcp");
-        assert_eq!(mcp_endpoint("http://localhost:3000/mcp"), "http://localhost:3000/mcp");
+        assert_eq!(
+            mcp_endpoint("http://localhost:3000"),
+            "http://localhost:3000/mcp"
+        );
+        assert_eq!(
+            mcp_endpoint("http://localhost:3000/mcp"),
+            "http://localhost:3000/mcp"
+        );
     }
 }

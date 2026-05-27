@@ -33,7 +33,10 @@ impl WorkspaceFileService {
     pub fn list_files(&self, relative_dir: impl AsRef<Path>) -> Result<Vec<WorkspaceFileEntry>> {
         let dir = self.resolve_existing_path(relative_dir)?;
         if !dir.is_dir() {
-            return Err(anyhow!("workspace path is not a directory: {}", dir.display()));
+            return Err(anyhow!(
+                "workspace path is not a directory: {}",
+                dir.display()
+            ));
         }
 
         let mut entries = Vec::new();
@@ -148,7 +151,9 @@ mod tests {
         let workspace = test_workspace("read_write");
         let service = WorkspaceFileService::new(workspace.clone());
 
-        service.write_text_file("src/main.rs", "fn main() {}").unwrap();
+        service
+            .write_text_file("src/main.rs", "fn main() {}")
+            .unwrap();
         let content = service.read_text_file("src/main.rs").unwrap();
 
         assert_eq!(content, "fn main() {}");
@@ -160,7 +165,9 @@ mod tests {
         let workspace = test_workspace("reject_escape");
         let service = WorkspaceFileService::new(workspace.clone());
 
-        let err = service.write_text_file("../outside.txt", "secret").unwrap_err();
+        let err = service
+            .write_text_file("../outside.txt", "secret")
+            .unwrap_err();
         assert!(err.to_string().contains("outside workspace"));
         let _ = fs::remove_dir_all(workspace.root);
     }
@@ -174,7 +181,10 @@ mod tests {
         service.write_text_file("b.txt", "bb").unwrap();
 
         let entries = service.list_files(".").unwrap();
-        let paths = entries.into_iter().map(|entry| entry.path).collect::<Vec<PathBuf>>();
+        let paths = entries
+            .into_iter()
+            .map(|entry| entry.path)
+            .collect::<Vec<PathBuf>>();
 
         assert!(paths.contains(&PathBuf::from("a.txt")));
         assert!(paths.contains(&PathBuf::from("b.txt")));

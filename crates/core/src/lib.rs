@@ -5,13 +5,12 @@ pub mod api_client;
 pub mod approval;
 pub mod approval_card;
 pub mod approval_session;
-pub mod auto_commit;
 pub mod approval_session_runtime;
+pub mod auto_commit;
 pub mod chat_input;
 pub mod config;
 pub mod config_bootstrap;
 pub mod config_store;
-pub mod mcp_client;
 pub mod context;
 pub mod durable_task;
 pub mod engine;
@@ -20,6 +19,7 @@ pub mod executor;
 pub mod github;
 pub mod large_output;
 pub mod mcp;
+pub mod mcp_client;
 pub mod model_router;
 pub mod pc_gateway;
 pub mod pc_gateway_client;
@@ -43,14 +43,14 @@ pub mod workspace_files;
 pub mod workspace_io;
 
 pub use agent::DeepSeekAgent;
-pub use api_client::{DeepSeekClient, Message, StreamDelta};
+pub use api_client::{format_http_transport_error, DeepSeekClient, Message, StreamDelta};
 pub use approval::{
     categorize_tool, classify_risk, should_request_approval, ApprovalMode, ApprovalRisk,
     MobileApprovalRequest, ReviewDecision, ToolCategory,
 };
 pub use approval_card::{
-    approval_cards_from_records, sanitize_value_for_preview, ApprovalCardAction, ApprovalCardSeverity,
-    ApprovalCardStatus, ApprovalCardView,
+    approval_cards_from_records, sanitize_value_for_preview, ApprovalCardAction,
+    ApprovalCardSeverity, ApprovalCardStatus, ApprovalCardView,
 };
 pub use approval_session::{
     can_grant_for_session, ApprovalSessionGrant, ApprovalSessionPolicy, ApprovalSessionScope,
@@ -60,10 +60,6 @@ pub use chat_input::{UserAttachmentKind, UserAttachmentRef, UserChatInput};
 pub use config::{Config, ExecutionMode, ExternalAccessMode, ModelMode, ThinkingLevel};
 pub use config_bootstrap::apply_dev_api_key_bootstrap;
 pub use config_store::{ConfigStore, PublicConfig};
-pub use mcp_client::{
-    connect_mcp_server, default_mcp_path, invoke_mcp_tool, invoke_mcp_tool_at_path,
-    load_connected_mcp_tools, tools_for_server,
-};
 pub use context::{
     estimate_messages_tokens, estimate_text_tokens, CompressionStrategy, ContextBudget,
     ContextCompressionPlan, ContextManager,
@@ -72,30 +68,40 @@ pub use durable_task::{DurableTaskManager, DurableTaskRecord, DurableTaskStatus}
 pub use engine::{
     EngineApprovalContinuationResult, EnginePendingApprovalSnapshot, EngineTurnResult, MobileEngine,
 };
-pub use events::{AgentEvent, ApprovalRequest, PatchProposal, RiskLevel, ToolCallEvent, ToolResultEvent};
+pub use events::{
+    AgentEvent, ApprovalRequest, PatchProposal, RiskLevel, ToolCallEvent, ToolResultEvent,
+};
 pub use executor::{
     CommandOutput, CommandRequest, DisabledExecutor, Executor, PcGatewayExecutorPlan,
     PcGatewayPlannedExecutor, TermuxExecRequest, TermuxExecResult,
 };
-pub use github::{GitHubBranch, GitHubClient, GitHubCommitResult, GitHubContentEntry, GitHubFileContent,
-    GitHubIssue, GitHubPullRequest, GitHubRepo, GitHubRepoInfo};
+pub use github::{
+    GitHubBranch, GitHubClient, GitHubCommitResult, GitHubContentEntry, GitHubFileContent,
+    GitHubIssue, GitHubPullRequest, GitHubRepo, GitHubRepoInfo,
+};
 pub use large_output::{
     format_tool_results_message, route_tool_result_for_model, RoutedToolOutput,
     DEFAULT_MAX_TOOL_RESULT_CHARS,
 };
-pub use mcp::{McpClientRegistry, McpServerConfig, McpServerState, McpServerStatus, McpToolDescriptor, McpTransport};
+pub use mcp::{
+    McpClientRegistry, McpServerConfig, McpServerState, McpServerStatus, McpToolDescriptor,
+    McpTransport,
+};
+pub use mcp_client::{
+    connect_mcp_server, default_mcp_path, invoke_mcp_tool, invoke_mcp_tool_at_path,
+    load_connected_mcp_tools, tools_for_server,
+};
 pub use model_router::{ModelRouter, RouteDecision, TaskProfile};
 pub use pc_gateway::{
     is_private_or_loopback_http_url, validate_gateway_base_url,
-    validate_gateway_base_url_for_transport, PcDiagnostic, PcDiagnosticSeverity,
-    PcEnvironmentDescriptor, PcEnvironmentKind, PcGatewayCapability, PcGatewayConfig,
-    PcGatewayConnectionStatus, PcGatewayDirEntry, PcGatewayEndpointCandidate, PcGatewayError,
-    PcGatewayHealth, PcGatewayPairingRequest, PcGatewayPairingResponse, PcGatewayRequest,
-    PcGatewayRequestEnvelope, PcGatewayResponse, PcGatewayResponseEnvelope,
-    PcGatewaySecurityPolicy, PcGatewayTransportMode, PcGatewayTrustLevel, PolicyPreset, PcPreviewDescriptor,
-    CommandStreamEvent, PcRunningTaskEvent, PcTaskDescriptor, PcTaskKind, PcTerminalSession, PcWorkspaceGrant,
-    PcRunningTaskInfo,
-    PcWorkspaceIndexSummary,
+    validate_gateway_base_url_for_transport, CommandStreamEvent, PcDiagnostic,
+    PcDiagnosticSeverity, PcEnvironmentDescriptor, PcEnvironmentKind, PcGatewayCapability,
+    PcGatewayConfig, PcGatewayConnectionStatus, PcGatewayDirEntry, PcGatewayEndpointCandidate,
+    PcGatewayError, PcGatewayHealth, PcGatewayPairingRequest, PcGatewayPairingResponse,
+    PcGatewayRequest, PcGatewayRequestEnvelope, PcGatewayResponse, PcGatewayResponseEnvelope,
+    PcGatewaySecurityPolicy, PcGatewayTransportMode, PcGatewayTrustLevel, PcPreviewDescriptor,
+    PcRunningTaskEvent, PcRunningTaskInfo, PcTaskDescriptor, PcTaskKind, PcTerminalSession,
+    PcWorkspaceGrant, PcWorkspaceIndexSummary, PolicyPreset,
 };
 pub use pc_gateway_client::{PcGatewayClient, PcGatewayEndpointHealth};
 pub use pc_gateway_discovery::{
@@ -116,21 +122,27 @@ pub use runtime_store::{
 pub use session::Session;
 pub use skills::{SkillManifest, SkillRegistry};
 pub use snapshots::{
-    WorkspaceRestoreReport, WorkspaceSnapshotFile, WorkspaceSnapshotRecord, WorkspaceSnapshotService,
+    WorkspaceRestoreReport, WorkspaceSnapshotFile, WorkspaceSnapshotRecord,
+    WorkspaceSnapshotService,
 };
-pub use tool_call::{parse_tool_calls_from_text, ToolCallParseResult, ToolCallRequest, ToolCallSource};
+pub use tool_call::{
+    parse_tool_calls_from_text, ToolCallParseResult, ToolCallRequest, ToolCallSource,
+};
 pub use tool_execution::{ToolExecutionCoordinator, ToolExecutionRoute, ToolExecutionTarget};
 pub use tool_loop::{
-    continue_pending_tool_approval, continue_pending_tool_approval_with_session, execute_approved_call,
-    process_model_text_with_tools, process_model_text_with_tools_and_session, PendingToolCallApproval,
-    ToolLoopExecutionRecord, ToolLoopOutcome,
+    continue_pending_tool_approval, continue_pending_tool_approval_with_session,
+    execute_approved_call, process_model_text_with_tools,
+    process_model_text_with_tools_and_session, PendingToolCallApproval, ToolLoopExecutionRecord,
+    ToolLoopOutcome,
 };
-pub use tools::{ApprovalRequirement, ToolCapability, ToolContext, ToolRegistry, ToolResult, ToolSpec};
+pub use tools::{
+    ApprovalRequirement, ToolCapability, ToolContext, ToolRegistry, ToolResult, ToolSpec,
+};
 pub use turn::{TokenUsage, TurnContext, TurnStatus, TurnToolCall};
 pub use workspace::{ExecutorKind, Workspace};
 pub use workspace_connection::{
-    WorkspaceBackendKind, WorkspaceConnection, WorkspaceConnectionManager, WorkspaceConnectionStatus,
-    WorkspaceSelectionPolicy,
+    WorkspaceBackendKind, WorkspaceConnection, WorkspaceConnectionManager,
+    WorkspaceConnectionStatus, WorkspaceSelectionPolicy,
 };
 pub use workspace_connection_store::{WorkspaceConnectionStore, WorkspaceConnectionStoreFile};
 pub use workspace_diagnostics::{

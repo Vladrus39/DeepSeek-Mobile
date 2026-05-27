@@ -1,6 +1,15 @@
 # DeepSeek-Mobile — active progress
 
-**Current session:** 2026-05-26 — Android device launch stabilization, icon/favicon, documentation sync.
+**Current session:** 2026-05-28 — Phone-agent priority, timeline/restore fixes (#8/#6), Termux onboarding, docs sync.
+
+## Completed 2026-05-28
+
+- **#8** Timeline status finalization (`seal_open_work_items`, tool pairing, turn-end seal).
+- **#6** Graceful timeline restore (skip corrupt/empty runtime JSON, no EOF banner).
+- Termux setup UX: Install / Open / Test RUN_COMMAND on setup screen; post-setup workspace seed flag.
+- Kotlin host: `launch_app`, `open_url`, `open_system_settings`, `request_termux_permission` status.
+- Product docs: PC Host deferred; canonical ADB script `scripts/adb-control.ps1`.
+- `cargo test --workspace` — passed.
 
 ## Completed in the latest tranche
 

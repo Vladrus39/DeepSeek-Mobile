@@ -1,6 +1,9 @@
 //! Model-visible workspace snapshot tools.
 
-use super::{optional_str, required_str, ApprovalRequirement, ToolCapability, ToolContext, ToolResult, ToolSpec};
+use super::{
+    optional_str, required_str, ApprovalRequirement, ToolCapability, ToolContext, ToolResult,
+    ToolSpec,
+};
 use crate::snapshots::WorkspaceSnapshotService;
 use anyhow::Result;
 use serde_json::{json, Value};
@@ -69,8 +72,10 @@ impl ToolSpec for ListSnapshotsTool {
     fn execute(&self, input: Value, context: &ToolContext) -> Result<ToolResult> {
         let service = snapshot_service(&input, context)?;
         let snapshots = service.list_snapshots()?;
-        Ok(ToolResult::success(serde_json::to_string_pretty(&snapshots)?)
-            .with_metadata(serde_json::to_value(snapshots)?))
+        Ok(
+            ToolResult::success(serde_json::to_string_pretty(&snapshots)?)
+                .with_metadata(serde_json::to_value(snapshots)?),
+        )
     }
 }
 
@@ -122,8 +127,17 @@ fn snapshot_service(input: &Value, context: &ToolContext) -> Result<WorkspaceSna
     let store_root = optional_str(input, "store_root")
         .map(|path| context.resolve_path(path))
         .transpose()?
-        .unwrap_or_else(|| context.workspace.root.join(".deepseek-mobile").join("snapshots"));
-    Ok(WorkspaceSnapshotService::new(context.workspace.clone(), store_root))
+        .unwrap_or_else(|| {
+            context
+                .workspace
+                .root
+                .join(".deepseek-mobile")
+                .join("snapshots")
+        });
+    Ok(WorkspaceSnapshotService::new(
+        context.workspace.clone(),
+        store_root,
+    ))
 }
 
 #[cfg(test)]
@@ -151,7 +165,9 @@ mod tests {
         let (context, root) = context("roundtrip");
         fs::write(root.join("README.md"), "v1").unwrap();
 
-        let create = CreateSnapshotTool.execute(json!({"reason":"test"}), &context).unwrap();
+        let create = CreateSnapshotTool
+            .execute(json!({"reason":"test"}), &context)
+            .unwrap();
         let snapshot_id = create.metadata.unwrap()["id"].as_str().unwrap().to_string();
         fs::write(root.join("README.md"), "broken").unwrap();
 

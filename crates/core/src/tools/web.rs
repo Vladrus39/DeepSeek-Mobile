@@ -145,12 +145,13 @@ impl ToolSpec for WebSearchTool {
         let rt = tokio::runtime::Handle::current();
         let results = rt.block_on(search_duckduckgo(query, max_results))?;
 
-        Ok(ToolResult::success(serde_json::to_string_pretty(&results)?)
-            .with_metadata(json!({
+        Ok(
+            ToolResult::success(serde_json::to_string_pretty(&results)?).with_metadata(json!({
                 "query": query,
                 "result_count": results.len(),
                 "source": "web_search"
-            })))
+            })),
+        )
     }
 }
 
@@ -175,7 +176,11 @@ async fn fetch_url_text(url: &str, max_bytes: usize, timeout_secs: u64) -> Resul
 
     let status = response.status();
     if !status.is_success() {
-        return Err(anyhow!("HTTP {} {}", status.as_u16(), status.canonical_reason().unwrap_or("")));
+        return Err(anyhow!(
+            "HTTP {} {}",
+            status.as_u16(),
+            status.canonical_reason().unwrap_or("")
+        ));
     }
 
     let content_type = response
@@ -296,7 +301,10 @@ fn parse_ddg_lite_html(html: &str, max_results: usize) -> Vec<DdgResult> {
                 let td_start = find_after(html_bytes, ss, ">");
                 match td_start {
                     Some(td) => {
-                        let end = html[td + 1..].find("</td>").map(|e| td + 1 + e).unwrap_or(html.len());
+                        let end = html[td + 1..]
+                            .find("</td>")
+                            .map(|e| td + 1 + e)
+                            .unwrap_or(html.len());
                         html_to_text(&html[td + 1..end])
                     }
                     None => String::new(),
@@ -327,7 +335,9 @@ fn parse_ddg_lite_html(html: &str, max_results: usize) -> Vec<DdgResult> {
 fn find_after(haystack: &[u8], start: usize, needle: &str) -> Option<usize> {
     let needle_bytes = needle.as_bytes();
     let slice = haystack.get(start..)?;
-    let offset = slice.windows(needle_bytes.len()).position(|w| w == needle_bytes)?;
+    let offset = slice
+        .windows(needle_bytes.len())
+        .position(|w| w == needle_bytes)?;
     Some(start + offset)
 }
 
@@ -374,20 +384,29 @@ mod tests {
     #[test]
     fn web_fetch_rejects_invalid_urls() {
         let tool = WebFetchTool;
-        let ctx = ToolContext::new(
-            crate::workspace::Workspace::new("test", "Test", std::path::PathBuf::from("."), crate::workspace::ExecutorKind::LocalAndroid),
-        );
+        let ctx = ToolContext::new(crate::workspace::Workspace::new(
+            "test",
+            "Test",
+            std::path::PathBuf::from("."),
+            crate::workspace::ExecutorKind::LocalAndroid,
+        ));
         let result = tool.execute(json!({"url": "ftp://example.com/file.txt"}), &ctx);
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("URL must start with http"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("URL must start with http"));
     }
 
     #[test]
     fn web_fetch_missing_url_is_rejected() {
         let tool = WebFetchTool;
-        let ctx = ToolContext::new(
-            crate::workspace::Workspace::new("test", "Test", std::path::PathBuf::from("."), crate::workspace::ExecutorKind::LocalAndroid),
-        );
+        let ctx = ToolContext::new(crate::workspace::Workspace::new(
+            "test",
+            "Test",
+            std::path::PathBuf::from("."),
+            crate::workspace::ExecutorKind::LocalAndroid,
+        ));
         let result = tool.execute(json!({}), &ctx);
         assert!(result.is_err());
     }
@@ -395,9 +414,12 @@ mod tests {
     #[test]
     fn web_search_missing_query_is_rejected() {
         let tool = WebSearchTool;
-        let ctx = ToolContext::new(
-            crate::workspace::Workspace::new("test", "Test", std::path::PathBuf::from("."), crate::workspace::ExecutorKind::LocalAndroid),
-        );
+        let ctx = ToolContext::new(crate::workspace::Workspace::new(
+            "test",
+            "Test",
+            std::path::PathBuf::from("."),
+            crate::workspace::ExecutorKind::LocalAndroid,
+        ));
         let result = tool.execute(json!({}), &ctx);
         assert!(result.is_err());
     }
@@ -421,10 +443,7 @@ mod tests {
     #[test]
     fn html_to_text_strips_tags() {
         assert_eq!(html_to_text("<b>hello</b> world"), "hello world");
-        assert_eq!(
-            html_to_text("<div>line1<br>line2</div>"),
-            "line1line2"
-        );
+        assert_eq!(html_to_text("<div>line1<br>line2</div>"), "line1line2");
     }
 
     #[test]

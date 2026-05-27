@@ -2,14 +2,19 @@ package dev.dioxus.main
 
 import android.app.PendingIntent
 import android.content.Intent
+import android.graphics.Color
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
+import android.util.Log
+import android.view.View
+import androidx.core.view.WindowCompat
 import com.deepseek.mobile.bridge.DeepSeekMobileHostCoordinator
 import com.deepseek.mobile.bridge.NativeBridge
 import com.deepseek.mobile.bridge.NativeBridgeBindings
 import com.deepseek.mobile.bridge.TermuxResultReceiver
 import java.io.File
+import java.util.concurrent.Executors
+import java.util.concurrent.ScheduledFuture
+import java.util.concurrent.TimeUnit
 
 /**
  * Dioxus 0.7 generates Kotlin support files in `dev.dioxus.main`, while Gradle
@@ -24,17 +29,23 @@ object BuildConfig {
 /**
  * Dioxus Android shell activity. Must subclass [WryActivity] so the mobile runtime can start.
  *
- * Host command drain runs on the main thread while the activity is resumed.
+ * Host command drain runs while the activity process is alive (not only when resumed)
+ * so Termux RUN_COMMAND can flush when the WebView pauses.
  */
 class MainActivity : WryActivity(), NativeBridgeBindings {
     private lateinit var hostCoordinator: DeepSeekMobileHostCoordinator
-    private val hostHandler = Handler(Looper.getMainLooper())
-    private val drainRunnable = object : Runnable {
-        override fun run() {
-            while (hostCoordinator.pollAndHandleNextAction()) {
-                // Drain the Rust native queue until empty.
+    private val hostExecutor = Executors.newSingleThreadScheduledExecutor { runnable ->
+        Thread(runnable, "DeepSeekHostDrain").apply { isDaemon = true }
+    }
+    private var hostDrainFuture: ScheduledFuture<*>? = null
+    private val drainRunnable = Runnable {
+        try {
+            var drained = 0
+            while (drained < HOST_MAX_ACTIONS_PER_TICK && hostCoordinator.pollAndHandleNextAction()) {
+                drained += 1
             }
-            hostHandler.postDelayed(this, HOST_POLL_INTERVAL_MS)
+        } catch (error: Throwable) {
+            Log.e(TAG, "Native host drain failed", error)
         }
     }
 
@@ -43,9 +54,11 @@ class MainActivity : WryActivity(), NativeBridgeBindings {
         dataDir.mkdirs()
         NativeBridge.initMobileDataDir(dataDir.absolutePath)
         super.onCreate(savedInstanceState)
+        configureEdgeToEdgeShell()
         hostCoordinator = DeepSeekMobileHostCoordinator.create(
             activity = this,
             bindings = this,
+            onExternalActivityLaunched = {},
             termuxPendingIntentFactory = { requestId ->
                 PendingIntent.getBroadcast(
                     this,
@@ -57,17 +70,35 @@ class MainActivity : WryActivity(), NativeBridgeBindings {
                 )
             },
         )
+        startHostDrain()
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        // Dioxus/Wry forwards this event into native code. On the tested Samsung
+        // Android 13 device, returning from ACTION_OPEN_DOCUMENT can hang while
+        // Android waits for FocusEvent(hasFocus=true). The WebView remains
+        // interactive without the native focus callback, so we intentionally do
+        // not call super here.
     }
 
     override fun onResume() {
         super.onResume()
-        hostHandler.removeCallbacks(drainRunnable)
-        hostHandler.post(drainRunnable)
+        startHostDrain()
     }
 
     override fun onPause() {
-        hostHandler.removeCallbacks(drainRunnable)
+        // Keep draining the Rust host queue in background; calibration/Termux must not
+        // stall when Android pauses the WebView (e.g. split-screen, brief overlays).
         super.onPause()
+    }
+
+    override fun onDestroy() {
+        stopHostDrain()
+        if (::hostCoordinator.isInitialized) {
+            hostCoordinator.shutdown()
+        }
+        hostExecutor.shutdownNow()
+        super.onDestroy()
     }
 
     override fun pollNextHostActionJson(): String? = NativeBridge.pollNextHostActionJson()
@@ -76,7 +107,36 @@ class MainActivity : WryActivity(), NativeBridgeBindings {
         NativeBridge.deliverHostCallbackJson(payload)
     }
 
+    private fun configureEdgeToEdgeShell() {
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        window.statusBarColor = Color.TRANSPARENT
+        window.navigationBarColor = Color.BLACK
+        @Suppress("DEPRECATION")
+        window.decorView.systemUiVisibility =
+            View.SYSTEM_UI_FLAG_LAYOUT_STABLE or
+                View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or
+                View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+    }
+
+    private fun startHostDrain() {
+        if (!::hostCoordinator.isInitialized) return
+        if (hostDrainFuture?.isCancelled == false && hostDrainFuture?.isDone == false) return
+        hostDrainFuture = hostExecutor.scheduleWithFixedDelay(
+            drainRunnable,
+            0L,
+            HOST_POLL_INTERVAL_MS,
+            TimeUnit.MILLISECONDS,
+        )
+    }
+
+    private fun stopHostDrain() {
+        hostDrainFuture?.cancel(false)
+        hostDrainFuture = null
+    }
+
     companion object {
         private const val HOST_POLL_INTERVAL_MS = 250L
+        private const val HOST_MAX_ACTIONS_PER_TICK = 16
+        private const val TAG = "DeepSeekMainActivity"
     }
 }

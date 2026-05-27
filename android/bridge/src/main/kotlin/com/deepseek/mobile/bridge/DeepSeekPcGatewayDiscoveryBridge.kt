@@ -4,6 +4,8 @@ import android.content.Context
 import android.net.nsd.NsdManager
 import android.net.nsd.NsdServiceInfo
 import android.net.wifi.WifiManager
+import android.os.Handler
+import android.os.Looper
 import java.net.InetAddress
 import java.nio.charset.Charset
 import java.util.ArrayDeque
@@ -37,6 +39,8 @@ class DeepSeekPcGatewayDiscoveryBridge(
     private val pendingResolve = ArrayDeque<NsdServiceInfo>()
     private var resolving = false
     private val records = linkedMapOf<String, AndroidPcGatewayMdnsRecordPayload>()
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private var stopAfterTimeout: Runnable? = null
 
     @Synchronized
     fun startDiscovery(command: AndroidPcGatewayDiscoveryCommandPayload = AndroidPcGatewayDiscoveryCommandPayload()) {
@@ -55,11 +59,28 @@ class DeepSeekPcGatewayDiscoveryBridge(
             nsdManager.discoverServices(command.serviceType, NsdManager.PROTOCOL_DNS_SD, listener)
         } catch (error: Throwable) {
             fail(command.requestId, error.message ?: error.javaClass.simpleName)
+            return
         }
+        scheduleStopAfterTimeout(command)
+    }
+
+    private fun scheduleStopAfterTimeout(command: AndroidPcGatewayDiscoveryCommandPayload) {
+        stopAfterTimeout?.let { mainHandler.removeCallbacks(it) }
+        val runnable = Runnable {
+            synchronized(this) {
+                if (activeCommand?.requestId == command.requestId) {
+                    stopDiscovery()
+                }
+            }
+        }
+        stopAfterTimeout = runnable
+        mainHandler.postDelayed(runnable, command.timeoutMs.coerceAtLeast(1_000L))
     }
 
     @Synchronized
     fun stopDiscovery() {
+        stopAfterTimeout?.let { mainHandler.removeCallbacks(it) }
+        stopAfterTimeout = null
         val command = activeCommand
         val listener = discoveryListener
         if (listener != null) {
@@ -202,7 +223,7 @@ class DeepSeekPcGatewayDiscoveryBridge(
 data class AndroidPcGatewayDiscoveryCommandPayload(
     val requestId: String = UUID.randomUUID().toString(),
     val serviceType: String = "_deepseek-pc-gateway._tcp.",
-    val timeoutMs: Long = 5000L
+    val timeoutMs: Long = 12_000L
 )
 
 data class AndroidPcGatewayMdnsRecordPayload(

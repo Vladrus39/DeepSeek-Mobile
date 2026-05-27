@@ -2,11 +2,47 @@
 //!
 //! Supports DeepSeek V4 reasoning tokens via `reasoning_content` in deltas.
 
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Context, Result};
 use futures_util::StreamExt;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
+use std::time::Duration;
 use tokio::sync::mpsc;
+
+fn build_http_client() -> Result<Client> {
+    Client::builder()
+        .timeout(Duration::from_secs(120))
+        .connect_timeout(Duration::from_secs(45))
+        .user_agent("DeepSeek-Mobile/0.1")
+        .build()
+        .context("build HTTP client")
+}
+
+/// User-facing message for failed API transport (Android/desktop).
+pub fn format_http_transport_error(error: &anyhow::Error) -> String {
+    let chain = error
+        .chain()
+        .map(|e| e.to_string())
+        .collect::<Vec<_>>()
+        .join(" | ");
+    let lower = chain.to_lowercase();
+    if lower.contains("deepseek_api_key") || lower.contains("api_key is not set") {
+        return "Не задан API-ключ DeepSeek. Откройте ☰ → Настройки и сохраните ключ sk-…"
+            .to_string();
+    }
+    if lower.contains("dns") || lower.contains("lookup") {
+        return format!("Нет DNS/интернета для api.deepseek.com. Проверьте Wi‑Fi или мобильные данные. ({chain})");
+    }
+    if lower.contains("certificate") || lower.contains("tls") || lower.contains("ssl") {
+        return format!(
+            "Ошибка TLS при подключении к DeepSeek API. Проверьте дату на телефоне, VPN/firewall/proxy и разрешение сети для приложения. ({chain})"
+        );
+    }
+    if lower.contains("timed out") || lower.contains("timeout") {
+        return format!("Таймаут запроса к DeepSeek API. Повторите или проверьте сеть. ({chain})");
+    }
+    format!("Сеть DeepSeek API: {chain}")
+}
 
 #[derive(Serialize)]
 struct ChatRequest {
@@ -60,8 +96,9 @@ pub struct DeepSeekClient {
 
 impl DeepSeekClient {
     pub fn new(api_key: String) -> Self {
+        let client = build_http_client().unwrap_or_else(|_| Client::new());
         Self {
-            client: Client::new(),
+            client,
             api_key,
             base_url: "https://api.deepseek.com/v1".to_string(),
         }
@@ -79,13 +116,15 @@ impl DeepSeekClient {
             stream: false,
         };
 
-        let response = self.client
+        let response = self
+            .client
             .post(format!("{}/chat/completions", self.base_url))
             .header("Authorization", format!("Bearer {}", self.api_key))
             .header("Content-Type", "application/json")
             .json(&req)
             .send()
-            .await?;
+            .await
+            .with_context(|| format!("POST {}/chat/completions", self.base_url))?;
 
         if !response.status().is_success() {
             let status = response.status();
@@ -93,9 +132,10 @@ impl DeepSeekClient {
             return Err(anyhow!("DeepSeek API error {}: {}", status, text));
         }
 
-        let chat_resp: ChatResponse = response.json().await?;
+        let chat_resp: ChatResponse = response.json().await.context("parse DeepSeek API JSON")?;
 
-        chat_resp.choices
+        chat_resp
+            .choices
             .first()
             .and_then(|c| c.message.as_ref())
             .map(|m| m.content.clone())
@@ -120,13 +160,15 @@ impl DeepSeekClient {
             stream: true,
         };
 
-        let response = self.client
+        let response = self
+            .client
             .post(format!("{}/chat/completions", self.base_url))
             .header("Authorization", format!("Bearer {}", self.api_key))
             .header("Content-Type", "application/json")
             .json(&req)
             .send()
-            .await?;
+            .await
+            .with_context(|| format!("POST {}/chat/completions (stream)", self.base_url))?;
 
         if !response.status().is_success() {
             let status = response.status();
@@ -146,9 +188,9 @@ impl DeepSeekClient {
                     if let Ok(text) = String::from_utf8(bytes.to_vec()) {
                         buffer.push_str(&text);
 
-                        while let Some(pos) = buffer.find("\n\n") {
+                        while let Some((pos, sep_len)) = find_sse_event_separator(&buffer) {
                             let event_block = buffer[..pos].to_string();
-                            buffer = buffer[pos + 2..].to_string();
+                            buffer = buffer[pos + sep_len..].to_string();
 
                             for line in event_block.lines() {
                                 let line = line.trim();
@@ -166,13 +208,21 @@ impl DeepSeekClient {
                                                 // Emit reasoning first (V4 thinking tokens)
                                                 if let Some(reasoning) = &delta.reasoning_content {
                                                     if !reasoning.is_empty() {
-                                                        let _ = tx.send(StreamDelta::Reasoning(reasoning.clone())).await;
+                                                        let _ = tx
+                                                            .send(StreamDelta::Reasoning(
+                                                                reasoning.clone(),
+                                                            ))
+                                                            .await;
                                                     }
                                                 }
                                                 // Emit final text content
                                                 if let Some(content) = &delta.content {
                                                     if !content.is_empty() {
-                                                        let _ = tx.send(StreamDelta::Text(content.clone())).await;
+                                                        let _ = tx
+                                                            .send(StreamDelta::Text(
+                                                                content.clone(),
+                                                            ))
+                                                            .await;
                                                     }
                                                 }
                                             }
@@ -190,5 +240,30 @@ impl DeepSeekClient {
         });
 
         Ok(rx)
+    }
+}
+
+fn find_sse_event_separator(buffer: &str) -> Option<(usize, usize)> {
+    ["\r\n\r\n", "\n\n", "\r\r"]
+        .iter()
+        .filter_map(|separator| buffer.find(separator).map(|pos| (pos, separator.len())))
+        .min_by_key(|(pos, _)| *pos)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::find_sse_event_separator;
+
+    #[test]
+    fn sse_separator_detects_lf_blocks() {
+        assert_eq!(find_sse_event_separator("data: {}\n\nnext"), Some((8, 2)));
+    }
+
+    #[test]
+    fn sse_separator_detects_crlf_blocks() {
+        assert_eq!(
+            find_sse_event_separator("data: {}\r\n\r\nnext"),
+            Some((8, 4))
+        );
     }
 }

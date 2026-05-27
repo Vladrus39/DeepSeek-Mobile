@@ -13,6 +13,9 @@ pub fn setup_panel(
     validation_error: Signal<Option<String>>,
     on_continue: EventHandler<()>,
     on_sandbox_only: EventHandler<()>,
+    on_install_termux: EventHandler<()>,
+    on_open_termux: EventHandler<()>,
+    on_probe_termux: EventHandler<()>,
 ) -> Element {
     let layout = screen_layout();
     let card_style = centered_card_style(&layout);
@@ -76,6 +79,32 @@ pub fn setup_panel(
                     style: "width:100%;box-sizing:border-box;background:#1f2937;color:white;padding:{layout.button_padding};border:1px solid #4b5563;border-radius:14px;font-size:{layout.body_font};min-height:48px;",
                     value: "{termux_path_draft}",
                     oninput: move |e| termux_path_draft.set(e.value()),
+                }
+
+                div {
+                    style: "display:flex;flex-direction:column;gap:8px;margin-top:4px;",
+                    div {
+                        style: "color:#6b7280;font-size:{layout.subtitle_font};line-height:1.4;margin:0;",
+                        "{tr(lang(), Tr::SetupTermuxSteps)}"
+                    }
+                    div {
+                        style: "display:flex;flex-wrap:wrap;gap:8px;",
+                        button {
+                            style: "flex:1 1 140px;box-sizing:border-box;background:#1f2937;color:#e5e7eb;padding:10px 12px;border-radius:12px;border:1px solid #4b5563;font-size:{layout.subtitle_font};min-height:44px;",
+                            onclick: move |_| on_install_termux.call(()),
+                            "{tr(lang(), Tr::SetupInstallTermux)}"
+                        }
+                        button {
+                            style: "flex:1 1 140px;box-sizing:border-box;background:#1f2937;color:#e5e7eb;padding:10px 12px;border-radius:12px;border:1px solid #4b5563;font-size:{layout.subtitle_font};min-height:44px;",
+                            onclick: move |_| on_open_termux.call(()),
+                            "{tr(lang(), Tr::SetupOpenTermux)}"
+                        }
+                        button {
+                            style: "flex:1 1 140px;box-sizing:border-box;background:#064e3b;color:#d1fae5;padding:10px 12px;border-radius:12px;border:1px solid #10b981;font-size:{layout.subtitle_font};min-height:44px;",
+                            onclick: move |_| on_probe_termux.call(()),
+                            "{tr(lang(), Tr::SetupProbeTermux)}"
+                        }
+                    }
                 }
 
                 if let Some(err) = validation_error() {

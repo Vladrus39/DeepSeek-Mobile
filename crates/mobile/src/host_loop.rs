@@ -19,14 +19,18 @@ pub fn tick_android_from_jni() {
 }
 
 /// Run one host tick: drain commands and execute platform handlers.
+#[cfg(target_os = "android")]
+pub fn run_host_tick(bridge: &mut NativeBridgeState) -> Vec<String> {
+    *bridge = native_host_runtime::snapshot();
+    Vec::new()
+}
+
+/// Run one host tick: drain commands and execute platform handlers.
+#[cfg(not(target_os = "android"))]
 pub fn run_host_tick(bridge: &mut NativeBridgeState) -> Vec<String> {
     native_host_runtime::replace(bridge.clone());
-    #[cfg(target_os = "android")]
-    let notes = Vec::new();
-    #[cfg(not(target_os = "android"))]
     let mut notes = Vec::new();
 
-    #[cfg(not(target_os = "android"))]
     native_host_runtime::with_state(|global| {
         while let Some(action) = drain_next_host_action(global) {
             if let Some(note) = desktop_native_host::try_execute(&action, global) {
@@ -43,7 +47,12 @@ pub fn run_host_tick(bridge: &mut NativeBridgeState) -> Vec<String> {
 pub fn sync_bridge_from_runtime(bridge: &mut NativeBridgeState) -> bool {
     let latest = native_host_runtime::snapshot();
     let changed = latest.last_event_id != bridge.last_event_id
-        || latest.has_pending_commands() != bridge.has_pending_commands();
+        || latest.has_pending_commands() != bridge.has_pending_commands()
+        || latest.is_waiting_for_termux_callback() != bridge.is_waiting_for_termux_callback()
+        || latest.is_waiting_for_pc_discovery_callback()
+            != bridge.is_waiting_for_pc_discovery_callback()
+        || latest.is_waiting_for_document_picker_callback()
+            != bridge.is_waiting_for_document_picker_callback();
     if changed {
         *bridge = latest;
     }

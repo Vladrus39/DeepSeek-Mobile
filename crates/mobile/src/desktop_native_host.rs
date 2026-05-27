@@ -2,9 +2,7 @@
 
 use crate::android_host::AndroidHostAction;
 use crate::native_bridge::{NativeBridgeState, NativeMobileEvent};
-use crate::native_document_picker::{
-    AndroidDocumentPickerCallback, AndroidPickedDocumentPayload,
-};
+use crate::native_document_picker::{AndroidDocumentPickerCallback, AndroidPickedDocumentPayload};
 use std::fs;
 use std::path::PathBuf;
 
@@ -50,12 +48,10 @@ pub fn try_execute(action: &AndroidHostAction, bridge: &mut NativeBridgeState) -
                 }
                 documents.push(document);
             }
-            bridge.accept_android_document_picker_callback(
-                AndroidDocumentPickerCallback::Picked {
-                    request_id: request_id.clone(),
-                    documents,
-                },
-            );
+            bridge.accept_android_document_picker_callback(AndroidDocumentPickerCallback::Picked {
+                request_id: request_id.clone(),
+                documents,
+            });
             Some("Desktop document picker completed".to_string())
         }
         AndroidHostAction::ShareFile { path, .. } => {
@@ -71,24 +67,24 @@ pub fn try_execute(action: &AndroidHostAction, bridge: &mut NativeBridgeState) -
         AndroidHostAction::StartPcGatewayDiscovery { .. } => Some(
             "PC discovery requires Android NSD; use manual PC URL in PC Host panel".to_string(),
         ),
-        AndroidHostAction::RunTermuxCommand { .. } => Some(
-            "Termux execution is only available on Android with Termux installed".to_string(),
-        ),
+        AndroidHostAction::RunTermuxCommand { .. } => {
+            Some("Termux execution is only available on Android with Termux installed".to_string())
+        }
         AndroidHostAction::OpenUrl { url } => {
             open::that(url).ok()?;
             Some(format!("Opened URL: {url}"))
         }
-        AndroidHostAction::LaunchApp { package } => Some(format!(
-            "launch_app is Android-only (package={package})"
-        )),
-        AndroidHostAction::OpenSystemSettings => Some(
-            "open_system_settings is Android-only".to_string(),
-        ),
+        AndroidHostAction::LaunchApp { package } => {
+            Some(format!("launch_app is Android-only (package={package})"))
+        }
+        AndroidHostAction::OpenSystemSettings => {
+            Some("open_system_settings is Android-only".to_string())
+        }
         AndroidHostAction::OpenTerminal { .. }
         | AndroidHostAction::TerminalInput { .. }
-        | AndroidHostAction::CloseTerminal { .. } => Some(
-            "Terminal sessions are routed through PC Host on desktop builds".to_string(),
-        ),
+        | AndroidHostAction::CloseTerminal { .. } => {
+            Some("Terminal sessions are routed through PC Host on desktop builds".to_string())
+        }
     }
 }
 
@@ -116,13 +112,15 @@ fn unique_path(dir: &PathBuf, name: &str) -> PathBuf {
 
 fn guess_mime(path: &PathBuf) -> Option<String> {
     let ext = path.extension()?.to_str()?;
-    Some(match ext.to_ascii_lowercase().as_str() {
-        "zip" => "application/zip",
-        "pdf" => "application/pdf",
-        "png" => "image/png",
-        "jpg" | "jpeg" => "image/jpeg",
-        "rs" | "toml" | "json" | "md" | "txt" => "text/plain",
-        _ => "application/octet-stream",
-    }
-    .to_string())
+    Some(
+        match ext.to_ascii_lowercase().as_str() {
+            "zip" => "application/zip",
+            "pdf" => "application/pdf",
+            "png" => "image/png",
+            "jpg" | "jpeg" => "image/jpeg",
+            "rs" | "toml" | "json" | "md" | "txt" => "text/plain",
+            _ => "application/octet-stream",
+        }
+        .to_string(),
+    )
 }

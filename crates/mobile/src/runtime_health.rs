@@ -1,5 +1,6 @@
 //! Aggregated runtime health for the cockpit health panel.
 
+use crate::locale::{load_ui_language, pick};
 use crate::mcp_state::McpUiState;
 use crate::mobile_runtime_config::default_data_dir;
 use crate::native_bridge::NativeBridgeState;
@@ -82,37 +83,87 @@ impl RuntimeHealthSnapshot {
 
         let full_agent_on_phone_ready = api_configured && termux_valid;
 
+        let lang = load_ui_language();
         let mut recommendations = Vec::new();
         if !api_configured {
-            recommendations.push("Add a DeepSeek API key in Settings.".to_string());
+            recommendations.push(
+                pick(
+                    lang,
+                    "Добавьте ключ DeepSeek API в Настройках.",
+                    "Add a DeepSeek API key in Settings.",
+                )
+                .to_string(),
+            );
         }
         if !termux_valid {
             recommendations.push(
-                "Full agent on phone: install Termux, set allow-external-apps, then save a valid project path in Settings (e.g. /data/data/com.termux/files/home/project).".to_string(),
+                pick(
+                    lang,
+                    "Полный агент: Termux, allow-external-apps=true, путь в Настройках (напр. …/home/deepseek-project).",
+                    "Full agent on phone: install Termux, set allow-external-apps, then save a valid project path in Settings.",
+                )
+                .to_string(),
             );
         } else if !full_agent_on_phone_ready {
             recommendations.push(
-                "Complete API key and Termux path to unlock the full on-device agent.".to_string(),
+                pick(
+                    lang,
+                    "Укажите ключ API и путь Termux для полного агента на телефоне.",
+                    "Complete API key and Termux path to unlock the full on-device agent.",
+                )
+                .to_string(),
             );
+        } else if !crate::device_calibration::is_calibrated() && termux_valid {
+            let (ru, en) = if crate::device_calibration::needs_allow_external_apps() {
+                (
+                    "Termux заблокировал внешние команды. В Termux: echo allow-external-apps=true >> ~/.termux/termux.properties && termux-reload-settings, затем перезапустите Termux и DeepSeek Mobile.",
+                    "Termux blocked external apps. In Termux: echo allow-external-apps=true >> ~/.termux/termux.properties && termux-reload-settings, then restart Termux and DeepSeek Mobile.",
+                )
+            } else {
+                (
+                    "Termux не завершил калибровку: дождитесь фоновой проверки или откройте приложение ~60 с.",
+                    "Termux calibration pending: keep DeepSeek Mobile open ~60s or run device-calibrate.ps1.",
+                )
+            };
+            recommendations.push(pick(lang, ru, en).to_string());
         }
         if termux_valid && pc_workspace_active && !pc_online {
             recommendations.push(
-                "Optional PC boost: saved PC workspace is offline — start deepseek-pc-host if you still need the desktop project.".to_string(),
+                pick(
+                    lang,
+                    "PC Host (опционально): сохранённый PC офлайн — запустите deepseek-pc-host при необходимости.",
+                    "Optional PC boost: saved PC workspace is offline — start deepseek-pc-host if needed.",
+                )
+                .to_string(),
             );
         } else if !termux_valid && !pc_workspace_active {
             recommendations.push(
-                "Optional: PC Host panel — only for very large repos when Termux is not enough (not required for a full phone agent).".to_string(),
+                pick(
+                    lang,
+                    "PC Host — только для очень больших репозиториев (для полного агента на телефоне не обязателен).",
+                    "Optional: PC Host panel — only for very large repos (not required for a full phone agent).",
+                )
+                .to_string(),
             );
         }
         if mcp_servers_total > 0 && mcp_servers_connected == 0 {
             recommendations.push(
-                "MCP servers are configured but none are connected — open MCP panel and connect."
-                    .to_string(),
+                pick(
+                    lang,
+                    "MCP настроен, но нет подключений — откройте панель MCP.",
+                    "MCP servers are configured but none are connected — open MCP panel and connect.",
+                )
+                .to_string(),
             );
         }
         if settings.execution_mode == ExecutionMode::Plan {
             recommendations.push(
-                "Plan mode is on — tools will not run until you switch to Agent mode.".to_string(),
+                pick(
+                    lang,
+                    "Режим Plan — инструменты выключены, переключите на Agent.",
+                    "Plan mode is on — tools will not run until you switch to Agent mode.",
+                )
+                .to_string(),
             );
         }
 
@@ -188,7 +239,7 @@ mod tests {
         assert!(snapshot
             .recommendations
             .iter()
-            .any(|line| line.contains("API key")));
+            .any(|line| line.contains("API") || line.contains("ключ")));
     }
 
     #[test]
@@ -208,6 +259,6 @@ mod tests {
         assert!(snapshot
             .recommendations
             .iter()
-            .any(|line| line.contains("Optional") && line.contains("PC Host")));
+            .any(|line| line.contains("PC Host")));
     }
 }

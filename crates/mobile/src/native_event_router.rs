@@ -46,17 +46,26 @@ pub fn route_native_mobile_event(
         }
         NativeMobileEvent::PcGatewayDiscoveryStarted { service_type, .. } => {
             pc_pairing.mark_waiting_for_pc();
-            timeline.push_status(format!("Android PC gateway discovery started: {}", service_type));
+            timeline.push_status(format!(
+                "Android PC gateway discovery started: {}",
+                service_type
+            ));
         }
         NativeMobileEvent::PcGatewayDiscoveryUpdated(report) => {
             let count = report.candidates.len();
             pc_pairing.apply_discovery_report(report);
-            timeline.push_status(format!("Android PC gateway discovery candidate update: {} candidate(s)", count));
+            timeline.push_status(format!(
+                "Android PC gateway discovery candidate update: {} candidate(s)",
+                count
+            ));
         }
         NativeMobileEvent::PcGatewayDiscoveryCompleted(report) => {
             let count = report.candidates.len();
             pc_pairing.apply_discovery_report(report);
-            timeline.push_status(format!("Android PC gateway discovery completed: {} candidate(s)", count));
+            timeline.push_status(format!(
+                "Android PC gateway discovery completed: {} candidate(s)",
+                count
+            ));
         }
         NativeMobileEvent::PcGatewayDiscoveryFailed(error) => {
             pc_pairing.set_error(error.clone());
@@ -68,17 +77,39 @@ pub fn route_native_mobile_event(
         NativeMobileEvent::ShareFailed(error) => {
             timeline.push_error(format!("Native share failed: {}", error));
         }
-        NativeMobileEvent::TerminalOpened { session_id, title, cwd } => {
-            timeline.push_status(format!("Terminal session opened: {} ({} - {})", session_id, title, cwd));
+        NativeMobileEvent::TerminalOpened {
+            session_id,
+            title,
+            cwd,
+        } => {
+            timeline.push_status(format!(
+                "Terminal session opened: {} ({} - {})",
+                session_id, title, cwd
+            ));
         }
         NativeMobileEvent::TerminalOutput { session_id, chunk } => {
-            timeline.push_status(format!("Terminal {} output: {} char(s)", session_id, chunk.len()));
+            timeline.push_status(format!(
+                "Terminal {} output: {} char(s)",
+                session_id,
+                chunk.len()
+            ));
         }
-        NativeMobileEvent::TerminalClosed { session_id, exit_code } => {
-            let code = exit_code.map(|c| c.to_string()).unwrap_or_else(|| "unknown".to_string());
-            timeline.push_status(format!("Terminal {} closed (exit code: {})", session_id, code));
+        NativeMobileEvent::TerminalClosed {
+            session_id,
+            exit_code,
+        } => {
+            let code = exit_code
+                .map(|c| c.to_string())
+                .unwrap_or_else(|| "unknown".to_string());
+            timeline.push_status(format!(
+                "Terminal {} closed (exit code: {})",
+                session_id, code
+            ));
         }
-        NativeMobileEvent::TerminalFailed { session_id, message } => {
+        NativeMobileEvent::TerminalFailed {
+            session_id,
+            message,
+        } => {
             let id = session_id.unwrap_or_else(|| "unknown".to_string());
             timeline.push_error(format!("Terminal {} failed: {}", id, message));
         }
@@ -86,10 +117,16 @@ pub fn route_native_mobile_event(
             timeline.push_status(format!(
                 "Termux command {} completed (exit code: {})",
                 result.request_id,
-                result.exit_code.map(|code| code.to_string()).unwrap_or_else(|| "unknown".to_string())
+                result
+                    .exit_code
+                    .map(|code| code.to_string())
+                    .unwrap_or_else(|| "unknown".to_string())
             ));
         }
-        NativeMobileEvent::TermuxCommandFailed { request_id, message } => {
+        NativeMobileEvent::TermuxCommandFailed {
+            request_id,
+            message,
+        } => {
             timeline.push_error(format!("Termux command {} failed: {}", request_id, message));
         }
     }
@@ -125,12 +162,10 @@ mod tests {
             NativeBridgeState::default(),
             PcPairingUiState::default(),
             MobileTimelineState::default(),
-            NativeMobileEvent::DocumentsPicked(vec![
-                PickedDocument::new("doc-1", "main.rs")
-                    .with_uri("content://docs/main.rs")
-                    .with_path("/tmp/main.rs")
-                    .with_mime_type("text/plain"),
-            ]),
+            NativeMobileEvent::DocumentsPicked(vec![PickedDocument::new("doc-1", "main.rs")
+                .with_uri("content://docs/main.rs")
+                .with_path("/tmp/main.rs")
+                .with_mime_type("text/plain")]),
         );
 
         assert_eq!(result.composer.attachments.len(), 1);
@@ -172,14 +207,21 @@ mod tests {
             NativeMobileEvent::DocumentPickerFailed("permission denied".to_string()),
         );
 
-        assert_eq!(result.picker.last_error.as_deref(), Some("permission denied"));
-        assert_eq!(result.native_bridge.last_error.as_deref(), Some("permission denied"));
+        assert_eq!(
+            result.picker.last_error.as_deref(),
+            Some("permission denied")
+        );
+        assert_eq!(
+            result.native_bridge.last_error.as_deref(),
+            Some("permission denied")
+        );
     }
 
     #[test]
     fn routes_pc_discovery_report_into_pairing_state() {
         let report = PcGatewayDiscoveryService::default().from_mdns_records(vec![
-            AndroidPcGatewayMdnsRecordPayload::new("Laptop", "192.168.1.10", 8787).into_core_record(),
+            AndroidPcGatewayMdnsRecordPayload::new("Laptop", "192.168.1.10", 8787)
+                .into_core_record(),
         ]);
         let result = route_native_mobile_event(
             ChatComposerState::default(),
@@ -207,7 +249,11 @@ mod tests {
                 cwd: "/workspace".to_string(),
             },
         );
-        assert!(result.timeline.items.iter().any(|i| i.body.contains("Terminal session opened")));
+        assert!(result
+            .timeline
+            .items
+            .iter()
+            .any(|i| i.body.contains("Terminal session opened")));
 
         let result = route_native_mobile_event(
             ChatComposerState::default(),
@@ -220,7 +266,11 @@ mod tests {
                 chunk: "hello".to_string(),
             },
         );
-        assert!(result.timeline.items.iter().any(|i| i.body.contains("Terminal term-1 output")));
+        assert!(result
+            .timeline
+            .items
+            .iter()
+            .any(|i| i.body.contains("Terminal term-1 output")));
 
         let result = route_native_mobile_event(
             ChatComposerState::default(),
@@ -233,7 +283,11 @@ mod tests {
                 exit_code: Some(0),
             },
         );
-        assert!(result.timeline.items.iter().any(|i| i.body.contains("Terminal term-1 closed")));
+        assert!(result
+            .timeline
+            .items
+            .iter()
+            .any(|i| i.body.contains("Terminal term-1 closed")));
 
         let result = route_native_mobile_event(
             ChatComposerState::default(),
@@ -246,7 +300,11 @@ mod tests {
                 message: "timeout".to_string(),
             },
         );
-        assert!(result.timeline.items.iter().any(|i| i.body.contains("Terminal term-1 failed")));
+        assert!(result
+            .timeline
+            .items
+            .iter()
+            .any(|i| i.body.contains("Terminal term-1 failed")));
     }
 
     #[test]

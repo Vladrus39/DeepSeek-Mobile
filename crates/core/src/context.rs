@@ -80,7 +80,10 @@ impl ContextManager {
     }
 
     pub fn with_budget(budget: ContextBudget) -> Self {
-        Self { budget, min_recent_messages: 8 }
+        Self {
+            budget,
+            min_recent_messages: 8,
+        }
     }
 
     pub fn with_min_recent_messages(mut self, count: usize) -> Self {
@@ -129,7 +132,10 @@ impl ContextManager {
 
     pub fn plan_for_messages(&self, messages: &[Message]) -> CompressionPlan {
         let plan = self.plan(messages);
-        CompressionPlan { should_compress: plan.should_compress, strategy: plan.strategy }
+        CompressionPlan {
+            should_compress: plan.should_compress,
+            strategy: plan.strategy,
+        }
     }
 
     pub fn fit_messages(&self, messages: &[Message]) -> Vec<Message> {

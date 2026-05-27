@@ -4,8 +4,8 @@
 //! and streaming execution. Streaming returns structured `StreamDelta` items
 //! that distinguish between V4 reasoning tokens and final text.
 
-use crate::config::Config;
 use crate::api_client::{DeepSeekClient, Message, StreamDelta};
+use crate::config::Config;
 use anyhow::Result;
 use tokio::sync::mpsc;
 

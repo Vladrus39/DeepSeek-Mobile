@@ -2,7 +2,9 @@
 
 use crate::dev_api_key::apply_dev_api_key_bootstrap;
 use crate::mobile_data_dir::{ensure_android_storage_initialized, resolve_data_dir};
-use crate::settings_state::{config_store, load_saved_config, save_config};
+use crate::settings_state::load_saved_config;
+#[cfg(not(target_os = "android"))]
+use crate::settings_state::{config_store, save_config};
 use deepseek_mobile_core::config::Config;
 use std::fs;
 use std::sync::Once;
@@ -51,31 +53,29 @@ pub fn prefill_api_key_for_onboarding() -> String {
 /// **Android:** skipped — users must confirm the key in onboarding or Settings (release-like UX).
 /// **Desktop debug:** auto-seed for faster local iteration.
 pub fn seed_dev_secrets_if_needed() {
-    #[cfg(target_os = "android")]
+    #[cfg(not(target_os = "android"))]
     {
-        return;
-    }
+        let store = config_store();
+        let mut config = store.load_or_default();
+        apply_dev_api_key_bootstrap(&mut config);
 
-    let store = config_store();
-    let mut config = store.load_or_default();
-    apply_dev_api_key_bootstrap(&mut config);
+        let key = config.api_key.trim();
+        if !key.starts_with("sk-") {
+            return;
+        }
 
-    let key = config.api_key.trim();
-    if !key.starts_with("sk-") {
-        return;
-    }
+        let needs_save = !store.secrets_path().exists()
+            || store
+                .load()
+                .map(|loaded| loaded.api_key.trim().is_empty())
+                .unwrap_or(true);
 
-    let needs_save = !store.secrets_path().exists()
-        || store
-            .load()
-            .map(|loaded| loaded.api_key.trim().is_empty())
-            .unwrap_or(true);
-
-    if needs_save {
-        if let Err(error) = save_config(&config) {
-            eprintln!("dev config seed failed: {}", error);
-        } else {
-            eprintln!("dev API key seeded into {}", store.secrets_path().display());
+        if needs_save {
+            if let Err(error) = save_config(&config) {
+                eprintln!("dev config seed failed: {}", error);
+            } else {
+                eprintln!("dev API key seeded into {}", store.secrets_path().display());
+            }
         }
     }
 }

@@ -101,10 +101,7 @@ impl ConfigStore {
     pub fn save(&self, config: &Config) -> Result<()> {
         fs::create_dir_all(&self.base_dir)?;
         let public = PublicConfig::from(config);
-        fs::write(
-            self.config_path(),
-            serde_json::to_string_pretty(&public)?,
-        )?;
+        fs::write(self.config_path(), serde_json::to_string_pretty(&public)?)?;
         let secrets = AppSecrets {
             api_key: config.api_key.clone(),
             github_token: config.github_token.clone(),
@@ -168,7 +165,11 @@ fn load_or_create_device_key(key_path: &Path) -> Result<[u8; 32]> {
     Ok(key)
 }
 
-fn write_encrypted_secrets(key_path: &Path, secrets_path: &Path, secrets: &AppSecrets) -> Result<()> {
+fn write_encrypted_secrets(
+    key_path: &Path,
+    secrets_path: &Path,
+    secrets: &AppSecrets,
+) -> Result<()> {
     let key = load_or_create_device_key(key_path)?;
     let cipher = ChaCha20Poly1305::new_from_slice(&key)
         .map_err(|error| anyhow!("invalid cipher key: {}", error))?;

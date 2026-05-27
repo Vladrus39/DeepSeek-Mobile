@@ -1,0 +1,3 @@
+1779898891 stage=jni_callback detail={"kind":"termux_completed","result":{"request_id":"termux-deadlock-test","stdout":"/data/data/com.termux/files/home\n","stderr":"","exit_code":0,"timed_out":false,"error":null}}
+1779898892 stage=jni_callback detail={"kind":"termux_completed","result":{"request_id":"termux-deadlock-test","stdout":"/data/data/com.termux/files/home\n","stderr":"","exit_code":0,"timed_out":false,"error":null}}
+1779898961 stage=jni_callback detail={"kind":"termux_completed","result":{"request_id":"termux-deadlock-test","stdout":"/data/data/com.termux/files/home\n","stderr":"","exit_code":0,"timed_out":false,"error":null}}

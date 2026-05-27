@@ -25,7 +25,10 @@ fn status_label(status: &DurableTaskStatus) -> &'static str {
 fn format_unix(ts: u64) -> String {
     if let Some(d) = std::time::UNIX_EPOCH.checked_add(std::time::Duration::from_secs(ts)) {
         // Simple UTC → local time formatting
-        let secs_since_epoch = d.duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs();
+        let secs_since_epoch = d
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
         let secs_in_day = 86400u64;
         let secs_in_hour = 3600u64;
         let secs_in_min = 60u64;
@@ -186,77 +189,80 @@ pub fn tasks_panel(mut state: Signal<TasksUiState>, pc_client: Option<PcGatewayC
         }
     }).collect();
 
-    let pc_task_cards: Vec<Element> = pc_tasks.iter().map(|t| {
-        let tid = t.id.clone();
-        let label = t.label.clone();
-        let kind = t.kind.clone();
-        let started = format_unix(t.started_at_unix);
-        let pc_client_for_stop = pc_client.clone();
+    let pc_task_cards: Vec<Element> = pc_tasks
+        .iter()
+        .map(|t| {
+            let tid = t.id.clone();
+            let label = t.label.clone();
+            let kind = t.kind.clone();
+            let started = format_unix(t.started_at_unix);
+            let pc_client_for_stop = pc_client.clone();
 
-        rsx! {
-            div {
-                key: "pc-{tid}",
-                background_color: "#0f172a",
-                border: "1px solid #1d4ed8",
-                border_radius: "12px",
-                padding: "10px",
-                display: "flex",
-                flex_direction: "column",
-                gap: "5px",
+            rsx! {
+                div {
+                    key: "pc-{tid}",
+                    background_color: "#0f172a",
+                    border: "1px solid #1d4ed8",
+                    border_radius: "12px",
+                    padding: "10px",
+                    display: "flex",
+                    flex_direction: "column",
+                    gap: "5px",
 
-                div {
-                    display: "flex",
-                    justify_content: "space-between",
-                    align_items: "center",
-                    div {
-                        font_size: "13px",
-                        font_weight: "bold",
-                        color: "white",
-                        "{label}"
-                    }
-                    div {
-                        background_color: "#2563eb",
-                        color: "white",
-                        border_radius: "6px",
-                        padding: "2px 8px",
-                        font_size: "11px",
-                        font_weight: "bold",
-                        "PC running"
-                    }
-                }
-                div {
-                    display: "flex",
-                    gap: "8px",
-                    font_size: "11px",
-                    color: "#9ca3af",
-                    div { "⌅ {kind}" }
-                    div { "started {started}" }
-                    div { "id {tid}" }
-                }
-                if pc_client_for_stop.is_some() {
                     div {
                         display: "flex",
-                        justify_content: "flex-end",
-                        margin_top: "4px",
-                        button {
-                            background_color: "#374151",
-                            border: "1px solid #4b5563",
-                            border_radius: "8px",
-                            padding: "4px 12px",
-                            color: "#fca5a5",
-                            font_size: "12px",
+                        justify_content: "space-between",
+                        align_items: "center",
+                        div {
+                            font_size: "13px",
                             font_weight: "bold",
-                            onclick: move |_| {
-                                let task_id = tid.clone();
-                                stop_pc_task(state, pc_client_for_stop.clone(), task_id);
-                            },
-                            "Stop on PC"
+                            color: "white",
+                            "{label}"
+                        }
+                        div {
+                            background_color: "#2563eb",
+                            color: "white",
+                            border_radius: "6px",
+                            padding: "2px 8px",
+                            font_size: "11px",
+                            font_weight: "bold",
+                            "PC running"
+                        }
+                    }
+                    div {
+                        display: "flex",
+                        gap: "8px",
+                        font_size: "11px",
+                        color: "#9ca3af",
+                        div { "⌅ {kind}" }
+                        div { "started {started}" }
+                        div { "id {tid}" }
+                    }
+                    if pc_client_for_stop.is_some() {
+                        div {
+                            display: "flex",
+                            justify_content: "flex-end",
+                            margin_top: "4px",
+                            button {
+                                background_color: "#374151",
+                                border: "1px solid #4b5563",
+                                border_radius: "8px",
+                                padding: "4px 12px",
+                                color: "#fca5a5",
+                                font_size: "12px",
+                                font_weight: "bold",
+                                onclick: move |_| {
+                                    let task_id = tid.clone();
+                                    stop_pc_task(state, pc_client_for_stop.clone(), task_id);
+                                },
+                                "Stop on PC"
+                            }
                         }
                     }
                 }
             }
-        }
-    }).collect();
+        })
+        .collect();
 
     rsx! {
         div {

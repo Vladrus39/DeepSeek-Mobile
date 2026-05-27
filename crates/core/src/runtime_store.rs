@@ -208,7 +208,12 @@ impl RuntimeThreadStore {
         read_json(self.turn_path(turn_id))
     }
 
-    pub fn save_event(&self, thread_id: impl Into<String>, turn_id: impl Into<String>, event: &AgentEvent) -> Result<RuntimeEventRecord> {
+    pub fn save_event(
+        &self,
+        thread_id: impl Into<String>,
+        turn_id: impl Into<String>,
+        event: &AgentEvent,
+    ) -> Result<RuntimeEventRecord> {
         let record = RuntimeEventRecord {
             id: format!("event-{}", current_unix_time_nanos()),
             thread_id: thread_id.into(),
@@ -223,9 +228,9 @@ impl RuntimeThreadStore {
     pub fn load_events(&self, thread_id: &str) -> Result<Vec<RuntimeEventRecord>> {
         let mut records: Vec<RuntimeEventRecord> =
             read_json_dir::<RuntimeEventRecord>(self.root.join("events"))?
-            .into_iter()
-            .filter(|record| record.thread_id == thread_id)
-            .collect();
+                .into_iter()
+                .filter(|record| record.thread_id == thread_id)
+                .collect();
         records.sort_by(|left, right| {
             left.created_at_unix
                 .cmp(&right.created_at_unix)
@@ -267,7 +272,10 @@ impl RuntimeThreadStore {
         read_json_dir(self.root.join("pending_approvals"))
     }
 
-    pub fn list_pending_approvals_for_thread(&self, thread_id: &str) -> Result<Vec<PendingApprovalRecord>> {
+    pub fn list_pending_approvals_for_thread(
+        &self,
+        thread_id: &str,
+    ) -> Result<Vec<PendingApprovalRecord>> {
         Ok(self
             .list_pending_approvals()?
             .into_iter()
@@ -284,15 +292,25 @@ impl RuntimeThreadStore {
     pub fn save_pending_termux(&self, record: &PendingTermuxRecord) -> Result<()> {
         let dir = self.root.join("pending_termux");
         fs::create_dir_all(&dir)?;
-        write_json(dir.join(format!("{}.json", safe_file_id(&record.request_id))), record)
+        write_json(
+            dir.join(format!("{}.json", safe_file_id(&record.request_id))),
+            record,
+        )
     }
 
     pub fn load_pending_termux(&self, request_id: &str) -> Result<PendingTermuxRecord> {
-        read_json(self.root.join("pending_termux").join(format!("{}.json", safe_file_id(request_id))))
+        read_json(
+            self.root
+                .join("pending_termux")
+                .join(format!("{}.json", safe_file_id(request_id))),
+        )
     }
 
     pub fn remove_pending_termux(&self, request_id: &str) -> Result<()> {
-        let path = self.root.join("pending_termux").join(format!("{}.json", safe_file_id(request_id)));
+        let path = self
+            .root
+            .join("pending_termux")
+            .join(format!("{}.json", safe_file_id(request_id)));
         if path.exists() {
             fs::remove_file(path)?;
         }
@@ -303,7 +321,10 @@ impl RuntimeThreadStore {
         read_json_dir(self.root.join("pending_termux"))
     }
 
-    pub fn list_pending_termux_for_thread(&self, thread_id: &str) -> Result<Vec<PendingTermuxRecord>> {
+    pub fn list_pending_termux_for_thread(
+        &self,
+        thread_id: &str,
+    ) -> Result<Vec<PendingTermuxRecord>> {
         Ok(self
             .list_pending_termux()?
             .into_iter()
@@ -320,23 +341,33 @@ impl RuntimeThreadStore {
     }
 
     fn thread_path(&self, id: &str) -> PathBuf {
-        self.root.join("threads").join(format!("{}.json", safe_file_id(id)))
+        self.root
+            .join("threads")
+            .join(format!("{}.json", safe_file_id(id)))
     }
 
     fn turn_path(&self, id: &str) -> PathBuf {
-        self.root.join("turns").join(format!("{}.json", safe_file_id(id)))
+        self.root
+            .join("turns")
+            .join(format!("{}.json", safe_file_id(id)))
     }
 
     fn event_path(&self, id: &str) -> PathBuf {
-        self.root.join("events").join(format!("{}.json", safe_file_id(id)))
+        self.root
+            .join("events")
+            .join(format!("{}.json", safe_file_id(id)))
     }
 
     fn pending_path(&self, id: &str) -> PathBuf {
-        self.root.join("pending_approvals").join(format!("{}.json", safe_file_id(id)))
+        self.root
+            .join("pending_approvals")
+            .join(format!("{}.json", safe_file_id(id)))
     }
 
     fn decision_path(&self, id: &str) -> PathBuf {
-        self.root.join("decisions").join(format!("{}.json", safe_file_id(id)))
+        self.root
+            .join("decisions")
+            .join(format!("{}.json", safe_file_id(id)))
     }
 }
 
@@ -349,7 +380,8 @@ fn write_json(path: PathBuf, value: &impl Serialize) -> Result<()> {
 }
 
 fn read_json<T: for<'de> Deserialize<'de>>(path: PathBuf) -> Result<T> {
-    let bytes = fs::read(&path).map_err(|error| anyhow!("failed to read {}: {}", path.display(), error))?;
+    let bytes =
+        fs::read(&path).map_err(|error| anyhow!("failed to read {}: {}", path.display(), error))?;
     Ok(serde_json::from_slice(&bytes)?)
 }
 
@@ -361,15 +393,38 @@ fn read_json_dir<T: for<'de> Deserialize<'de>>(dir: PathBuf) -> Result<Vec<T>> {
     for entry in fs::read_dir(dir)? {
         let entry = entry?;
         if entry.path().extension().and_then(|ext| ext.to_str()) == Some("json") {
-            out.push(read_json(entry.path())?);
+            match read_json(entry.path()) {
+                Ok(record) => out.push(record),
+                Err(error) => {
+                    let message = error.to_string();
+                    if is_skippable_json_file_error(&message) {
+                        let _ = fs::remove_file(entry.path());
+                        continue;
+                    }
+                    return Err(error);
+                }
+            }
         }
     }
     Ok(out)
 }
 
+fn is_skippable_json_file_error(message: &str) -> bool {
+    message.contains("EOF while parsing")
+        || message.contains("unexpected end of input")
+        || message.contains("trailing characters")
+        || (message.contains("failed to read") && message.contains("os error 2"))
+}
+
 fn safe_file_id(id: &str) -> String {
     id.chars()
-        .map(|ch| if ch.is_ascii_alphanumeric() || ch == '-' || ch == '_' { ch } else { '_' })
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() || ch == '-' || ch == '_' {
+                ch
+            } else {
+                '_'
+            }
+        })
         .collect()
 }
 
@@ -399,6 +454,17 @@ mod tests {
             .expect("system clock before unix epoch")
             .as_nanos();
         std::env::temp_dir().join(format!("deepseek-runtime-store-{}-{}", name, nanos))
+    }
+
+    #[test]
+    fn load_events_skips_corrupt_json_files() {
+        let root = unique_dir("corrupt-events");
+        let store = RuntimeThreadStore::open(&root).expect("open store");
+        let events_dir = root.join("events");
+        fs::create_dir_all(&events_dir).expect("events dir");
+        fs::write(events_dir.join("bad.json"), "").expect("empty json");
+        let loaded = store.load_events("thread-a").expect("load events");
+        assert!(loaded.is_empty());
     }
 
     #[test]

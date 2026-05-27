@@ -94,7 +94,10 @@ pub fn ingest_attachment_text(mut attachment: ChatAttachmentDraft) -> Attachment
 pub fn ingest_attachment_texts(
     attachments: Vec<ChatAttachmentDraft>,
 ) -> Vec<AttachmentIngestionResult> {
-    attachments.into_iter().map(ingest_attachment_text).collect()
+    attachments
+        .into_iter()
+        .map(ingest_attachment_text)
+        .collect()
 }
 
 pub fn ingestion_status_message(result: &AttachmentIngestionResult) -> Option<String> {
@@ -157,10 +160,38 @@ fn is_text_mime_type(mime: &str) -> bool {
 fn is_source_like_name(name: &str) -> bool {
     let lower = name.to_ascii_lowercase();
     [
-        ".rs", ".py", ".js", ".ts", ".tsx", ".jsx", ".json", ".md", ".toml", ".yaml",
-        ".yml", ".txt", ".html", ".css", ".xml", ".sh", ".bash", ".zsh", ".sql",
-        ".go", ".java", ".kt", ".swift", ".c", ".h", ".cpp", ".hpp", ".cs", ".php",
-        ".rb", ".lua", ".dockerfile",
+        ".rs",
+        ".py",
+        ".js",
+        ".ts",
+        ".tsx",
+        ".jsx",
+        ".json",
+        ".md",
+        ".toml",
+        ".yaml",
+        ".yml",
+        ".txt",
+        ".html",
+        ".css",
+        ".xml",
+        ".sh",
+        ".bash",
+        ".zsh",
+        ".sql",
+        ".go",
+        ".java",
+        ".kt",
+        ".swift",
+        ".c",
+        ".h",
+        ".cpp",
+        ".hpp",
+        ".cs",
+        ".php",
+        ".rb",
+        ".lua",
+        ".dockerfile",
     ]
     .iter()
     .any(|suffix| lower.ends_with(suffix))
@@ -177,9 +208,7 @@ fn read_error_label(error: io::Error) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        ingest_attachment_text, AttachmentIngestionStatus, MAX_INGEST_BYTES,
-    };
+    use super::{ingest_attachment_text, AttachmentIngestionStatus, MAX_INGEST_BYTES};
     use crate::chat_attachment::ChatAttachmentDraft;
     use std::fs;
 
@@ -201,8 +230,14 @@ mod tests {
             .with_mime_type("text/plain");
         let result = ingest_attachment_text(attachment);
 
-        assert!(matches!(result.status, AttachmentIngestionStatus::Read { .. }));
-        assert_eq!(result.attachment.extracted_text.as_deref(), Some("hello from attachment"));
+        assert!(matches!(
+            result.status,
+            AttachmentIngestionStatus::Read { .. }
+        ));
+        assert_eq!(
+            result.attachment.extracted_text.as_deref(),
+            Some("hello from attachment")
+        );
 
         let _ = fs::remove_file(path);
     }
@@ -221,8 +256,8 @@ mod tests {
 
     #[test]
     fn skips_attachment_without_local_path() {
-        let attachment = ChatAttachmentDraft::new_document("a1", "attachment.txt")
-            .with_mime_type("text/plain");
+        let attachment =
+            ChatAttachmentDraft::new_document("a1", "attachment.txt").with_mime_type("text/plain");
         let result = ingest_attachment_text(attachment);
         assert_eq!(result.status, AttachmentIngestionStatus::NoLocalPath);
     }
@@ -251,7 +286,10 @@ mod tests {
         fs::write(&path, "[package]\nname = \"demo\"\n").expect("write test file");
         let attachment = ChatAttachmentDraft::new_document("a1", "Cargo.toml").with_path(&path);
         let result = ingest_attachment_text(attachment);
-        assert!(matches!(result.status, AttachmentIngestionStatus::Read { .. }));
+        assert!(matches!(
+            result.status,
+            AttachmentIngestionStatus::Read { .. }
+        ));
         let _ = fs::remove_file(path);
     }
 }

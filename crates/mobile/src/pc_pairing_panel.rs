@@ -263,9 +263,21 @@ pub fn pc_pairing_panel(
                                 next.mark_waiting_for_pc();
                                 state.set(next);
                                 if let Some(path) = zip_path {
+                                    #[cfg(target_os = "android")]
+                                    {
+                                        let mut next = state();
+                                        next.set_error(format!(
+                                            "Pairing ZIP created at {}, but Android share sheet is disabled in this preview. Copy it with adb or PC Host.",
+                                            path
+                                        ));
+                                        state.set(next);
+                                    }
+                                    #[cfg(not(target_os = "android"))]
+                                    {
                                     let mut bridge = native_bridge();
                                     bridge.enqueue_share_file(&path);
                                     native_bridge.set(bridge);
+                                    }
                                 }
                             }
                             PcPairingUiStatus::WaitingForPc | PcPairingUiStatus::Offline => {

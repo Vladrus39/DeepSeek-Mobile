@@ -72,7 +72,12 @@ impl PcGatewayMdnsRecord {
         let scheme = if https { "https" } else { "http" };
         PcGatewayEndpointCandidate::new(
             format!("mdns:{}", self.instance_name),
-            format!("{}://{}:{}", scheme, normalize_host_for_url(&self.host), self.port),
+            format!(
+                "{}://{}:{}",
+                scheme,
+                normalize_host_for_url(&self.host),
+                self.port
+            ),
             mode,
         )
     }
@@ -140,7 +145,9 @@ impl PcGatewayDiscoveryReport {
                 PcGatewayDiscoveryStatus::Found | PcGatewayDiscoveryStatus::Online
             ) && !endpoints
                 .iter()
-                .any(|endpoint: &PcGatewayEndpointCandidate| endpoint.base_url == candidate.endpoint.base_url)
+                .any(|endpoint: &PcGatewayEndpointCandidate| {
+                    endpoint.base_url == candidate.endpoint.base_url
+                })
             {
                 endpoints.push(candidate.endpoint.clone());
             }
@@ -181,7 +188,9 @@ impl PcGatewayDiscoveryService {
         let mut report = PcGatewayDiscoveryReport::default();
         for record in records {
             let endpoint = record.endpoint_candidate();
-            report.candidates.push(self.validate_candidate(PcGatewayDiscoverySource::Mdns, endpoint));
+            report
+                .candidates
+                .push(self.validate_candidate(PcGatewayDiscoverySource::Mdns, endpoint));
         }
         report
     }
@@ -194,12 +203,19 @@ impl PcGatewayDiscoveryService {
                 format!("http://{}:{}", normalize_host_for_url(&host), port),
                 PcGatewayTransportMode::LocalNetworkHttp,
             );
-            report.candidates.push(self.validate_candidate(PcGatewayDiscoverySource::Manual, endpoint));
+            report
+                .candidates
+                .push(self.validate_candidate(PcGatewayDiscoverySource::Manual, endpoint));
         }
         report
     }
 
-    pub fn subnet_scan_candidates(&self, subnet_prefix: &str, port: u16, range: std::ops::RangeInclusive<u8>) -> PcGatewayDiscoveryReport {
+    pub fn subnet_scan_candidates(
+        &self,
+        subnet_prefix: &str,
+        port: u16,
+        range: std::ops::RangeInclusive<u8>,
+    ) -> PcGatewayDiscoveryReport {
         let mut report = PcGatewayDiscoveryReport::default();
         let prefix = subnet_prefix.trim().trim_end_matches('.');
         for octet in range {
@@ -209,13 +225,22 @@ impl PcGatewayDiscoveryService {
                 format!("http://{}:{}", host, port),
                 PcGatewayTransportMode::LocalNetworkHttp,
             )
-            .with_priority(PcGatewayTransportMode::LocalNetworkHttp.default_priority().saturating_sub(5));
-            report.candidates.push(self.validate_candidate(PcGatewayDiscoverySource::SubnetScan, endpoint));
+            .with_priority(
+                PcGatewayTransportMode::LocalNetworkHttp
+                    .default_priority()
+                    .saturating_sub(5),
+            );
+            report
+                .candidates
+                .push(self.validate_candidate(PcGatewayDiscoverySource::SubnetScan, endpoint));
         }
         report
     }
 
-    pub async fn probe_candidates(&self, mut report: PcGatewayDiscoveryReport) -> PcGatewayDiscoveryReport {
+    pub async fn probe_candidates(
+        &self,
+        mut report: PcGatewayDiscoveryReport,
+    ) -> PcGatewayDiscoveryReport {
         for candidate in report.candidates.iter_mut() {
             if candidate.status == PcGatewayDiscoveryStatus::Rejected {
                 continue;
@@ -253,7 +278,10 @@ impl PcGatewayDiscoveryService {
         }
     }
 
-    async fn probe_endpoint(&self, endpoint: &PcGatewayEndpointCandidate) -> Result<PcGatewayHealth> {
+    async fn probe_endpoint(
+        &self,
+        endpoint: &PcGatewayEndpointCandidate,
+    ) -> Result<PcGatewayHealth> {
         let url = format!("{}/health", endpoint.base_url.trim_end_matches('/'));
         let response = self.http.get(url).send().await?;
         if !response.status().is_success() {
@@ -274,7 +302,10 @@ fn normalize_host_for_url(host: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{PcGatewayDiscoveryService, PcGatewayDiscoveryStatus, PcGatewayMdnsRecord, DEFAULT_PC_GATEWAY_PORT};
+    use super::{
+        PcGatewayDiscoveryService, PcGatewayDiscoveryStatus, PcGatewayMdnsRecord,
+        DEFAULT_PC_GATEWAY_PORT,
+    };
 
     #[test]
     fn mdns_records_become_local_http_candidates() {
@@ -286,14 +317,21 @@ mod tests {
         )]);
         assert_eq!(report.candidates.len(), 1);
         assert_eq!(report.candidates[0].status, PcGatewayDiscoveryStatus::Found);
-        assert!(report.candidates[0].endpoint.base_url.contains("192.168.1.10"));
+        assert!(report.candidates[0]
+            .endpoint
+            .base_url
+            .contains("192.168.1.10"));
     }
 
     #[test]
     fn public_http_manual_hosts_are_rejected() {
         let service = PcGatewayDiscoveryService::default();
-        let report = service.from_manual_hosts(vec!["example.com".to_string()], DEFAULT_PC_GATEWAY_PORT);
-        assert_eq!(report.candidates[0].status, PcGatewayDiscoveryStatus::Rejected);
+        let report =
+            service.from_manual_hosts(vec!["example.com".to_string()], DEFAULT_PC_GATEWAY_PORT);
+        assert_eq!(
+            report.candidates[0].status,
+            PcGatewayDiscoveryStatus::Rejected
+        );
     }
 
     #[test]

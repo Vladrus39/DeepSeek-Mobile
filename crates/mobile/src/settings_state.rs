@@ -96,8 +96,14 @@ pub fn config_file_path() -> PathBuf {
     config_store().config_path()
 }
 
+/// Config for an agent turn — always merged from disk (includes encrypted API key).
+pub fn load_config_for_agent_turn() -> Config {
+    load_saved_config().unwrap_or_default()
+}
+
 pub fn load_saved_config() -> Option<Config> {
     let store = config_store();
+    #[cfg_attr(target_os = "android", allow(unused_mut))]
     let mut config = if store.config_path().exists() || store.secrets_path().exists() {
         store.load().ok()
     } else {
