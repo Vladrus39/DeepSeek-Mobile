@@ -7,9 +7,13 @@ import android.os.Handler
 import android.os.Looper
 import com.deepseek.mobile.bridge.DeepSeekTermuxBridge
 import org.json.JSONObject
+import java.io.File
 
 class TermuxResultReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
+        com.deepseek.mobile.bridge.NativeBridge.initMobileDataDir(
+            File(context.filesDir, "deepseek-mobile").absolutePath,
+        )
         val requestId = intent.getStringExtra(EXTRA_REQUEST_ID) ?: return
         val result = DeepSeekTermuxBridge(context).parseResult(requestId, intent)
         val payload = JSONObject()

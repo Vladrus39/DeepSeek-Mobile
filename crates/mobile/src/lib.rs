@@ -12,7 +12,8 @@ mod attachment_ingestion;
 mod chat_attachment;
 mod chat_history_panel;
 mod chat_quick_actions;
-pub mod chat_session;
+pub mod chat_scroll;
+mod chat_session;
 mod chat_toolbar;
 mod cockpit_section_panel;
 #[cfg(not(target_os = "android"))]
@@ -78,6 +79,7 @@ use agent_timeline_panel::agent_timeline_panel;
 use chat_attachment::ChatComposerState;
 use chat_history_panel::chat_history_panel;
 use chat_quick_actions::chat_quick_actions_bar;
+use chat_scroll::scroll_chat_to_bottom;
 use chat_session::{clear_active_timeline_display, load_index, start_new_chat, switch_chat_thread};
 use chat_toolbar::chat_toolbar;
 use cockpit_section_panel::cockpit_section_panel;
@@ -762,6 +764,14 @@ fn app() -> Element {
         }
     }
 
+    let mut active_section_scroll = active_section;
+    use_effect(move || {
+        let len = timeline().len();
+        if active_section_scroll() == CockpitSection::Chat && len > 0 {
+            scroll_chat_to_bottom();
+        }
+    });
+
     #[cfg(target_os = "android")]
     let did_schedule_calibration = use_signal(|| false);
 
@@ -1349,6 +1359,7 @@ fn app() -> Element {
             }
 
             div {
+                id: chat_scroll::CHAT_SCROLL_PANEL_ID,
                 style: "{ui_layout::main_scroll_panel_style()}",
                 if active_section() == CockpitSection::Chat {
                     {mobile_approval_panel(

@@ -456,7 +456,11 @@ impl MobileEngine {
 
         Ok(EngineTurnResult {
             events,
-            final_text: outcome.final_text.or(Some(answer)),
+            final_text: if has_pending_termux {
+                Some("Ожидаю реальный результат Termux…".to_string())
+            } else {
+                outcome.final_text.or(Some(answer))
+            },
             approval_cards: outcome.approval_cards,
             executed: outcome.executed,
         })
@@ -570,6 +574,10 @@ impl MobileEngine {
                       it. Supported forms are \
                       {\"tool\":\"exec_shell\",\"args\":{\"command\":\"pwd\",\"timeout_secs\":30}} \
                       or {\"tool_calls\":[{\"tool\":\"read_file\",\"args\":{\"path\":\"README.md\"}}]}. \
+                      For any user request to create, edit, delete, list, inspect, run, test, \
+                      build, or verify files in the project, call a tool first. In the Termux \
+                      workspace, file tools and exec_shell are real native Termux actions; do \
+                      not claim a file was created until the real tool result is returned. \
                       After the app returns tool results, answer normally. Never fabricate \
                       tool output; if a real value is needed, call a tool first."
                 .to_string(),
@@ -758,7 +766,11 @@ impl MobileEngine {
 
         Ok(EngineApprovalContinuationResult {
             events,
-            final_text: outcome.final_text.or(Some(final_answer)),
+            final_text: if has_pending_termux {
+                Some("Ожидаю реальный результат Termux…".to_string())
+            } else {
+                outcome.final_text.or(Some(final_answer))
+            },
             approval_cards,
             executed: outcome.executed,
             session_grants_created: outcome.session_grants_created,

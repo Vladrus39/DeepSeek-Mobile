@@ -20,6 +20,14 @@ Run: `. .\tools\android\env.ps1; .\scripts\device-full-verify.ps1 -Serial RFCNC0
 
 | Issue | Fix |
 |-------|-----|
+| Chat opens at **first** message | Timeline uses `column-reverse` + scroll-to-bottom on load/thread switch (`chat_scroll.rs`) |
+| Tools don't run in user chat | Termux file tools via RUN_COMMAND; inline JSON tool-call parsing; Termux workspace preferred on load |
+| Termux lost after app restart | `TermuxResultReceiver` init data dir; pending Termux callback restore; re-activate workspace connection on load |
+
+## UI / logic fixes (previous)
+
+| Issue | Fix |
+|-------|-----|
 | **#8** Work log «выполняется» forever | `MobileTimelineState::seal_open_work_items()` on turn end, tool finish, restore; status rows move to **done**; badge «Ход работы … выполняется» clears when idle |
 | **#6** `Failed to restore saved timeline: EOF` | Corrupt/empty runtime JSON skipped; benign EOF → fresh timeline, no error banner |
 | «98 ходов» on «привет» | Reasoning stream merged into one **Reasoning** row |

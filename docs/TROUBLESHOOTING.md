@@ -56,6 +56,10 @@ Cause: Dioxus packages the Rust native activity library as `libmain.so`, not `li
 
 Fix: `android/bridge/.../NativeBridge.kt` loads `main` first and only then falls back to `deepseek_mobile`.
 
+### Чат открывается на первом сообщении, а не на последнем
+
+После обновления APK чат при открытии и смене треда прокручивается к **последнему** сообщению (`column-reverse` + `scroll_chat_to_bottom`). Если видите старый ход — нажмите **+ Новый** или обновите APK.
+
 ### App «перезагружается», виснет, само закрывается
 
 **Перезапуск процесса**

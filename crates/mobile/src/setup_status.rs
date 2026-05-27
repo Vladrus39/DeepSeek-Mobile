@@ -18,7 +18,10 @@ pub struct SetupSnapshot {
 impl SetupSnapshot {
     pub fn collect(settings: &SettingsFormState, termux: &TermuxWorkspaceState) -> Self {
         let api_ok = settings.api_key.trim().starts_with("sk-");
-        let agent_mode_ok = settings.execution_mode == ExecutionMode::Agent;
+        let agent_mode_ok = matches!(
+            settings.execution_mode,
+            ExecutionMode::Agent | ExecutionMode::Yolo
+        );
         let termux_ok = termux.is_valid() && termux.saved;
         let full_agent_ready = api_ok && agent_mode_ok && termux_ok;
         Self {

@@ -77,6 +77,14 @@ pub fn parse_tool_calls_from_text(text: &str) -> ToolCallParseResult {
         }
     }
 
+    if result.tool_calls.is_empty() {
+        for object in extract_inline_json_objects(text) {
+            if let Some(mut calls) = parse_json_tool_calls(&object, ToolCallSource::InlineJson) {
+                result.tool_calls.append(&mut calls);
+            }
+        }
+    }
+
     result
 }
 
@@ -166,6 +174,53 @@ fn extract_json_code_blocks(text: &str) -> Vec<String> {
     blocks
 }
 
+fn extract_inline_json_objects(text: &str) -> Vec<String> {
+    let mut objects = Vec::new();
+    let mut stack = 0usize;
+    let mut start: Option<usize> = None;
+    let mut in_string = false;
+    let mut escaped = false;
+
+    for (idx, ch) in text.char_indices() {
+        if escaped {
+            escaped = false;
+            continue;
+        }
+        if ch == '\\' && in_string {
+            escaped = true;
+            continue;
+        }
+        if ch == '"' {
+            in_string = !in_string;
+            continue;
+        }
+        if in_string {
+            continue;
+        }
+
+        match ch {
+            '{' => {
+                if stack == 0 {
+                    start = Some(idx);
+                }
+                stack += 1;
+            }
+            '}' if stack > 0 => {
+                stack -= 1;
+                if stack == 0 {
+                    if let Some(start_idx) = start.take() {
+                        let end_idx = idx + ch.len_utf8();
+                        objects.push(text[start_idx..end_idx].to_string());
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    objects
+}
+
 fn new_tool_call_id() -> String {
     let seq = TOOL_CALL_COUNTER.fetch_add(1, Ordering::Relaxed);
     format!("tool-{}-{}", current_unix_time(), seq)
@@ -210,6 +265,19 @@ mod tests {
         assert_eq!(result.final_text, text);
         assert_eq!(result.tool_calls.len(), 1);
         assert_eq!(result.tool_calls[0].source, ToolCallSource::JsonBlock);
+    }
+
+    #[test]
+    fn parses_inline_tool_json_inside_prose() {
+        let text = "Принято.\n{\"tool_calls\":[{\"tool\":\"exec_shell\",\"args\":{\"command\":\"echo HELLO > test.txt\"}}]}";
+        let result = parse_tool_calls_from_text(text);
+        assert_eq!(result.final_text, text);
+        assert_eq!(result.tool_calls.len(), 1);
+        assert_eq!(result.tool_calls[0].name, "exec_shell");
+        assert_eq!(
+            result.tool_calls[0].arguments,
+            json!({"command": "echo HELLO > test.txt"})
+        );
     }
 
     #[test]

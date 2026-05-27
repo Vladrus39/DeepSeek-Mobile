@@ -145,7 +145,10 @@ impl<'a> ToolExecutionCoordinator<'a> {
                 Ok(local_open_path_unavailable_result(&context.workspace.id))
             }
             ToolExecutionTarget::Termux if call.name == "exec_shell" => {
-                self.execute_on_termux(call, context).await
+                self.execute_shell_on_termux(call, context).await
+            }
+            ToolExecutionTarget::Termux if termux_file_tool_command(call).is_some() => {
+                self.execute_file_tool_on_termux(call, context).await
             }
             ToolExecutionTarget::LocalAndroid | ToolExecutionTarget::Termux => {
                 let mut result =
@@ -169,7 +172,7 @@ impl<'a> ToolExecutionCoordinator<'a> {
         }
     }
 
-    async fn execute_on_termux(
+    async fn execute_shell_on_termux(
         &self,
         call: &ToolCallRequest,
         context: &ToolContext,
@@ -191,6 +194,35 @@ impl<'a> ToolExecutionCoordinator<'a> {
         Ok(ToolResult::success(format!(
             "Termux shell execution queued for Android native bridge. request_id={} working_dir={} command={}",
             request_id, working_dir, command
+        ))
+        .with_metadata(json!({
+            "executor": "termux",
+            "native_command": "RunTermuxCommand",
+            "termux_execution_pending": true,
+            "termux_execution_status": "pending_native_bridge",
+            "termux_request_id": request_id,
+            "termux_exec_request": request,
+        })))
+    }
+
+    async fn execute_file_tool_on_termux(
+        &self,
+        call: &ToolCallRequest,
+        context: &ToolContext,
+    ) -> Result<ToolResult> {
+        let command = termux_file_tool_command(call)
+            .ok_or_else(|| anyhow!("unsupported Termux file tool '{}'", call.name))?;
+        let request = TermuxExecRequest::new(
+            termux_request_id(call, &command, &context.workspace.root),
+            command.clone(),
+            context.workspace.root.clone(),
+        )
+        .with_timeout_secs(Some(60));
+        let request_id = request.request_id.clone();
+        let working_dir = request.working_dir.display().to_string();
+        Ok(ToolResult::success(format!(
+            "Termux file tool queued for Android native bridge. request_id={} working_dir={} tool={}",
+            request_id, working_dir, call.name
         ))
         .with_metadata(json!({
             "executor": "termux",
@@ -709,6 +741,82 @@ fn command_request_from_shell(command: &str, root: PathBuf) -> Result<CommandReq
     })
 }
 
+fn termux_file_tool_command(call: &ToolCallRequest) -> Option<String> {
+    match call.name.as_str() {
+        "read_file" => {
+            let path = safe_termux_relative_path(required_str(&call.arguments, "path").ok()?)?;
+            Some(format!("set -e\ncat -- {}", shell_quote(&path)))
+        }
+        "list_dir" => {
+            let path = safe_termux_relative_path(optional_str(&call.arguments, "path").unwrap_or("."))?;
+            Some(format!("set -e\nls -la -- {}", shell_quote(&path)))
+        }
+        "write_file" => {
+            let path = safe_termux_relative_path(required_str(&call.arguments, "path").ok()?)?;
+            let content = required_str(&call.arguments, "content").ok()?;
+            Some(termux_write_file_command(&path, content))
+        }
+        "delete_file" => {
+            let path = safe_termux_relative_path(required_str(&call.arguments, "path").ok()?)?;
+            Some(format!("set -e\nrm -f -- {}", shell_quote(&path)))
+        }
+        "copy_file" => {
+            let source = safe_termux_relative_path(required_str(&call.arguments, "source").ok()?)?;
+            let dest = safe_termux_relative_path(required_str(&call.arguments, "dest").ok()?)?;
+            Some(format!(
+                "set -e\nmkdir -p -- \"$(dirname -- {})\"\ncp -- {} {}",
+                shell_quote(&dest),
+                shell_quote(&source),
+                shell_quote(&dest)
+            ))
+        }
+        "move_file" => {
+            let source = safe_termux_relative_path(required_str(&call.arguments, "source").ok()?)?;
+            let dest = safe_termux_relative_path(required_str(&call.arguments, "dest").ok()?)?;
+            Some(format!(
+                "set -e\nmkdir -p -- \"$(dirname -- {})\"\nmv -- {} {}",
+                shell_quote(&dest),
+                shell_quote(&source),
+                shell_quote(&dest)
+            ))
+        }
+        _ => None,
+    }
+}
+
+fn safe_termux_relative_path(path: &str) -> Option<String> {
+    let trimmed = path.trim();
+    if trimmed.is_empty()
+        || trimmed.starts_with('/')
+        || trimmed.contains('\0')
+        || trimmed.split('/').any(|segment| segment == "..")
+    {
+        return None;
+    }
+    Some(trimmed.to_string())
+}
+
+fn termux_write_file_command(path: &str, content: &str) -> String {
+    let mut marker = "__DEEPSEEK_MOBILE_EOF__".to_string();
+    while content.contains(&marker) {
+        marker.push('_');
+    }
+    format!(
+        "set -e\nmkdir -p -- \"$(dirname -- {})\"\ncat > {} <<'{}'\n{}\n{}\nprintf 'WROTE %s bytes to %s\\n' {} {}\n",
+        shell_quote(path),
+        shell_quote(path),
+        marker,
+        content,
+        marker,
+        content.len(),
+        shell_quote(path)
+    )
+}
+
+fn shell_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "'\\''"))
+}
+
 fn shell_words(input: &str) -> Vec<String> {
     let mut words = Vec::new();
     let mut current = String::new();
@@ -1158,5 +1266,51 @@ mod tests {
             request.working_dir,
             PathBuf::from("/data/data/com.termux/files/home/project")
         );
+    }
+
+    #[tokio::test]
+    async fn termux_write_file_routes_to_native_run_command() {
+        let tool_call = ToolCallRequest {
+            id: "write-1".to_string(),
+            name: "write_file".to_string(),
+            arguments: json!({"path": "test.txt", "content": "HELLO"}),
+            source: ToolCallSource::Manual,
+        };
+        let workspace = crate::workspace::Workspace::new(
+            "w-termux",
+            "Termux",
+            PathBuf::from("/data/data/com.termux/files/home/deepseek-project"),
+            ExecutorKind::Termux,
+        );
+        let context = ToolContext::new(workspace);
+        let registry = crate::tools::default_mobile_tool_registry();
+
+        let result = ToolExecutionCoordinator::new(&registry)
+            .execute(&tool_call, &context)
+            .await
+            .unwrap();
+
+        assert!(result.success);
+        let metadata = result.metadata.expect("termux metadata");
+        assert_eq!(
+            metadata
+                .get("termux_execution_pending")
+                .and_then(Value::as_bool),
+            Some(true)
+        );
+        let request: TermuxExecRequest =
+            serde_json::from_value(metadata.get("termux_exec_request").unwrap().clone()).unwrap();
+        assert!(request.command.contains("cat > 'test.txt'"));
+        assert_eq!(
+            request.working_dir,
+            PathBuf::from("/data/data/com.termux/files/home/deepseek-project")
+        );
+    }
+
+    #[test]
+    fn termux_file_paths_reject_escape_attempts() {
+        assert!(safe_termux_relative_path("test.txt").is_some());
+        assert!(safe_termux_relative_path("../secret").is_none());
+        assert!(safe_termux_relative_path("/data/data/com.termux/files/home/x").is_none());
     }
 }

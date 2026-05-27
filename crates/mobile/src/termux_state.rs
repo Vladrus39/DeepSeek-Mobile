@@ -31,7 +31,8 @@ impl Default for TermuxWorkspaceState {
 
 impl TermuxWorkspaceState {
     pub fn load_from_base_dir(base_dir: impl AsRef<Path>) -> Self {
-        let loaded = load_saved_termux_config_from_base_dir(base_dir);
+        let base = base_dir.as_ref();
+        let loaded = load_saved_termux_config_from_base_dir(base);
         if let Some(saved) = loaded {
             let mut state = Self {
                 workspace_path: saved.workspace_path,
@@ -42,6 +43,12 @@ impl TermuxWorkspaceState {
             state.validate();
             if state.validation_error.is_some() {
                 state.saved = false;
+            } else if state.saved {
+                // Re-register active Termux workspace after app/process restart.
+                let _ = activate_workspace_connection_in_base_dir(
+                    base,
+                    state.to_workspace_connection(),
+                );
             }
             state
         } else {

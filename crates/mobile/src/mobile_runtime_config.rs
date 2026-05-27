@@ -43,6 +43,11 @@ impl MobileRuntimeConfig {
         if let Ok(Some(connection)) = load_active_workspace_connection_from_base_dir(&base_dir) {
             config.workspace_connection = Some(connection);
         }
+        // Phone-first: saved Termux path always wins over stale sandbox/PC active route.
+        let termux = crate::termux_state::TermuxWorkspaceState::load_from_base_dir(&base_dir);
+        if termux.saved && termux.is_valid() {
+            config.workspace_connection = Some(termux.to_workspace_connection());
+        }
         config
     }
 

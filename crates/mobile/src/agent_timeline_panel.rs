@@ -55,20 +55,22 @@ pub fn agent_timeline_panel(
     });
     let has_running_activity = activity_has_active_item(&activity_items);
 
+    // column-reverse: first DOM child sits at the visual bottom so reopening the app
+    // shows the latest messages without a separate scrollTo call.
     rsx! {
         div {
-            style: "display:flex;flex-direction:column;gap:10px;padding-bottom:4px;",
+            style: "display:flex;flex-direction:column-reverse;gap:10px;padding-bottom:4px;min-height:min-content;",
 
-            for item in conversation_items {
-                {timeline_item_view(ui_lang, item)}
+            if !activity_items.is_empty() {
+                {assistant_activity_panel(ui_lang, &activity_items, activity_open, on_activity_toggle)}
             }
 
             if has_running_activity && !has_running_assistant {
                 {assistant_thinking_bubble(ui_lang)}
             }
 
-            if !activity_items.is_empty() {
-                {assistant_activity_panel(ui_lang, &activity_items, activity_open, on_activity_toggle)}
+            for item in conversation_items.iter().rev() {
+                {timeline_item_view(ui_lang, item)}
             }
         }
     }

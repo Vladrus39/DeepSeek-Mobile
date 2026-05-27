@@ -6,7 +6,7 @@ use crate::native_pc_discovery::{
 use crate::native_termux::{AndroidTermuxCallback, AndroidTermuxCommand};
 use deepseek_mobile_core::tools::phone_bridge::PhoneNativeRequest;
 use deepseek_mobile_core::{
-    AgentEvent, PcGatewayDiscoveryReport, TermuxExecRequest, TermuxExecResult,
+    AgentEvent, PcGatewayDiscoveryReport, RuntimeThreadStore, TermuxExecRequest, TermuxExecResult,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -124,6 +124,13 @@ pub fn termux_request_from_agent_event(event: &AgentEvent) -> Option<TermuxExecR
         return None;
     }
     serde_json::from_value(metadata.get("termux_exec_request")?.clone()).ok()
+}
+
+fn has_saved_pending_termux_request(request_id: &str) -> bool {
+    let root = crate::mobile_runtime_config::default_data_dir().join("runtime_store");
+    RuntimeThreadStore::open(root)
+        .and_then(|store| store.load_pending_termux(request_id))
+        .is_ok()
 }
 
 impl NativeBridgeState {
@@ -368,7 +375,8 @@ impl NativeBridgeState {
             .active_termux_request_ids
             .iter()
             .any(|active| active == &request_id);
-        let event = if is_active {
+        let saved_pending = !is_active && has_saved_pending_termux_request(&request_id);
+        let event = if is_active || saved_pending {
             self.active_termux_request_ids
                 .retain(|active| active != &request_id);
             if self.active_termux_request_ids.is_empty() {
