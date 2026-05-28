@@ -345,7 +345,7 @@ fn load_skills_context_for_engine() -> Option<String> {
             }
         }
     }
-    registry.context_injection()
+    registry.full_context_injection()
 }
 
 #[derive(serde::Deserialize)]

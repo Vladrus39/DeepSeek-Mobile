@@ -3,26 +3,36 @@
 //! Triggered by creating `files/deepseek-mobile/.zip_transfer_probe_requested` in app data dir.
 //! Writes a single-line result into `files/deepseek-mobile/.zip_transfer_probe_result`.
 
+use crate::document_picker::PickedDocument;
 use crate::mobile_runtime_config::default_data_dir;
 use crate::native_bridge::NativeMobileEvent;
-use crate::project_transfer_state::{default_export_dir, default_phone_workspace_root, ProjectTransferState};
+use crate::project_transfer_state::{
+    default_export_dir, default_phone_workspace_root, ProjectTransferState,
+};
 use std::fs;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
-const REQUEST_FLAG: &str = ".zip_transfer_probe_requested";
+const REQUEST_EXPORT_FLAG: &str = ".zip_transfer_probe_requested";
+const REQUEST_IMPORT_FLAG: &str = ".zip_transfer_probe_import_requested";
 const RESULT_FILE: &str = ".zip_transfer_probe_result";
-
-fn flag_path() -> PathBuf {
-    default_data_dir().join(REQUEST_FLAG)
-}
+/// Archive pushed by `scripts/device-e2e-zip-import.ps1` before triggering import probe.
+const IMPORT_ARCHIVE: &str = "probes/import-test.zip";
 
 fn result_path() -> PathBuf {
     default_data_dir().join(RESULT_FILE)
 }
 
 pub fn is_probe_requested() -> bool {
-    flag_path().exists()
+    export_flag_path().exists() || import_flag_path().exists()
+}
+
+fn export_flag_path() -> PathBuf {
+    default_data_dir().join(REQUEST_EXPORT_FLAG)
+}
+
+fn import_flag_path() -> PathBuf {
+    default_data_dir().join(REQUEST_IMPORT_FLAG)
 }
 
 fn write_result(line: &str) {
@@ -58,12 +68,17 @@ async fn wait_for_share_callback(timeout: Duration) -> Result<&'static str, Stri
     }
 }
 
-/// Runs one ZIP export + share when [REQUEST_FLAG] exists.
+/// Runs ZIP export+share or headless import when the corresponding flag file exists.
 pub async fn run_if_requested() {
-    if !is_probe_requested() {
+    if import_flag_path().exists() {
+        let _ = fs::remove_file(import_flag_path());
+        run_import_probe();
         return;
     }
-    let _ = fs::remove_file(flag_path());
+    if !export_flag_path().exists() {
+        return;
+    }
+    let _ = fs::remove_file(export_flag_path());
 
     let workspace_root = default_phone_workspace_root();
     let export_dir = default_export_dir();
@@ -96,6 +111,45 @@ pub async fn run_if_requested() {
             report.archive_path.display(),
             error.replace('\n', " ")
         )),
+    }
+}
+
+fn run_import_probe() {
+    let archive_path = default_data_dir().join(IMPORT_ARCHIVE);
+    if !archive_path.is_file() {
+        write_result(&format!(
+            "FAIL import missing archive {}",
+            archive_path.display()
+        ));
+        return;
+    }
+
+    let workspace_root = default_phone_workspace_root();
+    if let Err(err) = fs::create_dir_all(&workspace_root) {
+        write_result(&format!("FAIL import workspace mkdir {err}"));
+        return;
+    }
+
+    let mut transfer = ProjectTransferState::default();
+    let document = PickedDocument::new("import-test", "import-test.zip")
+        .with_path(archive_path.clone());
+    match transfer.import_documents(&[document], &workspace_root) {
+        Ok(report) => {
+            let marker_ok = workspace_root.join("import_probe_marker.txt").is_file();
+            if marker_ok {
+                write_result(&format!(
+                    "PASS import archive={} workspace={}",
+                    report.archive_name,
+                    report.workspace_root.display()
+                ));
+            } else {
+                write_result(&format!(
+                    "FAIL import extracted but import_probe_marker.txt missing in {}",
+                    workspace_root.display()
+                ));
+            }
+        }
+        Err(error) => write_result(&format!("FAIL import {error}")),
     }
 }
 

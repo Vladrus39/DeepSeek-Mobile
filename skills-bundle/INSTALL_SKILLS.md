@@ -1,6 +1,32 @@
 ## DeepSeek-Mobile skills bundle install (Android)
 
-This repo ships a ready-made skills bundle under `skills-bundle/`. The app discovers skills by scanning **the `skills/` directory** under your configured data dir:
+This repo ships a ready-made skills bundle under `skills-bundle/` (**21 skills**). The app discovers skills by scanning **the `skills/` directory** under your configured data dir:
+
+| Skill folder | Topic |
+|--------------|--------|
+| `termux-first-execution-discipline` | Termux RUN_COMMAND, evidence |
+| `rust-android-dioxus-build-patterns` | dx build, JNI, APK |
+| `git-workflow-discipline` | commits, branches |
+| `adb-e2e-testing-discipline` | device probes, logcat |
+| `mcp-integration-discipline` | mcp.json, mcp__server__tool |
+| `mobile-ux-debug-discipline` | UI, ANR, scroll |
+| `pr-merge-ready-discipline` | merge-ready PRs |
+| `analytical-artifacts-discipline` | structured reports |
+| `project-hooks-discipline` | scripts/automation |
+| `project-rules-discipline` | repo conventions |
+| `skill-authoring-discipline` | write SKILL.md |
+| `monitored-loops-discipline` | polling/timeouts |
+| `cursor-sdk-automation` | PC SDK agents |
+| `split-prs-discipline` | small PRs |
+| `termux-cli-status-discipline` | shell hygiene |
+| `mobile-config-secrets-discipline` | config/secrets |
+| `pdf-documents-discipline` | PDF workflows |
+| `playwright-e2e-discipline` | browser E2E (PC) |
+| `datadog-mcp-setup` | Datadog MCP init |
+| `datadog-mcp-config` | Datadog site/auth |
+| `datadog-mcp-toolsets` | Datadog toolsets |
+
+Enabled skills inject **full SKILL.md bodies** into the agent system context.
 
 - **Internal app files (preferred)**: `run-as com.deepseek.mobile` → `files/deepseek-mobile/skills/`
 - **External app files (easy to push)**: `/sdcard/Android/data/com.deepseek.mobile/files/deepseek-mobile/skills/`

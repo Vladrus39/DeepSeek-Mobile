@@ -14,10 +14,11 @@
 | Termux pwd agent (`device-termux-pwd-probe`) | PASS | `exit=0`, stdout `.../deepseek-project` — 2026-05-28 ~13s |
 | Termux file create + verify (`device-e2e-file-create`) | PASS | `write_file` created `test_verify_e2e.txt`, `exec_shell cat` returned `HELLO_E2E` (2026-05-28) |
 | Termux mini-project workflow (`device-e2e-project-workflow`) | PASS | create/edit `test_e2e_project/hello.txt`, verify contents, `pwd && ls` (2026-05-28) |
-| MCP demo tool (`mcp__demo__echo`) | PASS | Phone called MCP tool and got response via HTTP JSON-RPC: `PHONE` (2026-05-28) |
+| MCP demo tool (`mcp__demo__echo`) | PASS | `device-e2e-mcp.ps1` → `MCP_E2E` via LAN HTTP JSON-RPC (2026-05-28) |
 | Android project ZIP export+share (`device-e2e-zip-export`) | PASS | Headless probe: export zip + share callback `file_shared` (2026-05-28) |
-| Android project ZIP import (picker UI) | Partial | Export/share verified via probe; import still needs manual picker selection on device |
-| Skills bundle (6 skills) | PASS | Pushed to `files/deepseek-mobile/skills/*/SKILL.md` on device (2026-05-28) |
+| Android project ZIP import headless (`device-e2e-zip-import`) | PASS | `import_probe_marker.txt` extracted into workspace (2026-05-28) |
+| Android project ZIP import (system picker UI) | Manual | Headless import PASS; confirm picker once on device |
+| Skills bundle (21 skills) | PASS | All `SKILL.md` on device; full-body injection enabled (2026-05-28) |
 | PC mDNS discovery | Intermittent | `.pc_discovery_probe_running` can stick; requires `deepseek-pc-host` on `0.0.0.0:8787`, same Wi‑Fi |
 
 Run: `. .\tools\android\env.ps1; .\scripts\device-full-verify.ps1 -Serial RFCNC0PWD4E`

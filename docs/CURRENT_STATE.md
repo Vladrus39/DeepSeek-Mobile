@@ -1,6 +1,6 @@
 # DeepSeek-Mobile — current state
 
-**Updated:** 2026-05-28
+**Updated:** 2026-05-28 (evening checkpoint)
 
 This is the factual project checkpoint after phone-agent E2E on device.
 
@@ -108,6 +108,12 @@ Follow **`docs/DEVICE_SETUP.md`**:
 - Current device state after the latest smoke test: setup screen opens, API/Agent checks pass, Termux path remains pending until the path is saved and Termux external command permission is verified.
 - Termux path + `allow-external-apps` required for full TUI-class agent.
 
+## Tool & skills status
+
+- Full built-in tool list and E2E coverage matrix: **`docs/TOOL_AUDIT.md`**
+- **21 skills** in `skills-bundle/`; push with `scripts/push-skills-to-device.ps1`
+- Automated PASS on device: Termux file/shell/git, MCP echo, ZIP export+import headless (see `docs/DEVICE_E2E_RESULTS.md`)
+
 ## What remains
 
 ### Native Android end-to-end verification
@@ -115,8 +121,8 @@ Follow **`docs/DEVICE_SETUP.md`**:
 Run manually on the phone:
 
 - Pick one source/text file through Android picker and confirm it appears as a chat attachment.
-- Import one project ZIP through Files → Import ZIP and confirm the workspace refreshes.
-- Export the phone workspace through Files → Export ZIP and confirm Android share receives the ZIP.
+- Import one project ZIP through **system picker** (Files → Import ZIP) once — headless import already PASS via adb.
+- Export through UI if you want to confirm chooser UX (headless export+share already PASS).
 - Configure Termux:
   - install Termux;
   - grant `com.termux.permission.RUN_COMMAND`;

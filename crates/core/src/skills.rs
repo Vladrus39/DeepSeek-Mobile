@@ -144,6 +144,35 @@ impl SkillRegistry {
             lines.join("\n")
         ))
     }
+
+    /// Inject full SKILL.md bodies for enabled skills (used by the mobile agent).
+    pub fn full_context_injection(&self) -> Option<String> {
+        let enabled = self.enabled();
+        if enabled.is_empty() {
+            return None;
+        }
+        let mut sections = Vec::new();
+        sections.push(
+            "## Active Skills (full instructions)\n\nFollow these skill instructions when relevant.\n"
+                .to_string(),
+        );
+        for skill in enabled {
+            match self.load_body(&skill.name) {
+                Ok(body) if !body.trim().is_empty() => {
+                    sections.push(format!(
+                        "### Skill: {}\n\n{}\n",
+                        skill.name,
+                        body.trim()
+                    ));
+                }
+                _ => sections.push(format!(
+                    "### Skill: {}\n\n{}\n",
+                    skill.name, skill.description
+                )),
+            }
+        }
+        Some(sections.join("\n"))
+    }
 }
 
 // ── Helpers ──
