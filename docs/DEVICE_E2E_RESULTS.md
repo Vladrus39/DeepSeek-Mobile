@@ -19,6 +19,8 @@
 | Android project ZIP import headless (`device-e2e-zip-import`) | PASS | `import_probe_marker.txt` extracted into workspace (2026-05-28) |
 | Android project ZIP import (system picker UI) | Manual | `docs/ZIP_IMPORT_UI_TEST.md`; MIME `octet-stream` fix in picker |
 | Termux `delete_file` (`device-e2e-delete-file`) | PASS | create → `delete_file` → `exec_shell` verify `/data/GONE` (2026-05-29) |
+| Termux `copy_file` (`device-e2e-copy-file`) | PASS | write → copy → `cat` verifies `COPY_SRC` (2026-05-29) |
+| Sandbox tools (`device-e2e-tools-sandbox`) | PASS | `workspace_overview`, `apply_patch`, `read_file` on app sandbox (2026-05-29) |
 | Skills bundle (21 skills) | PASS | All `SKILL.md` on device; full-body injection enabled (2026-05-28) |
 | PC mDNS discovery | Intermittent | `.pc_discovery_probe_running` can stick; requires `deepseek-pc-host` on `0.0.0.0:8787`, same Wi‑Fi |
 
