@@ -14,6 +14,8 @@
 | Termux pwd agent (`device-termux-pwd-probe`) | PASS | `exit=0`, stdout `.../deepseek-project` — 2026-05-28 ~13s |
 | Termux file create + verify (`device-e2e-file-create`) | PASS | `write_file` created `test_verify_e2e.txt`, `exec_shell cat` returned `HELLO_E2E` (2026-05-28) |
 | Termux mini-project workflow (`device-e2e-project-workflow`) | PASS | create/edit `test_e2e_project/hello.txt`, verify contents, `pwd && ls` (2026-05-28) |
+| MCP demo tool (`mcp__demo__echo`) | PASS | Phone called MCP tool and got response via HTTP JSON-RPC: `PHONE` (2026-05-28) |
+| Android project ZIP import/export | Implemented | Enabled picker + share in latest APK; needs manual hardware verification (picker + share sheet) |
 | PC mDNS discovery | Intermittent | `.pc_discovery_probe_running` can stick; requires `deepseek-pc-host` on `0.0.0.0:8787`, same Wi‑Fi |
 
 Run: `. .\tools\android\env.ps1; .\scripts\device-full-verify.ps1 -Serial RFCNC0PWD4E`
