@@ -53,7 +53,7 @@ if ($Pull) {
 
 $envScript = Join-Path $ProjectRoot "tools\android\env.ps1"
 if (-not (Test-Path $envScript)) {
-    throw "Missing $envScript — run scripts/setup-android-offline.ps1 or copy SDK into tools/android/sdk"
+    throw "Missing $envScript - run scripts/setup-android-offline.ps1 or copy SDK into tools/android/sdk"
 }
 . $envScript
 
@@ -96,4 +96,4 @@ Write-Host "PASS Phone APK updated." -ForegroundColor Green
 Write-Host "  APK: $ApkPath"
 Write-Host "  Package: $Package (user data kept on upgrade)"
 Write-Host ""
-Write-Host "Next: open the app, complete Termux setup if needed — docs/DEVICE_SETUP.md"
+Write-Host "Next: open the app, complete Termux setup if needed - docs/DEVICE_SETUP.md"
