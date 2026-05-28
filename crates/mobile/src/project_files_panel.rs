@@ -145,20 +145,10 @@ fn transfer_card(
                         padding: "6px 10px",
                         font_size: "12px",
                         onclick: move |_| {
-                            #[cfg(target_os = "android")]
-                            {
-                                transfer_state.write().mark_error(
-                                    "Android ZIP picker is disabled in this preview to avoid Dioxus/Wry native-activity ANR. Push archives into the app workspace with adb or use PC Host sync.".to_string(),
-                                );
-                            }
-
-                            #[cfg(not(target_os = "android"))]
-                            {
-                                let request = DocumentPickerRequest::project_import();
-                                picker.write().request(request.clone());
-                                native_bridge.write().enqueue_document_picker(request);
-                                transfer_state.write().request_import();
-                            }
+                            let request = DocumentPickerRequest::project_import();
+                            picker.write().request(request.clone());
+                            native_bridge.write().enqueue_document_picker(request);
+                            transfer_state.write().request_import();
                         },
                         "Import ZIP"
                     }
@@ -181,22 +171,11 @@ fn transfer_card(
                                 ) {
                                     Ok(report) => {
                                         let archive_path = report.archive_path.clone();
-                                        #[cfg(target_os = "android")]
-                                        {
-                                            next_transfer.mark_error(format!(
-                                                "Export created at {}, but Android share sheet is disabled in this preview. Copy it with adb or PC Host.",
-                                                archive_path.display()
-                                            ));
-                                            transfer_signal.set(next_transfer);
-                                        }
-                                        #[cfg(not(target_os = "android"))]
-                                        {
                                         next_transfer.mark_share_queued(archive_path.clone());
                                         transfer_signal.set(next_transfer);
                                         bridge_signal
                                             .write()
                                             .enqueue_share_file(archive_path.display().to_string());
-                                        }
                                     }
                                     Err(error) => {
                                         next_transfer.mark_error(error.to_string());
