@@ -121,7 +121,7 @@ Follow **`docs/DEVICE_SETUP.md`**:
 Run manually on the phone:
 
 - Pick one source/text file through Android picker and confirm it appears as a chat attachment.
-- Import one project ZIP through **system picker** (Files → Import ZIP) once — headless import already PASS via adb.
+- Import one project ZIP through **system picker** (Files → Import ZIP) once — see `docs/ZIP_IMPORT_UI_TEST.md` (headless import PASS via adb).
 - Export through UI if you want to confirm chooser UX (headless export+share already PASS).
 - Configure Termux:
   - install Termux;

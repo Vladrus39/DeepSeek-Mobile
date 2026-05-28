@@ -160,7 +160,9 @@ pub async fn run_if_requested() {
     }
 
     let write_file_probe = input_message.contains("write_file");
-    let termux_file_tool_probe = write_file_probe || input_message.contains("delete_file");
+    let termux_file_tool_probe = write_file_probe
+        || input_message.contains("delete_file")
+        || input_message.contains("copy_file");
     let requires_termux_tool = termux_pwd
         || input_message.contains("exec_shell")
         || termux_file_tool_probe

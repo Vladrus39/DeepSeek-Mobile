@@ -72,6 +72,7 @@ mod terminal_panel;
 mod terminal_state;
 mod termux_state;
 mod ui_layout;
+mod tools_smoke_probe;
 mod zip_transfer_probe;
 
 use agent_event_adapter::push_agent_event;
@@ -861,6 +862,9 @@ fn app() -> Element {
                     }
                     if zip_transfer_probe::is_probe_requested() {
                         zip_transfer_probe::run_if_requested().await;
+                    }
+                    if tools_smoke_probe::is_probe_requested() {
+                        tools_smoke_probe::run_if_requested();
                     }
                     pc_discovery_probe::recover_stale_running_marker();
                     if pc_discovery_probe::is_probe_requested() {

@@ -13,14 +13,14 @@
 | `list_dir` | File | **PASS** | `device-e2e-project-workflow` (`ls`) |
 | `edit_file` | File | **PASS** | `device-e2e-project-workflow` (hello.txt edit) |
 | `delete_file` | File | **PASS** | `device-e2e-delete-file.ps1` (Termux `rm`, 2026-05-29) |
-| `copy_file` | File | Not probed | Same |
+| `copy_file` | File | **PASS** (Termux) | `device-e2e-copy-file.ps1` (2026-05-29) |
 | `move_file` | File | Not probed | Same |
 | `read_many_files` | File | Not probed | Same |
 | `file_ops` | File | Not probed | Composite helper |
-| `apply_patch` | File | BLOCKED (Termux) | Local `WorkspaceFileService` only; use PC Host or phone sandbox |
+| `apply_patch` | File | **PASS** (sandbox) | `device-e2e-tools-sandbox.ps1` on `files/.../workspace` (2026-05-29) |
 | `exec_shell` | Shell | **PASS** | `cat`, `ls`, `git status` in E2E scripts |
 | `git` | Git | **PASS** (partial) | `git status` in project-workflow |
-| `workspace_overview` | Workspace | Not probed | Local/Termux read |
+| `workspace_overview` | Workspace | **PASS** (sandbox) | `device-e2e-tools-sandbox.ps1` |
 | `file_summary` | Workspace | Not probed | |
 | `snapshot_create` | Snapshot | Not probed | |
 | `snapshot_list` | Snapshot | Not probed | |
@@ -56,7 +56,7 @@ Bundled under `skills-bundle/skills/`. Enabled skills inject **full SKILL.md** i
 
 ## Recommended next probes
 
-1. `workspace_overview` after seeding a mini-repo  
-2. `apply_patch` on **phone sandbox** or paired PC Host  
-3. GitHub tools after adding PAT to device `secrets.enc` / config  
-4. `web_fetch` to a stable LAN URL with approval disabled in probe  
+1. `file_summary`, snapshots, `phone_control` / `open_path`  
+2. GitHub tools after adding PAT to device `secrets.enc` / config  
+3. `web_fetch` to a stable LAN URL with approval disabled in probe  
+4. PC Host pairing (last phase) — `device-full-verify.ps1` optional `-SkipPcHost`  
