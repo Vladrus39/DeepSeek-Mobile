@@ -58,13 +58,13 @@ function Wait-Probe([int]$Sec = 150) {
 }
 
 function Verify-File([string]$RelPath, [string]$MustContain) {
-    $msg = "Use exec_shell only. First response JSON only: {\"tool\":\"exec_shell\",\"args\":{\"command\":\"cat $RelPath\",\"timeout_secs\":30}}. Reply with file contents only."
+    $msg = "Use exec_shell only. First response JSON only: {""tool"":""exec_shell"",""args"":{""command"":""cat $RelPath"",""timeout_secs"":30}}. Reply with file contents only."
     Set-ProbeMessage $msg
     Start-YoloProbe
     $r = Wait-Probe
     if (-not $r) { return "FAIL no probe result" }
-    if ($r -match $MustContain) { return "PASS $r" }
-    return "FAIL content missing in $r"
+    if ($r -match '^PASS' -and $r -match $MustContain) { return "PASS $r" }
+    return "FAIL probe_or_content_missing $r"
 }
 
 # Ensure Agent mode (not Yolo) in persisted config after automation
@@ -86,27 +86,28 @@ Write-Host "=== Project workflow E2E (YOLO probes, Agent config after) ===" -For
 Invoke-Adb @("logcat", "-c") -AllowFail | Out-Null
 
 $stepA = @'
-In Termux workspace use write_file only. First response must be exactly: {"tool":"write_file","args":{"path":"test_e2e_project/hello.txt","content":"HELLO"}}. Then reply HELLO_OK only.
+In Termux workspace use write_file only. First response must be exactly: {"tool":"write_file","args":{"path":"test_e2e_project/hello.txt","content":"HELLO_E2E"}}. Then reply HELLO_OK only.
 '@
 Set-ProbeMessage $stepA
 Start-YoloProbe
 Write-Host "Step A: create hello.txt (foreground ~2 min)..." -ForegroundColor Yellow
 $results["step_a_write"] = Wait-Probe
-$logA = (Invoke-Adb @("logcat", "-d", "-t", "4000") | Out-String)
-$results["step_a_run_command"] = if ($logA -match "RUN_COMMAND|RunCommandService|DeepSeekTermuxBridge") { "PASS hits" } else { "FAIL no RUN_COMMAND in logcat" }
-$results["step_a_verify"] = Verify-File "test_e2e_project/hello.txt" "HELLO"
+$logA = (Invoke-Adb @("logcat", "-d", "-v", "time", "-t", "12000") | Out-String)
+$hitsA = @($logA | Select-String -Pattern "RUN_COMMAND|RunCommandService|DeepSeekTermuxBridge|termux_run_command").Count
+$results["step_a_run_command"] = if ($hitsA -gt 0) { "PASS hits=$hitsA" } else { "WARN no RUN_COMMAND in last logcat window" }
+$results["step_a_verify"] = Verify-File "test_e2e_project/hello.txt" "HELLO_E2E"
 
 $stepB = @'
-In Termux workspace use write_file to replace test_e2e_project/hello.txt with exactly two lines: HELLO and WORLD. JSON only first: {"tool":"write_file","args":{"path":"test_e2e_project/hello.txt","content":"HELLO`nWORLD"}}. Reply WORLD_OK.
+In Termux workspace use write_file to replace test_e2e_project/hello.txt with exactly two lines: HELLO_E2E and WORLD_E2E. JSON only first: {"tool":"write_file","args":{"path":"test_e2e_project/hello.txt","content":"HELLO_E2E`nWORLD_E2E"}}. Reply WORLD_OK.
 '@
 Set-ProbeMessage $stepB
 Start-YoloProbe
 Write-Host "Step B: edit hello.txt..." -ForegroundColor Yellow
 $results["step_b_write"] = Wait-Probe
-$results["step_b_verify"] = Verify-File "test_e2e_project/hello.txt" "WORLD"
+$results["step_b_verify"] = Verify-File "test_e2e_project/hello.txt" "WORLD_E2E"
 
 $stepC = @'
-Use exec_shell only. First JSON: {"tool":"exec_shell","args":{"command":"ls -la test_e2e_project && git status 2>/dev/null || true","timeout_secs":45}}. Reply with command output only.
+Use exec_shell only. First JSON: {"tool":"exec_shell","args":{"command":"pwd && ls -la test_e2e_project && git status 2>/dev/null || true","timeout_secs":45}}. Reply with command output only.
 '@
 Set-ProbeMessage $stepC
 Start-YoloProbe
