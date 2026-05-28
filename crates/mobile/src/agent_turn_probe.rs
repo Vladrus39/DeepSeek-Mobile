@@ -160,9 +160,10 @@ pub async fn run_if_requested() {
     }
 
     let write_file_probe = input_message.contains("write_file");
+    let termux_file_tool_probe = write_file_probe || input_message.contains("delete_file");
     let requires_termux_tool = termux_pwd
         || input_message.contains("exec_shell")
-        || write_file_probe
+        || termux_file_tool_probe
         || input_message.contains("DSM_PROJECT_PROBE");
     let input = UserChatInput::new(input_message);
     // Never write probe turns into the user's active chat thread, and never reuse
@@ -262,7 +263,7 @@ pub async fn run_if_requested() {
                                 termux_result.stderr,
                                 termux_result.error
                             ));
-                            if write_file_probe {
+                            if termux_file_tool_probe {
                                 if termux_result.exit_code == Some(0) {
                                     write_result(&format!(
                                         "PASS termux_write_file exit=0 final={:?}",

@@ -1,6 +1,6 @@
 # Device E2E results
 
-**Updated:** 2026-05-28  
+**Updated:** 2026-05-29  
 **Device:** Samsung SM_G781B · `RFCNC0PWD4E`  
 **Package:** `com.deepseek.mobile`
 
@@ -17,7 +17,8 @@
 | MCP demo tool (`mcp__demo__echo`) | PASS | `device-e2e-mcp.ps1` → `MCP_E2E` via LAN HTTP JSON-RPC (2026-05-28) |
 | Android project ZIP export+share (`device-e2e-zip-export`) | PASS | Headless probe: export zip + share callback `file_shared` (2026-05-28) |
 | Android project ZIP import headless (`device-e2e-zip-import`) | PASS | `import_probe_marker.txt` extracted into workspace (2026-05-28) |
-| Android project ZIP import (system picker UI) | Manual | Headless import PASS; confirm picker once on device |
+| Android project ZIP import (system picker UI) | Manual | `docs/ZIP_IMPORT_UI_TEST.md`; MIME `octet-stream` fix in picker |
+| Termux `delete_file` (`device-e2e-delete-file`) | PASS | create → `delete_file` → `exec_shell` verify `/data/GONE` (2026-05-29) |
 | Skills bundle (21 skills) | PASS | All `SKILL.md` on device; full-body injection enabled (2026-05-28) |
 | PC mDNS discovery | Intermittent | `.pc_discovery_probe_running` can stick; requires `deepseek-pc-host` on `0.0.0.0:8787`, same Wi‑Fi |
 
@@ -80,7 +81,8 @@ Last automated run: **no result file** (app background or API hang) — re-run a
 ## Manual verification still required
 
 - [ ] OPEN_DOCUMENT picker → chat attachment (picker disabled in preview coordinator — use workspace path / adb)
-- [ ] Import / export project ZIP
+- [ ] Import ZIP via system picker once (`docs/ZIP_IMPORT_UI_TEST.md`)
+- [x] Export project ZIP (headless PASS)
 - [x] Chat: «привет» → work log ~2 significant steps (Чат 4)
 - [ ] Chat: «выполни pwd в termux» → approval → Termux → continuation (user + agent mode)
 - [ ] PC Host pairing from phone (same LAN)

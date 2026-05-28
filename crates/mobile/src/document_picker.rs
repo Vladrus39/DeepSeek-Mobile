@@ -49,6 +49,9 @@ impl DocumentPickerRequest {
             mode: DocumentPickerMode::Single,
             mime_types: vec![
                 "application/zip".to_string(),
+                "application/x-zip-compressed".to_string(),
+                // Samsung Files / Downloads often tag archives as octet-stream.
+                "application/octet-stream".to_string(),
                 "application/x-tar".to_string(),
                 "application/gzip".to_string(),
             ],
@@ -161,6 +164,9 @@ mod tests {
         assert!(!request.allows_multiple());
         assert!(request.allow_archives);
         assert!(!request.allow_images);
+        assert!(request
+            .mime_types
+            .contains(&"application/octet-stream".to_string()));
     }
 
     #[test]
