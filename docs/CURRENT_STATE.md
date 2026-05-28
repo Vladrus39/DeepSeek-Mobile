@@ -129,7 +129,7 @@ Run manually on the phone:
   - set `allow-external-apps=true` in `~/.termux/termux.properties`;
   - save a valid Termux project path in Settings;
   - run `pwd` and verify stdout/stderr/exit code callback and model continuation.
-- **Later phase:** start `deepseek-pc-host` on a PC and verify mDNS discovery/persisted route (not blocking phone agent work).
+- **PC Host (phase 4):** run `scripts/device-e2e-pc-host.ps1` — requires phone + PC on the **same Wi‑Fi subnet** (`docs/PC_HOST_E2E.md`). Last run blocked: phone `172.18.1.x` vs PC `192.168.1.x`.
 
 ### Release work
 

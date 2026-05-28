@@ -22,7 +22,8 @@
 | Termux `copy_file` (`device-e2e-copy-file`) | PASS | write → copy → `cat` verifies `COPY_SRC` (2026-05-29) |
 | Sandbox tools (`device-e2e-tools-sandbox`) | PASS | `workspace_overview`, `apply_patch`, `read_file` on app sandbox (2026-05-29) |
 | Skills bundle (21 skills) | PASS | All `SKILL.md` on device; full-body injection enabled (2026-05-28) |
-| PC mDNS discovery | Intermittent | `.pc_discovery_probe_running` can stick; requires `deepseek-pc-host` on `0.0.0.0:8787`, same Wi‑Fi |
+| PC mDNS discovery (`device-e2e-pc-host`) | **BLOCKED** (subnet) | 2026-05-29: phone `172.18.1.x`, PC `192.168.1.x` — need **same Wi‑Fi/subnet**; see `docs/PC_HOST_E2E.md` |
+| PC Host `/health` on PC | PASS | `http://127.0.0.1:8787/health` when host running |
 
 Run: `. .\tools\android\env.ps1; .\scripts\device-full-verify.ps1 -Serial RFCNC0PWD4E`
 
