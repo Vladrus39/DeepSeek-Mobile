@@ -159,8 +159,10 @@ pub async fn run_if_requested() {
         return;
     }
 
-    let requires_exec_shell = termux_pwd
+    let write_file_probe = input_message.contains("write_file");
+    let requires_termux_tool = termux_pwd
         || input_message.contains("exec_shell")
+        || write_file_probe
         || input_message.contains("DSM_PROJECT_PROBE");
     let input = UserChatInput::new(input_message);
     // Never write probe turns into the user's active chat thread, and never reuse
@@ -174,35 +176,36 @@ pub async fn run_if_requested() {
     let runtime_for_continue = runtime.clone();
     let config_for_continue = config.clone();
     let saw_text = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-    let saw_exec_shell = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let saw_termux_tool = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     let pending_termux_request_id: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
     let saw_flag = saw_text.clone();
-    let exec_shell_flag = saw_exec_shell.clone();
+    let termux_tool_flag = saw_termux_tool.clone();
     let pending_id_flag = pending_termux_request_id.clone();
 
     match run_mobile_turn_with_runtime_and_observer(config, input, runtime, move |event| {
         append_trace(&format!("EVENT {event:?}"));
         if let AgentEvent::TextDelta(text) = &event {
-            if text.contains("PROBE_OK") || text.len() > 2 {
+            if text.contains("PROBE_OK")
+                || text.contains("HELLO_E2E")
+                || text.len() > 2
+            {
                 saw_flag.store(true, std::sync::atomic::Ordering::Relaxed);
             }
         }
         if let AgentEvent::ToolCallFinished(result) = &event {
-            if result.name == "exec_shell" {
-                exec_shell_flag.store(true, std::sync::atomic::Ordering::Relaxed);
-                if let Some(request) = crate::native_bridge::termux_request_from_agent_event(&event)
-                {
-                    append_trace(&format!(
-                        "ENQUEUE_TERMUX request_id={} command={:?} cwd={}",
-                        request.request_id,
-                        request.command,
-                        request.working_dir.display()
-                    ));
-                    let mut bridge = crate::native_host_runtime::snapshot();
-                    if bridge.enqueue_termux_command_from_agent_event(&event) {
-                        if let Ok(mut guard) = pending_id_flag.lock() {
-                            *guard = Some(request.request_id);
-                        }
+            if let Some(request) = crate::native_bridge::termux_request_from_agent_event(&event) {
+                termux_tool_flag.store(true, std::sync::atomic::Ordering::Relaxed);
+                append_trace(&format!(
+                    "ENQUEUE_TERMUX tool={} request_id={} command={:?} cwd={}",
+                    result.name,
+                    request.request_id,
+                    request.command,
+                    request.working_dir.display()
+                ));
+                let mut bridge = crate::native_host_runtime::snapshot();
+                if bridge.enqueue_termux_command_from_agent_event(&event) {
+                    if let Ok(mut guard) = pending_id_flag.lock() {
+                        *guard = Some(request.request_id);
                     }
                 }
             }
@@ -223,23 +226,28 @@ pub async fn run_if_requested() {
             let final_ok = result
                 .final_text
                 .as_deref()
-                .map(|t| t.contains("PROBE_OK") || t.len() > 2)
+                .map(|t| {
+                    t.contains("PROBE_OK")
+                        || t.contains("HELLO_E2E_OK")
+                        || t.contains("HELLO_E2E")
+                        || t.len() > 2
+                })
                 .unwrap_or(false);
-            let exec_shell_ok = saw_exec_shell.load(std::sync::atomic::Ordering::Relaxed);
+            let termux_tool_ok = saw_termux_tool.load(std::sync::atomic::Ordering::Relaxed);
             let saw = saw_text.load(std::sync::atomic::Ordering::Relaxed);
             if result.approval_card_count > 0 {
                 write_result(&format!(
                     "PARTIAL approvals={} final={:?}",
                     result.approval_card_count, result.final_text
                 ));
-            } else if requires_exec_shell {
+            } else if requires_termux_tool {
                 let request_id = pending_termux_request_id
                     .lock()
                     .ok()
                     .and_then(|guard| guard.clone());
-                if !exec_shell_ok {
+                if !termux_tool_ok {
                     write_result(&format!(
-                        "FAIL exec_shell_not_observed exec_shell=false final={:?}",
+                        "FAIL termux_tool_not_observed termux_tool=false final={:?}",
                         result.final_text,
                     ));
                 } else if let Some(request_id) = request_id {
@@ -254,38 +262,55 @@ pub async fn run_if_requested() {
                                 termux_result.stderr,
                                 termux_result.error
                             ));
-                            let real_stdout_ok = termux_result.exit_code == Some(0)
-                                && (termux_result.stdout.contains("/data/")
-                                    || termux_result.stdout.contains("/home/"));
-                            match crate::mobile_engine_runner::continue_mobile_termux_result_with_runtime(
-                                config_for_continue,
-                                termux_result.clone(),
-                                runtime_for_continue,
-                            )
-                            .await
-                            {
-                                Ok(continued) if real_stdout_ok => {
+                            if write_file_probe {
+                                if termux_result.exit_code == Some(0) {
                                     write_result(&format!(
-                                        "PASS termux_real exit={:?} stdout={:?} final={:?}",
+                                        "PASS termux_write_file exit=0 final={:?}",
+                                        result.final_text
+                                    ));
+                                } else {
+                                    write_result(&format!(
+                                        "FAIL termux_write_file exit={:?} stderr={:?} final={:?}",
                                         termux_result.exit_code,
-                                        termux_result.stdout.trim(),
-                                        continued.final_text
+                                        termux_result.stderr.trim(),
+                                        result.final_text
                                     ));
                                 }
-                                Ok(continued) => {
-                                    write_result(&format!(
-                                        "FAIL termux_output_unexpected exit={:?} stdout={:?} final={:?}",
-                                        termux_result.exit_code,
-                                        termux_result.stdout.trim(),
-                                        continued.final_text
-                                    ));
-                                }
-                                Err(error) => {
-                                    write_result(&format!(
-                                        "FAIL termux_continuation_failed stdout={:?} error={}",
-                                        termux_result.stdout.trim(),
-                                        format_http_transport_error(&error)
-                                    ));
+                            } else {
+                                let real_stdout_ok = termux_result.exit_code == Some(0)
+                                    && (termux_result.stdout.contains("/data/")
+                                        || termux_result.stdout.contains("/home/")
+                                        || termux_result.stdout.contains("HELLO_E2E"));
+                                match crate::mobile_engine_runner::continue_mobile_termux_result_with_runtime(
+                                    config_for_continue,
+                                    termux_result.clone(),
+                                    runtime_for_continue,
+                                )
+                                .await
+                                {
+                                    Ok(continued) if real_stdout_ok => {
+                                        write_result(&format!(
+                                            "PASS termux_real exit={:?} stdout={:?} final={:?}",
+                                            termux_result.exit_code,
+                                            termux_result.stdout.trim(),
+                                            continued.final_text
+                                        ));
+                                    }
+                                    Ok(continued) => {
+                                        write_result(&format!(
+                                            "FAIL termux_output_unexpected exit={:?} stdout={:?} final={:?}",
+                                            termux_result.exit_code,
+                                            termux_result.stdout.trim(),
+                                            continued.final_text
+                                        ));
+                                    }
+                                    Err(error) => {
+                                        write_result(&format!(
+                                            "FAIL termux_continuation_failed stdout={:?} error={}",
+                                            termux_result.stdout.trim(),
+                                            format_http_transport_error(&error)
+                                        ));
+                                    }
                                 }
                             }
                         }
@@ -298,7 +323,7 @@ pub async fn run_if_requested() {
                     }
                 } else {
                     write_result(&format!(
-                        "FAIL termux_request_not_queued exec_shell=true final={:?}",
+                        "FAIL termux_request_not_queued termux_tool=true final={:?}",
                         result.final_text,
                     ));
                 }

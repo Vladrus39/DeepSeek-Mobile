@@ -74,6 +74,27 @@ impl MobileTimelineState {
         id
     }
 
+    /// Push a timeline row with a stable id (e.g. approval request id for inline UI wiring).
+    pub fn push_with_id(
+        &mut self,
+        id: impl Into<String>,
+        kind: MobileTimelineItemKind,
+        status: MobileTimelineItemStatus,
+        title: impl Into<String>,
+        body: impl Into<String>,
+    ) -> String {
+        let id = id.into();
+        self.next_id += 1;
+        self.items.push(MobileTimelineItem::new(
+            id.clone(),
+            kind,
+            status,
+            title,
+            body,
+        ));
+        id
+    }
+
     pub fn push_user_message(&mut self, body: impl Into<String>) -> String {
         self.finish_live_assistant_message();
         self.push(

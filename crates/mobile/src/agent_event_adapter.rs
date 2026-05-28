@@ -162,7 +162,8 @@ pub fn push_agent_event(timeline: &mut MobileTimelineState, event: &AgentEvent) 
                 result.output.clone(),
             ))
         }
-        AgentEvent::ApprovalRequired(request) => Some(timeline.push(
+        AgentEvent::ApprovalRequired(request) => Some(timeline.push_with_id(
+            request.id.clone(),
             MobileTimelineItemKind::Approval,
             MobileTimelineItemStatus::WaitingForApproval,
             request.title.clone(),
@@ -425,6 +426,7 @@ mod tests {
                 risk_level: RiskLevel::Medium,
             }),
         );
+        assert_eq!(timeline.items[0].id, "approval-1");
         assert_eq!(timeline.items[0].kind, MobileTimelineItemKind::Approval);
         assert_eq!(
             timeline.items[0].status,

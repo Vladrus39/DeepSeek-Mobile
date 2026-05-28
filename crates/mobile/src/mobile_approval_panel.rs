@@ -19,100 +19,74 @@ pub fn mobile_approval_panel(
             margin_bottom: "10px",
 
             for card in cards.iter() {
+                {inline_approval_card(card, on_decision)}
+            }
+        }
+    }
+}
+
+/// Full approve/deny card for embedding directly in the chat timeline.
+pub fn inline_approval_card(
+    card: &ApprovalCardView,
+    on_decision: EventHandler<(String, ReviewDecision)>,
+) -> Element {
+    rsx! {
+        div {
+            key: "{card.id}",
+            style: "background:{severity_background(&card.severity)};border:{severity_border(&card.severity)};border-radius:16px;padding:12px;display:flex;flex-direction:column;gap:8px;width:100%;",
+
+            div {
+                style: "display:flex;justify-content:space-between;align-items:center;gap:8px;",
                 div {
-                    key: "{card.id}",
-                    background_color: severity_background(&card.severity),
-                    border: severity_border(&card.severity),
-                    border_radius: "16px",
-                    padding: "12px",
-                    display: "flex",
-                    flex_direction: "column",
-                    gap: "8px",
+                    style: "font-size:14px;font-weight:700;color:white;",
+                    "{card.title}"
+                }
+                div {
+                    style: "color:{severity_text(&card.severity)};font-size:10px;font-weight:700;text-transform:uppercase;",
+                    "{card.tool_name}"
+                }
+            }
 
-                    div {
-                        display: "flex",
-                        justify_content: "space-between",
-                        align_items: "center",
-                        gap: "8px",
+            div {
+                style: "color:#d1d5db;font-size:12px;",
+                "{card.subtitle}"
+            }
 
+            div {
+                style: "color:#9ca3af;font-size:12px;",
+                "{card.description}"
+            }
+
+            if !card.impacts.is_empty() {
+                div {
+                    style: "display:flex;flex-direction:column;gap:4px;",
+                    for impact in card.impacts.iter() {
                         div {
-                            font_size: "14px",
-                            font_weight: "700",
-                            color: "white",
-                            "{card.title}"
-                        }
-
-                        div {
-                            color: severity_text(&card.severity),
-                            font_size: "10px",
-                            font_weight: "700",
-                            text_transform: "uppercase",
-                            "{card.tool_name}"
+                            style: "color:#d1d5db;font-size:11px;",
+                            "• {impact}"
                         }
                     }
+                }
+            }
 
-                    div {
-                        color: "#d1d5db",
-                        font_size: "12px",
-                        "{card.subtitle}"
-                    }
+            {approval_diff_card(card)}
 
-                    div {
-                        color: "#9ca3af",
-                        font_size: "12px",
-                        "{card.description}"
-                    }
+            div {
+                style: "background:rgba(17,24,39,0.7);border:1px solid rgba(75,85,99,0.7);border-radius:12px;padding:8px;color:#e5e7eb;font-size:11px;white-space:pre-wrap;",
+                "{format_argument_preview(card)}"
+            }
 
-                    if !card.impacts.is_empty() {
-                        div {
-                            display: "flex",
-                            flex_direction: "column",
-                            gap: "4px",
-                            for impact in card.impacts.iter() {
-                                div {
-                                    color: "#d1d5db",
-                                    font_size: "11px",
-                                    "• {impact}"
-                                }
-                            }
-                        }
-                    }
-
-                    {approval_diff_card(card)}
-
-                    div {
-                        background_color: "rgba(17, 24, 39, 0.7)",
-                        border: "1px solid rgba(75, 85, 99, 0.7)",
-                        border_radius: "12px",
-                        padding: "8px",
-                        color: "#e5e7eb",
-                        font_size: "11px",
-                        white_space: "pre-wrap",
-                        "{format_argument_preview(card)}"
-                    }
-
-                    div {
-                        display: "flex",
-                        flex_wrap: "wrap",
-                        gap: "8px",
-
-                        for action in card.actions.iter() {
-                            {
-                                let approval_id = card.id.clone();
-                                let decision = action.decision.clone();
-                                rsx! {
-                                    button {
-                                        background_color: action_background(&action.decision),
-                                        color: "white",
-                                        border: "none",
-                                        border_radius: "999px",
-                                        padding: "8px 12px",
-                                        font_size: "12px",
-                                        font_weight: "700",
-                                        onclick: move |_| on_decision.call((approval_id.clone(), decision.clone())),
-                                        "{action.label}"
-                                    }
-                                }
+            div {
+                style: "display:flex;flex-wrap:wrap;gap:8px;",
+                for action in card.actions.iter() {
+                    {
+                        let approval_id = card.id.clone();
+                        let decision = action.decision.clone();
+                        rsx! {
+                            button {
+                                style: "background:{action_background(&action.decision)};color:white;border:none;border-radius:999px;padding:8px 12px;font-size:12px;font-weight:700;cursor:pointer;",
+                                onclick: move |_| on_decision.call((approval_id.clone(), decision.clone())),
+                                "{action.label}"
                             }
                         }
                     }

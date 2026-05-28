@@ -2,11 +2,15 @@ use crate::agent_timeline::{
     MobileTimelineItem, MobileTimelineItemKind, MobileTimelineItemStatus, MobileTimelineState,
 };
 use crate::locale::{pick, timeline_kind_label, timeline_status_label, AppLanguage};
+use crate::mobile_approval_panel::inline_approval_card;
+use deepseek_mobile_core::{ApprovalCardStatus, ApprovalCardView, ReviewDecision};
 use dioxus::prelude::*;
 
 pub fn agent_timeline_panel(
     ui_lang: AppLanguage,
     timeline: &MobileTimelineState,
+    approval_cards: &[ApprovalCardView],
+    on_approval_decision: EventHandler<(String, ReviewDecision)>,
     activity_open: bool,
     on_activity_toggle: EventHandler<()>,
 ) -> Element {
@@ -70,7 +74,13 @@ pub fn agent_timeline_panel(
             }
 
             for item in conversation_items.iter().rev() {
-                {timeline_item_view(ui_lang, item)}
+                {timeline_item_view(
+                    ui_lang,
+                    timeline,
+                    approval_cards,
+                    on_approval_decision,
+                    item,
+                )}
             }
         }
     }
@@ -86,7 +96,8 @@ fn is_conversation_item(item: &&MobileTimelineItem) -> bool {
             | MobileTimelineItemKind::AssistantMessage
             | MobileTimelineItemKind::Approval
             | MobileTimelineItemKind::Error
-    )
+    ) || (item.kind == MobileTimelineItemKind::ToolCall
+        && item.status == MobileTimelineItemStatus::WaitingForApproval)
 }
 
 fn is_activity_item(item: &&MobileTimelineItem) -> bool {
@@ -99,16 +110,132 @@ fn is_activity_item(item: &&MobileTimelineItem) -> bool {
     )
 }
 
-fn timeline_item_view(ui_lang: AppLanguage, item: &MobileTimelineItem) -> Element {
+fn timeline_item_view(
+    ui_lang: AppLanguage,
+    timeline: &MobileTimelineState,
+    approval_cards: &[ApprovalCardView],
+    on_approval_decision: EventHandler<(String, ReviewDecision)>,
+    item: &MobileTimelineItem,
+) -> Element {
     match item.kind {
         MobileTimelineItemKind::UserMessage => user_message_bubble(item),
         MobileTimelineItemKind::AssistantMessage => assistant_message_bubble(ui_lang, item),
         MobileTimelineItemKind::Status => system_status_line(ui_lang, item),
-        MobileTimelineItemKind::Attachment
-        | MobileTimelineItemKind::NativeCommand
-        | MobileTimelineItemKind::ToolCall => compact_tool_card(ui_lang, item),
-        MobileTimelineItemKind::Approval => attention_card(ui_lang, item),
+        MobileTimelineItemKind::Attachment | MobileTimelineItemKind::NativeCommand => {
+            compact_tool_card(ui_lang, item)
+        }
+        MobileTimelineItemKind::ToolCall => {
+            tool_call_with_inline_approval(ui_lang, timeline, approval_cards, on_approval_decision, item)
+        }
+        MobileTimelineItemKind::Approval => {
+            approval_with_linked_tool(ui_lang, timeline, approval_cards, on_approval_decision, item)
+        }
         MobileTimelineItemKind::Error => assistant_error_bubble(ui_lang, item),
+    }
+}
+
+fn pending_card_for_item<'a>(
+    cards: &'a [ApprovalCardView],
+    item: &MobileTimelineItem,
+) -> Option<&'a ApprovalCardView> {
+    if let Some(card) = cards
+        .iter()
+        .find(|card| card.id == item.id && card.status == ApprovalCardStatus::Pending)
+    {
+        return Some(card);
+    }
+    tool_name_from_timeline_item(item).and_then(|tool_name| {
+        cards.iter().find(|card| {
+            card.status == ApprovalCardStatus::Pending
+                && card.tool_name == tool_name
+                && item_matches_pending_tool(item, &card.tool_name)
+        })
+    })
+}
+
+fn tool_name_from_timeline_item(item: &MobileTimelineItem) -> Option<&str> {
+    if let Some(name) = item.title.strip_prefix("Tool: ") {
+        return Some(name);
+    }
+    item.title.strip_prefix("Patch proposed: ")
+}
+
+fn item_matches_pending_tool(item: &MobileTimelineItem, tool_name: &str) -> bool {
+    item.title == format!("Tool: {tool_name}")
+        || item.title == format!("Patch proposed: {tool_name}")
+        || item.title.contains(tool_name)
+}
+
+fn find_linked_tool_item<'a>(
+    timeline: &'a MobileTimelineState,
+    card: &ApprovalCardView,
+) -> Option<&'a MobileTimelineItem> {
+    timeline.items.iter().rev().find(|row| {
+        row.kind == MobileTimelineItemKind::ToolCall
+            && matches!(
+                row.status,
+                MobileTimelineItemStatus::Running
+                    | MobileTimelineItemStatus::WaitingForApproval
+                    | MobileTimelineItemStatus::Pending
+            )
+            && item_matches_pending_tool(row, &card.tool_name)
+    })
+}
+
+fn approval_with_linked_tool(
+    ui_lang: AppLanguage,
+    timeline: &MobileTimelineState,
+    approval_cards: &[ApprovalCardView],
+    on_approval_decision: EventHandler<(String, ReviewDecision)>,
+    item: &MobileTimelineItem,
+) -> Element {
+    let card = pending_card_for_item(approval_cards, item);
+    let linked_tool = card.and_then(|card| find_linked_tool_item(timeline, card));
+
+    rsx! {
+        div {
+            style: "display:flex;justify-content:flex-start;width:100%;gap:8px;align-items:flex-start;",
+            div {
+                style: "width:28px;height:28px;border-radius:999px;background:#111827;border:1px solid #374151;color:#fde68a;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;flex-shrink:0;margin-top:2px;",
+                "!"
+            }
+            div {
+                style: "max-width:92%;display:flex;flex-direction:column;gap:8px;min-width:0;",
+                if let Some(card) = card {
+                    {inline_approval_card(card, on_approval_decision)}
+                } else {
+                    {attention_card(ui_lang, item)}
+                }
+                if let Some(tool) = linked_tool {
+                    {compact_tool_card(ui_lang, tool)}
+                }
+            }
+        }
+    }
+}
+
+fn tool_call_with_inline_approval(
+    ui_lang: AppLanguage,
+    _timeline: &MobileTimelineState,
+    approval_cards: &[ApprovalCardView],
+    on_approval_decision: EventHandler<(String, ReviewDecision)>,
+    item: &MobileTimelineItem,
+) -> Element {
+    if item.status != MobileTimelineItemStatus::WaitingForApproval {
+        return compact_tool_card(ui_lang, item);
+    }
+    let card = pending_card_for_item(approval_cards, item);
+    rsx! {
+        div {
+            style: "display:flex;justify-content:flex-start;width:100%;",
+            div {
+                style: "max-width:94%;display:flex;flex-direction:column;gap:8px;min-width:0;",
+                if let Some(card) = card {
+                    {inline_approval_card(card, on_approval_decision)}
+                }
+                {compact_tool_card(ui_lang, item)}
+            }
+        }
     }
 }
 

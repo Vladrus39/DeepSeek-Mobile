@@ -44,14 +44,25 @@ pub fn load_active_saved_events() -> anyhow::Result<Vec<AgentEvent>> {
 }
 
 /// Empty or partially corrupt runtime JSON should not surface as a chat error banner.
+///
+/// Walks the full error chain because the JSON parse error is usually wrapped
+/// in higher-level `.context(...)` text (e.g. "failed to read events file"),
+/// so the outer `error.to_string()` would not contain "EOF while parsing".
 pub fn is_benign_restore_error(error: &anyhow::Error) -> bool {
-    let message = error.to_string();
-    if message.contains("No such file") || message.contains("os error 2") {
-        return true;
-    }
-    message.contains("EOF while parsing")
-        || message.contains("unexpected end of input")
-        || message.contains("trailing characters")
+    const BENIGN_NEEDLES: &[&str] = &[
+        "No such file",
+        "os error 2",
+        "EOF while parsing",
+        "unexpected end of input",
+        "expected value at line 1 column 1",
+        "trailing characters",
+    ];
+    error.chain().any(|cause| {
+        let message = cause.to_string();
+        BENIGN_NEEDLES
+            .iter()
+            .any(|needle| message.contains(needle))
+    })
 }
 
 #[cfg(test)]
@@ -94,6 +105,26 @@ mod tests {
     fn benign_restore_error_detects_eof() {
         let err = anyhow::anyhow!("EOF while parsing a value at line 1 column 0");
         assert!(super::is_benign_restore_error(&err));
+    }
+
+    #[test]
+    fn benign_restore_error_detects_eof_in_wrapped_chain() {
+        let inner = anyhow::anyhow!("EOF while parsing a value at line 1 column 0");
+        let wrapped = inner.context("failed to read thread events file");
+        assert!(super::is_benign_restore_error(&wrapped));
+    }
+
+    #[test]
+    fn benign_restore_error_detects_missing_file_in_wrapped_chain() {
+        let inner = anyhow::anyhow!("No such file or directory (os error 2)");
+        let wrapped = inner.context("open events file");
+        assert!(super::is_benign_restore_error(&wrapped));
+    }
+
+    #[test]
+    fn benign_restore_error_rejects_genuine_failure() {
+        let err = anyhow::anyhow!("disk quota exceeded");
+        assert!(!super::is_benign_restore_error(&err));
     }
 
     #[test]

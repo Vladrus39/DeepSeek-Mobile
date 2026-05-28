@@ -95,7 +95,6 @@ use health_panel::HealthQuickAction;
 use host_loop::{run_host_tick, sync_bridge_from_runtime};
 use locale::{load_ui_language, pick, tr, Tr};
 use mcp_state::McpUiState;
-use mobile_approval_panel::mobile_approval_panel;
 use mobile_drawer::{bottom_nav_bar, mobile_drawer, CockpitSection, MobileChromeSummary};
 use mobile_engine_runner::{
     continue_mobile_approval_with_runtime_and_observer, load_mobile_approval_cards,
@@ -1362,7 +1361,9 @@ fn app() -> Element {
                 id: chat_scroll::CHAT_SCROLL_PANEL_ID,
                 style: "{ui_layout::main_scroll_panel_style()}",
                 if active_section() == CockpitSection::Chat {
-                    {mobile_approval_panel(
+                    {agent_timeline_panel(
+                        ui_lang(),
+                        &timeline(),
                         &approval_cards(),
                         EventHandler::new(move |(approval_id, decision): (String, ReviewDecision)| {
                             let config = settings_state().to_config();
@@ -1452,12 +1453,7 @@ fn app() -> Element {
                                 }
                                 is_loading.set(false);
                             });
-                        })
-                    )}
-
-                    {agent_timeline_panel(
-                        ui_lang(),
-                        &timeline(),
+                        }),
                         worklog_open(),
                         EventHandler::new(move |_| worklog_open.set(!worklog_open())),
                     )}
