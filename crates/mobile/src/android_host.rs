@@ -267,6 +267,21 @@ pub fn apply_host_callback_json(
     let value: Value = serde_json::from_str(payload).ok()?;
     let kind = value.get("kind")?.as_str()?;
     match kind {
+        "file_shared" => {
+            let event = NativeMobileEvent::FileShared;
+            bridge.accept_event(event.clone());
+            Some(event)
+        }
+        "share_failed" => {
+            let message = value
+                .get("message")
+                .and_then(|v| v.as_str())
+                .unwrap_or("share failed")
+                .to_string();
+            let event = NativeMobileEvent::ShareFailed(message);
+            bridge.accept_event(event.clone());
+            Some(event)
+        }
         "document_picker_picked" => {
             let callback = parse_document_picker_callback(value.get("callback")?)?;
             Some(bridge.accept_android_document_picker_callback(callback))

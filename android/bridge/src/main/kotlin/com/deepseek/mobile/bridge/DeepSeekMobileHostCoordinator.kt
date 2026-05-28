@@ -8,6 +8,7 @@ import android.os.Build
 import android.provider.Settings
 import android.util.Log
 import androidx.activity.ComponentActivity
+import androidx.core.content.FileProvider
 import java.io.File
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
@@ -50,10 +51,27 @@ class DeepSeekMobileHostCoordinator(
         when (action.kind) {
             "open_document_picker" -> {
                 val requestId = action.requestId ?: return
-                Log.w(TAG, "Rejecting Android document picker request $requestId in preview-safe mode")
-                deliverCallbackJson(
-                    """{"kind":"document_picker_failed","request_id":"$requestId","message":"Android system picker is disabled in this preview because Dioxus/Wry can ANR after returning from external activities on tested Samsung Android 13 devices. Use PC Host, adb push, or the app-private workspace path instead."}"""
+                val androidAction = action.androidAction ?: Intent.ACTION_OPEN_DOCUMENT
+                val androidCategory = action.androidCategory ?: Intent.CATEGORY_OPENABLE
+                val allowMultiple = action.allowMultiple ?: false
+                val mimeTypes = action.mimeTypes ?: listOf("*/*")
+                val command = AndroidDocumentPickerCommandPayload(
+                    requestId = requestId,
+                    action = androidAction,
+                    category = androidCategory,
+                    allowMultiple = allowMultiple,
+                    mimeTypes = mimeTypes,
                 )
+                activity.runOnUiThread {
+                    try {
+                        onExternalActivityLaunched()
+                        documentPickerBridge.open(command)
+                    } catch (e: Throwable) {
+                        deliverCallbackJson(
+                            """{"kind":"document_picker_failed","request_id":"$requestId","message":${org.json.JSONObject.quote(e.message ?: "document picker launch failed")}}"""
+                        )
+                    }
+                }
             }
             "start_pc_gateway_discovery" -> {
                 val requestId = action.requestId ?: return
@@ -92,16 +110,53 @@ class DeepSeekMobileHostCoordinator(
             }
             "share_file" -> {
                 val path = action.path ?: return
-                val file = File(path)
-                if (!file.exists()) {
-                    deliverCallbackJson(
-                        """{"kind":"share_failed","message":"file not found: $path"}"""
-                    )
-                    return
+                val mimeType = action.mimeType ?: "application/octet-stream"
+                activity.runOnUiThread {
+                    val file = File(path)
+                    if (!file.exists()) {
+                        deliverCallbackJson(
+                            """{"kind":"share_failed","message":"file not found: $path"}""",
+                        )
+                        return@runOnUiThread
+                    }
+                    val authority = "${activity.packageName}.fileprovider"
+                    try {
+                        val uri = FileProvider.getUriForFile(activity, authority, file)
+                        val send =
+                            Intent(Intent.ACTION_SEND).apply {
+                                type = mimeType
+                                putExtra(Intent.EXTRA_STREAM, uri)
+                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            }
+                        val matchFlags =
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                                PackageManager.MATCH_DEFAULT_ONLY
+                            } else {
+                                0
+                            }
+                        val targets =
+                            activity.packageManager.queryIntentActivities(send, matchFlags)
+                        for (target in targets) {
+                            val pkgName = target.activityInfo?.packageName ?: continue
+                            activity.grantUriPermission(
+                                pkgName,
+                                uri,
+                                Intent.FLAG_GRANT_READ_URI_PERMISSION,
+                            )
+                        }
+                        val chooser =
+                            Intent.createChooser(send, "Share file").apply {
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            }
+                        onExternalActivityLaunched()
+                        activity.startActivity(chooser)
+                        deliverCallbackJson("""{"kind":"file_shared"}""")
+                    } catch (e: Throwable) {
+                        deliverCallbackJson(
+                            """{"kind":"share_failed","message":${org.json.JSONObject.quote(e.message ?: "share failed")}}""",
+                        )
+                    }
                 }
-                deliverCallbackJson(
-                    """{"kind":"share_failed","message":"Android external share sheet is disabled in this preview to avoid Dioxus/Wry focus ANR after returning from external activities."}"""
-                )
             }
             "open_url" -> {
                 val url = action.url ?: return

@@ -72,6 +72,7 @@ mod terminal_panel;
 mod terminal_state;
 mod termux_state;
 mod ui_layout;
+mod zip_transfer_probe;
 
 use agent_event_adapter::push_agent_event;
 use agent_timeline::{MobileTimelineItemKind, MobileTimelineItemStatus, MobileTimelineState};
@@ -857,6 +858,9 @@ fn app() -> Element {
                     }
                     if agent_turn_probe::is_probe_requested() {
                         agent_turn_probe::run_if_requested().await;
+                    }
+                    if zip_transfer_probe::is_probe_requested() {
+                        zip_transfer_probe::run_if_requested().await;
                     }
                     pc_discovery_probe::recover_stale_running_marker();
                     if pc_discovery_probe::is_probe_requested() {
@@ -1683,32 +1687,28 @@ fn app() -> Element {
                 button {
                     style: "background:#1f2937;color:white;width:38px;height:42px;border-radius:999px;border:1px solid #4b5563;flex-shrink:0;font-size:18px;",
                     onclick: move |_| {
-                        #[cfg(target_os = "android")]
-                        {
-                            let mut next_timeline = timeline();
-                            next_timeline.push_assistant_message(
-                                "Прикрепление файлов через системный Android-пикер временно отключено в preview-сборке: на тестовом Samsung связка Dioxus/Wry может ловить ANR после внешних picker/share окон. Сейчас безопасные варианты — PC Host, adb push или импорт через рабочую область приложения.",
-                            );
-                            timeline.set(next_timeline);
-                        }
+                        let request = DocumentPickerRequest::chat_attachment();
 
-                        #[cfg(not(target_os = "android"))]
-                        {
-                            let request = DocumentPickerRequest::chat_attachment();
+                        let mut picker_state = picker();
+                        picker_state.request(request.clone());
+                        picker.set(picker_state);
 
-                            let mut picker_state = picker();
-                            picker_state.request(request.clone());
-                            picker.set(picker_state);
+                        let mut bridge_state = native_bridge();
+                        bridge_state.enqueue(NativeMobileCommand::OpenDocumentPicker(request));
+                        native_bridge.set(bridge_state);
 
-                            let mut bridge_state = native_bridge();
-                            bridge_state.enqueue(NativeMobileCommand::OpenDocumentPicker(request));
-                            native_bridge.set(bridge_state);
-
-                            let mut next_timeline = timeline();
-                            next_timeline.push_native_command("Request Android OPEN_DOCUMENT picker for chat attachment");
-                            push_agent_event(&mut next_timeline, &AgentEvent::Status("Document picker request queued for native Android layer".to_string()));
-                            timeline.set(next_timeline);
-                        }
+                        let mut next_timeline = timeline();
+                        next_timeline.push_native_command(
+                            "Request Android OPEN_DOCUMENT picker for chat attachment",
+                        );
+                        push_agent_event(
+                            &mut next_timeline,
+                            &AgentEvent::Status(
+                                "Document picker request queued for native Android layer"
+                                    .to_string(),
+                            ),
+                        );
+                        timeline.set(next_timeline);
                     },
                     "+"
                 }
