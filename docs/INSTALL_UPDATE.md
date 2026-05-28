@@ -38,7 +38,20 @@ If you have local changes, commit/stash first, or use `-AllowDirty` (see script 
 
 Details: [`INSTALL_PC_WINDOWS.md`](./INSTALL_PC_WINDOWS.md).
 
-## One command — Android APK (build + install on phone)
+## One command — full update (git + tests + phone APK)
+
+```powershell
+cd $HOME\DeepSeek-Mobile
+.\scripts\update-all.ps1 -Serial <adb-serial> -Launch
+```
+
+Optional PC Host host binaries and Windows mDNS firewall (run PowerShell as Administrator):
+
+```powershell
+.\scripts\update-all.ps1 -Serial RFCNC0PWD4E -Launch -BuildPcHostBundle -EnableMdnsFirewall
+```
+
+## One command — Android APK only (build + install on phone)
 
 Requires: USB debugging, repo-local SDK (`. .\tools\android\env.ps1`), `dx` 0.7.x, Rust Android targets.
 

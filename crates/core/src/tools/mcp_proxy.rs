@@ -1,7 +1,7 @@
 //! Proxy tools that forward execution to connected MCP servers.
 
 use super::{ApprovalRequirement, ToolCapability, ToolContext, ToolResult, ToolSpec};
-use crate::mcp::McpToolDescriptor;
+use crate::mcp::{McpClientRegistry, McpToolDescriptor};
 use crate::mcp_client::{default_mcp_path, invoke_mcp_tool_at_path};
 use anyhow::Result;
 use serde_json::Value;
@@ -62,6 +62,10 @@ impl ToolSpec for McpProxyTool {
             .mcp_registry_path
             .clone()
             .unwrap_or_else(default_mcp_path);
+        let registry = McpClientRegistry::load_or_default(&registry_path)?;
+        if let Err(error) = registry.validate_tool_invocation(&self.server, &self.tool_name) {
+            return Ok(ToolResult::error(error.to_string()));
+        }
         let result = if let Ok(handle) = tokio::runtime::Handle::try_current() {
             handle.block_on(invoke_mcp_tool_at_path(
                 &registry_path,

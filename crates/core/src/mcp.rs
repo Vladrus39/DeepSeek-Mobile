@@ -214,6 +214,32 @@ impl McpClientRegistry {
             .flat_map(|s| s.tools.clone())
             .collect()
     }
+
+    /// Guard MCP proxy execution: server must be configured, enabled, and expose the tool.
+    pub fn validate_tool_invocation(&self, server: &str, tool_name: &str) -> Result<()> {
+        let state = self
+            .servers
+            .iter()
+            .find(|entry| entry.config.name == server)
+            .ok_or_else(|| anyhow!("MCP server '{server}' is not configured in mcp.json"))?;
+        if !state.config.enabled {
+            return Err(anyhow!(
+                "MCP server '{server}' is disabled — enable it in the MCP panel first"
+            ));
+        }
+        let known = state.tools.iter().any(|tool| tool.name == tool_name)
+            || state
+                .config
+                .declared_tools
+                .iter()
+                .any(|tool| tool.name == tool_name);
+        if !known {
+            return Err(anyhow!(
+                "MCP tool '{tool_name}' is not registered for server '{server}'"
+            ));
+        }
+        Ok(())
+    }
 }
 
 // ── Tests ──
@@ -388,5 +414,35 @@ mod tests {
 
     fn clean(dir: &Path) {
         let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn validate_tool_invocation_requires_enabled_known_tool() {
+        let mut registry = McpClientRegistry::default();
+        let config = McpServerConfig {
+            name: "demo".to_string(),
+            transport: McpTransport::HttpSse {
+                url: "http://127.0.0.1:9/mcp".to_string(),
+                headers: HashMap::new(),
+            },
+            enabled: true,
+            description: None,
+            declared_tools: vec![McpToolDescriptor {
+                name: "echo".to_string(),
+                server: "demo".to_string(),
+                description: None,
+                input_schema: serde_json::json!({}),
+            }],
+        };
+        registry.add_server(config.clone()).unwrap();
+        registry
+            .validate_tool_invocation("demo", "echo")
+            .expect("declared tool");
+
+        registry.set_enabled("demo", false);
+        assert!(registry.validate_tool_invocation("demo", "echo").is_err());
+
+        registry.set_enabled("demo", true);
+        assert!(registry.validate_tool_invocation("demo", "missing").is_err());
     }
 }

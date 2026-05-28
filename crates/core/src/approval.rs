@@ -137,7 +137,34 @@ pub fn should_request_approval(mode: &ApprovalMode, request: &MobileApprovalRequ
     }
 }
 
+/// Parse `mcp__{server}__{tool}` qualified names from the MCP proxy registry.
+pub fn parse_mcp_qualified_name(tool_name: &str) -> Option<(&str, &str)> {
+    let rest = tool_name.strip_prefix("mcp__")?;
+    let (server, tool) = rest.split_once("__")?;
+    if server.is_empty() || tool.is_empty() {
+        return None;
+    }
+    Some((server, tool))
+}
+
 pub fn approval_request_for_call(call: &ToolCallRequest) -> MobileApprovalRequest {
+    if let Some((server, tool)) = parse_mcp_qualified_name(&call.name) {
+        let mut request = MobileApprovalRequest::new(
+            call.name.clone(),
+            ToolCategory::Network,
+            ApprovalRisk::Destructive,
+            call.arguments.clone(),
+        );
+        request.description = format!(
+            "Run MCP tool '{tool}' on server '{server}' (external process or network)"
+        );
+        request.impacts = vec![
+            format!("MCP server: {server}"),
+            format!("MCP tool: {tool}"),
+            "Requires server enabled in MCP panel and user approval".to_string(),
+        ];
+        return request;
+    }
     let category = categorize_tool(&call.name);
     let risk = classify_risk(&category, &call.arguments);
     MobileApprovalRequest::new(call.name.clone(), category, risk, call.arguments.clone())
@@ -266,5 +293,21 @@ mod tests {
             &ApprovalMode::ReviewWritesAndCommands,
             &request
         ));
+    }
+
+    #[test]
+    fn mcp_proxy_tools_require_approval_with_server_context() {
+        let call = ToolCallRequest::new(
+            "mcp__demo__echo",
+            json!({"message": "hi"}),
+            ToolCallSource::Manual,
+        );
+        let request = approval_request_for_call(&call);
+        assert!(should_request_approval(
+            &ApprovalMode::ReviewWritesAndCommands,
+            &request
+        ));
+        assert!(request.description.contains("demo"));
+        assert!(request.description.contains("echo"));
     }
 }

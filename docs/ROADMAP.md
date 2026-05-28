@@ -1,6 +1,6 @@
 # DeepSeek-Mobile — roadmap
 
-**Updated:** 2026-05-26
+**Updated:** 2026-05-29
 
 ## Phase 0 — Foundation ✅
 
@@ -90,7 +90,7 @@
 - [x] PC-running-task synchronization/reconciliation.
 - [x] Runtime SSE/live event streaming.
 - [x] MCP stdio session reuse (cached child per server, reconnect on invoke failure, panel disconnect).
-- [ ] External MCP tool execution behind approvals/workspace boundaries.
+- [x] External MCP tool execution behind approvals (MCP proxy requires approval; invoke gated by mcp.json server/tool registry).
 - [ ] Signed Android APK/AAB.
 - [ ] Release notes and install/troubleshooting docs.
 - [ ] PC-host release package with matching host binary.

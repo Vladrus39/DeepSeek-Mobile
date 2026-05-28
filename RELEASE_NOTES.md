@@ -1,5 +1,29 @@
 # DeepSeek-Mobile — Release Notes
 
+## Build 2026-05-29 — PC Host pairing, Windows mDNS, MCP reuse
+
+### New
+
+- **PC Host pairing UI**: manual URL (`http://LAN:8787` / `https://tunnel`), LAN mDNS scan, pairing ZIP export + Android share.
+- **Windows mDNS fix**: PC host keeps mDNS daemon alive; `scripts/enable-pc-host-mdns-windows.ps1` for firewall (TCP 8787, UDP 5353).
+- **Phone discovery fallback**: E2E/manual URL file when mDNS is blocked on Windows LAN.
+- **MCP stdio reuse**: long-lived child per server, reconnect on invoke failure, panel disconnect.
+- **MCP approvals**: `mcp__server__tool` calls require user approval; execution validates enabled server + known tool in `mcp.json`.
+- **Update scripts**: `update-phone-apk.ps1`, `update-all.ps1` (git pull + test + APK install).
+
+### Commands
+
+```powershell
+.\scripts\update-all.ps1 -Serial <adb-serial> -Launch
+.\scripts\enable-pc-host-mdns-windows.ps1   # once, admin
+```
+
+### Still pending
+
+- Signed release APK/AAB and GitHub Release artifacts.
+- In-app OTA updates.
+- Full manual device checklist (picker, ZIP UI, Termux on hardware).
+
 ## Build 2026-05-26 — PC Task Reconciliation
 
 ### New

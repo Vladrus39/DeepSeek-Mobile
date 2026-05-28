@@ -95,7 +95,10 @@ use dioxus::prelude::*;
 use document_picker::{DocumentPickerPurpose, DocumentPickerRequest, DocumentPickerState};
 use git_state::GitUiState;
 use health_panel::HealthQuickAction;
+#[cfg(not(target_os = "android"))]
 use host_loop::{run_host_tick, sync_bridge_from_runtime};
+#[cfg(target_os = "android")]
+use host_loop::sync_bridge_from_runtime;
 use locale::{load_ui_language, pick, tr, Tr};
 use mcp_state::McpUiState;
 use mobile_drawer::{bottom_nav_bar, mobile_drawer, CockpitSection, MobileChromeSummary};
@@ -812,7 +815,7 @@ fn app() -> Element {
         let android_termux = termux_state;
         let android_settings = settings_state;
         let mut android_cal_scheduled = did_schedule_calibration;
-        let mut android_warmup_done = use_signal(|| false);
+        let android_warmup_done = use_signal(|| false);
         let mut android_poll_started = use_signal(|| false);
         let mut android_is_loading = is_loading;
         let mut android_loading_since = use_signal(|| None::<u64>);

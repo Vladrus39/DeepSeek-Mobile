@@ -1,5 +1,8 @@
 target/
 .DS_Store
+
+# Local dev wrappers in repo root (not part of the product)
+/*.bat
 .env
 *.log
 /dist
