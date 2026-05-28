@@ -42,6 +42,9 @@ pub enum AndroidHostAction {
         path: String,
         mime_type: Option<String>,
     },
+    InstallApk {
+        path: String,
+    },
     OpenUrl {
         url: String,
     },
@@ -89,6 +92,7 @@ pub fn drain_next_host_action(bridge: &mut NativeBridgeState) -> Option<AndroidH
         NativeMobileCommand::ShareFile { path, mime_type } => {
             Some(AndroidHostAction::ShareFile { path, mime_type })
         }
+        NativeMobileCommand::InstallApk { path } => Some(AndroidHostAction::InstallApk { path }),
         NativeMobileCommand::OpenUrl { url } => Some(AndroidHostAction::OpenUrl { url }),
         NativeMobileCommand::LaunchApp { package } => {
             Some(AndroidHostAction::LaunchApp { package })
@@ -279,6 +283,17 @@ pub fn apply_host_callback_json(
                 .get("message")
                 .and_then(|v| v.as_str())
                 .unwrap_or("share failed")
+                .to_string();
+            let event = NativeMobileEvent::ShareFailed(message);
+            bridge.accept_event(event.clone());
+            Some(event)
+        }
+        "apk_install_started" | "apk_install_needs_permission" => None,
+        "apk_install_failed" => {
+            let message = value
+                .get("message")
+                .and_then(|v| v.as_str())
+                .unwrap_or("apk install failed")
                 .to_string();
             let event = NativeMobileEvent::ShareFailed(message);
             bridge.accept_event(event.clone());

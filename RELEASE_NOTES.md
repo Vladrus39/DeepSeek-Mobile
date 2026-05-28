@@ -18,10 +18,15 @@
 .\scripts\enable-pc-host-mdns-windows.ps1   # once, admin
 ```
 
+### Release pipeline (2026-05-29 follow-up)
+
+- **Release APK**: `scripts/build-release-apk.ps1` → `dist/deepseek-mobile-<version>.apk` (optional `android/keystore.properties`).
+- **GitHub Releases**: `scripts/publish-github-release.ps1`; CI on tag `v*` (`.github/workflows/release.yml`).
+- **In-app update**: Settings → App update (GitHub latest release check, download, sideload install).
+
 ### Still pending
 
-- Signed release APK/AAB and GitHub Release artifacts.
-- In-app OTA updates.
+- Play Store AAB submission.
 - Full manual device checklist (picker, ZIP UI, Termux on hardware).
 
 ## Build 2026-05-26 — PC Task Reconciliation

@@ -17,6 +17,9 @@ pub enum NativeMobileCommand {
         path: String,
         mime_type: Option<String>,
     },
+    InstallApk {
+        path: String,
+    },
     OpenUrl {
         url: String,
     },
@@ -176,6 +179,12 @@ impl NativeBridgeState {
         self.enqueue(NativeMobileCommand::ShareFile {
             path: path.into(),
             mime_type: Some("application/zip".to_string()),
+        });
+    }
+
+    pub fn enqueue_install_apk(&mut self, path: impl Into<String>) {
+        self.enqueue(NativeMobileCommand::InstallApk {
+            path: path.into(),
         });
     }
 

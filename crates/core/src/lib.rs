@@ -1,6 +1,7 @@
 //! DeepSeek Mobile Core
 
 pub mod agent;
+pub mod app_update;
 pub mod api_client;
 pub mod approval;
 pub mod approval_card;
@@ -43,6 +44,10 @@ pub mod workspace_files;
 pub mod workspace_io;
 
 pub use agent::DeepSeekAgent;
+pub use app_update::{
+    apk_asset_name_for_version, apk_download_url, check_github_release_update,
+    version_is_newer, AppUpdateOffer, APK_ASSET_PREFIX, DEFAULT_GITHUB_REPO,
+};
 pub use api_client::{format_http_transport_error, DeepSeekClient, Message, StreamDelta};
 pub use approval::{
     categorize_tool, classify_risk, should_request_approval, ApprovalMode, ApprovalRisk,

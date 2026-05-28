@@ -5,6 +5,9 @@
 use std::path::PathBuf;
 
 fn main() {
+    let version = std::env::var("CARGO_PKG_VERSION").unwrap_or_else(|_| "0.0.0".to_string());
+    println!("cargo:rustc-env=DEEPSEEK_MOBILE_VERSION={version}");
+
     let profile = std::env::var("PROFILE").unwrap_or_default();
     if profile != "debug" {
         return;

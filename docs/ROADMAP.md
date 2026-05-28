@@ -91,6 +91,8 @@
 - [x] Runtime SSE/live event streaming.
 - [x] MCP stdio session reuse (cached child per server, reconnect on invoke failure, panel disconnect).
 - [x] External MCP tool execution behind approvals (MCP proxy requires approval; invoke gated by mcp.json server/tool registry).
-- [ ] Signed Android APK/AAB.
-- [ ] Release notes and install/troubleshooting docs.
+- [x] Signed release APK build (`android/keystore.properties`, `scripts/build-release-apk.ps1`).
+- [x] GitHub Releases publish script and tag workflow (`scripts/publish-github-release.ps1`, `.github/workflows/release.yml`).
+- [x] In-app update check + APK download/install (Settings → App update).
+- [x] Install/update docs (`docs/INSTALL_UPDATE.md`, `RELEASE_NOTES.md`).
 - [ ] PC-host release package with matching host binary.

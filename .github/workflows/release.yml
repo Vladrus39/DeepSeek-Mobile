@@ -1,0 +1,55 @@
+name: Release APK
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  android-release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android, armv7-linux-androideabi, x86_64-linux-android
+
+      - name: cargo test
+        run: cargo test --workspace
+
+      - name: Setup Android env
+        shell: pwsh
+        run: |
+          if (Test-Path tools/android/env.ps1) { . ./tools/android/env.ps1 }
+          else { Write-Host "No bundled SDK; ensure ANDROID_HOME is set on the runner" }
+
+      - name: Install Dioxus CLI
+        run: cargo install dioxus-cli --locked
+
+      - name: Decode release keystore (optional)
+        if: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+        shell: pwsh
+        run: |
+          $bytes = [Convert]::FromBase64String("${{ secrets.ANDROID_KEYSTORE_BASE64 }}")
+          [IO.File]::WriteAllBytes("$env:RUNNER_TEMP/release.keystore", $bytes)
+          @"
+          storeFile=$env:RUNNER_TEMP/release.keystore
+          storePassword=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}
+          keyPassword=${{ secrets.ANDROID_KEY_PASSWORD }}
+          "@ | Set-Content -Encoding utf8 android/keystore.properties
+
+      - name: Build release APK
+        shell: pwsh
+        run: ./scripts/build-release-apk.ps1 -SkipTests
+
+      - name: Upload GitHub Release asset
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/deepseek-mobile-*.apk
+          generate_release_notes: true

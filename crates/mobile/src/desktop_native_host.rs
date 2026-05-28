@@ -54,6 +54,9 @@ pub fn try_execute(action: &AndroidHostAction, bridge: &mut NativeBridgeState) -
             });
             Some("Desktop document picker completed".to_string())
         }
+        AndroidHostAction::InstallApk { path } => Some(format!(
+            "install_apk is Android-only (path={path})"
+        )),
         AndroidHostAction::ShareFile { path, .. } => {
             if PathBuf::from(path).exists() {
                 rfd::MessageDialog::new()

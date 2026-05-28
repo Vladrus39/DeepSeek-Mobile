@@ -6,6 +6,9 @@ target/
 .env
 *.log
 /dist
+/android/keystore.properties
+/android/*.keystore
+/android/release.keystore
 
 # PC host binaries copied for offline pairing ZIP (see scripts/build-pc-host-bundles.ps1)
 /tools/pc-host/bin/**/*

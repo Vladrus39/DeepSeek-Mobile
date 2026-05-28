@@ -20,3 +20,4 @@ compile_sdk = 36
 "android.permission.ACCESS_WIFI_STATE" = { description = "Read Wi-Fi state for local PC host discovery" }
 "android.permission.CHANGE_WIFI_MULTICAST_STATE" = { description = "Enable multicast DNS discovery of the paired PC host" }
 "com.termux.permission.RUN_COMMAND" = { description = "Run approved commands through Termux when configured" }
+"android.permission.REQUEST_INSTALL_PACKAGES" = { description = "Install APK updates downloaded from GitHub Releases" }

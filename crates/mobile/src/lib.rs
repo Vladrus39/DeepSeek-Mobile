@@ -3,6 +3,7 @@ mod agent_mode_bar;
 mod agent_timeline;
 mod agent_timeline_panel;
 mod agent_turn_probe;
+mod app_update_state;
 mod android_host;
 #[cfg(target_os = "android")]
 mod android_plugin;
@@ -348,6 +349,7 @@ fn app() -> Element {
     let git_state = use_signal(GitUiState::default);
     let mut terminal_state = use_signal(TerminalUiState::default);
     let mut settings_state = use_signal(SettingsFormState::default);
+    let app_update_state = use_signal(crate::app_update_state::AppUpdateUiState::default);
     let termux_state = use_signal(TermuxWorkspaceState::default);
     let mcp_state = use_signal(McpUiState::default);
     let skills_state = use_signal(SkillsUiState::default);
@@ -1498,6 +1500,7 @@ fn app() -> Element {
                         tasks_state,
                         settings_state,
                         termux_state,
+                        app_update_state,
                         ui_lang,
                         EventHandler::new(move |(approval_id, decision): (String, ReviewDecision)| {
                             let approval_id = approval_id.clone();

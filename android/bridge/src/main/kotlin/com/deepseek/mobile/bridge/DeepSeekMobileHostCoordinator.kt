@@ -110,6 +110,55 @@ class DeepSeekMobileHostCoordinator(
                     )
                 }
             }
+            "install_apk" -> {
+                val path = action.path ?: return
+                activity.runOnUiThread {
+                    val file = File(path)
+                    if (!file.exists()) {
+                        deliverCallbackJson(
+                            """{"kind":"apk_install_failed","message":"file not found: $path"}""",
+                        )
+                        return@runOnUiThread
+                    }
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        if (!activity.packageManager.canRequestPackageInstalls()) {
+                            val settingsIntent =
+                                Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES).apply {
+                                    data = Uri.parse("package:${activity.packageName}")
+                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                }
+                            try {
+                                onExternalActivityLaunched()
+                                activity.startActivity(settingsIntent)
+                            } catch (e: Throwable) {
+                                deliverCallbackJson(
+                                    """{"kind":"apk_install_failed","message":${org.json.JSONObject.quote(e.message ?: "unknown sources settings failed")}}""",
+                                )
+                                return@runOnUiThread
+                            }
+                            deliverCallbackJson("""{"kind":"apk_install_needs_permission"}""")
+                            return@runOnUiThread
+                        }
+                    }
+                    val authority = "${activity.packageName}.fileprovider"
+                    try {
+                        val uri = FileProvider.getUriForFile(activity, authority, file)
+                        val install =
+                            Intent(Intent.ACTION_VIEW).apply {
+                                setDataAndType(uri, "application/vnd.android.package-archive")
+                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            }
+                        onExternalActivityLaunched()
+                        activity.startActivity(install)
+                        deliverCallbackJson("""{"kind":"apk_install_started"}""")
+                    } catch (e: Throwable) {
+                        deliverCallbackJson(
+                            """{"kind":"apk_install_failed","message":${org.json.JSONObject.quote(e.message ?: "apk install launch failed")}}""",
+                        )
+                    }
+                }
+            }
             "share_file" -> {
                 val path = action.path ?: return
                 val mimeType = action.mimeType ?: "application/octet-stream"

@@ -1,4 +1,6 @@
+use crate::app_update_state::{AppUpdateUiPhase, AppUpdateUiState};
 use crate::locale::{pick, save_ui_language, tr, AppLanguage, Tr};
+use crate::native_bridge::NativeBridgeState;
 use crate::settings_state::{save_config, SettingsFormState};
 use crate::termux_state::TermuxWorkspaceState;
 use crate::ui_layout::screen_layout;
@@ -9,6 +11,8 @@ pub fn settings_panel(
     mut lang: Signal<AppLanguage>,
     mut state: Signal<SettingsFormState>,
     mut termux_state: Signal<TermuxWorkspaceState>,
+    mut app_update_state: Signal<AppUpdateUiState>,
+    mut native_bridge: Signal<NativeBridgeState>,
 ) -> Element {
     let s = state();
     let l = lang();
@@ -277,6 +281,95 @@ pub fn settings_panel(
                             termux_state.write().save();
                         },
                         "{btn_termux_label}"
+                    }
+                }
+            }
+
+            // ── App update (GitHub Releases) ──
+            {
+                let update = app_update_state.read();
+                let status_line = update.status_line();
+                let btn_check = pick(l, "Проверить обновления", "Check for updates");
+                let btn_download = pick(l, "Скачать APK", "Download update");
+                let btn_install = pick(l, "Установить обновление", "Install update");
+                let update_help = pick(
+                    l,
+                    "Обновления с GitHub Releases (deepseek-mobile-VERSION.apk). Если установщик не откроется, разрешите установку из неизвестных источников.",
+                    "Updates from GitHub Releases (deepseek-mobile-VERSION.apk). Allow install from unknown sources when Android prompts.",
+                );
+                let can_download = matches!(update.phase, AppUpdateUiPhase::UpdateAvailable(_));
+                let can_install = update.downloaded_apk_path().is_some();
+                let update_notes = match &update.phase {
+                    AppUpdateUiPhase::UpdateAvailable(offer) => offer.release_notes.clone(),
+                    _ => String::new(),
+                };
+
+                rsx! {
+                    SectionCard {
+                        title: pick(l, "Обновление приложения", "App update").to_string(),
+                    }
+                    div {
+                        font_size: "12px",
+                        color: "#9ca3af",
+                        "{status_line}"
+                    }
+                    div {
+                        display: "flex",
+                        flex_wrap: "wrap",
+                        gap: "8px",
+                        button {
+                            style: "background:#1f2937;color:#e5e7eb;border:1px solid #4b5563;border-radius:8px;padding:8px 12px;font-size:13px;min-height:44px;",
+                            onclick: move |_| {
+                                let mut update_signal = app_update_state;
+                                spawn(async move {
+                                    let mut next = update_signal();
+                                    if let Err(error) = next.check_for_update().await {
+                                        next.set_error(error);
+                                    }
+                                    update_signal.set(next);
+                                });
+                            },
+                            "{btn_check}"
+                        }
+                        button {
+                            style: "background:#1f2937;color:#e5e7eb;border:1px solid #4b5563;border-radius:8px;padding:8px 12px;font-size:13px;min-height:44px;",
+                            disabled: !can_download,
+                            onclick: move |_| {
+                                let mut update_signal = app_update_state;
+                                spawn(async move {
+                                    let mut next = update_signal();
+                                    match next.download_available_update().await {
+                                        Ok(_) => {}
+                                        Err(error) => next.set_error(error),
+                                    }
+                                    update_signal.set(next);
+                                });
+                            },
+                            "{btn_download}"
+                        }
+                        button {
+                            style: "background:#2563eb;color:white;border:1px solid #3b82f6;border-radius:8px;padding:8px 12px;font-size:13px;min-height:44px;",
+                            disabled: !can_install,
+                            onclick: move |_| {
+                                if let Some(path) = app_update_state.read().downloaded_apk_path() {
+                                    native_bridge.write().enqueue_install_apk(
+                                        path.display().to_string(),
+                                    );
+                                }
+                            },
+                            "{btn_install}"
+                        }
+                    }
+                    if !update_notes.is_empty() {
+                        div {
+                            style: "font-size:11px;color:#6b7280;white-space:pre-wrap;max-height:120px;overflow:auto;",
+                            "{update_notes}"
+                        }
+                    }
+                    div {
+                        font_size: "11px",
+                        color: "#6b7280",
+                        "{update_help}"
                     }
                 }
             }

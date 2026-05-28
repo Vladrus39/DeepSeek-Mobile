@@ -105,7 +105,30 @@ Alternative helper (install/launch/screenshots): [`scripts/adb-control.ps1`](../
 
 Every feature merge (PC Host pairing, manual URL, probes, etc.) reaches the phone only after **`update-phone-apk.ps1`** (or CI artifact, when release pipeline exists).
 
-Planned for v1: signed APK on **GitHub Releases**; until then use the script above.
+## GitHub Releases (signed APK, optional)
+
+1. Copy `android/keystore.properties.example` to `android/keystore.properties` and create a release keystore (keep secrets out of git).
+2. Build and copy to `dist/`:
+
+```powershell
+.\scripts\build-release-apk.ps1
+```
+
+3. Publish (requires `gh auth login`):
+
+```powershell
+.\scripts\publish-github-release.ps1 -NotesFile RELEASE_NOTES.md
+```
+
+CI also builds on tag push `v*` (`.github/workflows/release.yml`) when repository secrets `ANDROID_KEYSTORE_*` are set.
+
+Asset name on the release: `deepseek-mobile-<version>.apk` (matches in-app update check).
+
+## In-app update (Settings)
+
+On the phone: **Settings → App update** — checks `https://api.github.com/repos/Vladrus39/DeepSeek-Mobile/releases/latest`, downloads the APK into app storage, then **Install update** (allow “Install unknown apps” when Android prompts).
+
+For day-to-day dev builds, `update-phone-apk.ps1` remains faster than OTA.
 
 ## After install / update
 
@@ -127,8 +150,7 @@ Runs `cargo test`, `dx build`, `adb install`, launch smoke. Adjust device serial
 
 - Android emulator images (large; use a physical device).
 - DeepSeek API key (`.env` for debug builds or enter in app).
-- Release signing / Play Store AAB (not yet shipped).
-- Automatic OTA inside the app (not implemented — use `update-phone-apk.ps1`).
+- Play Store AAB listing (release APK + sideload OTA exist; store submission is separate).
 
 ## Git status reminder
 

@@ -18,6 +18,7 @@ use crate::project_files_panel::{project_files_panel, PcFileBrowserConnection};
 use crate::project_files_state::ProjectFilesUiState;
 use crate::project_transfer_state::ProjectTransferState;
 use crate::runtime_health::RuntimeHealthSnapshot;
+use crate::app_update_state::AppUpdateUiState;
 use crate::settings_panel::settings_panel;
 use crate::settings_state::SettingsFormState;
 use crate::skills_panel::skills_panel;
@@ -49,6 +50,7 @@ pub fn cockpit_section_panel(
     tasks_state: Signal<TasksUiState>,
     settings_state: Signal<SettingsFormState>,
     termux_state: Signal<TermuxWorkspaceState>,
+    app_update_state: Signal<AppUpdateUiState>,
     lang: Signal<AppLanguage>,
     on_approval_decision: EventHandler<(String, ReviewDecision)>,
     on_health_quick_action: EventHandler<HealthQuickAction>,
@@ -190,7 +192,9 @@ pub fn cockpit_section_panel(
             ),
             on_health_quick_action,
         ),
-        CockpitSection::Settings => settings_panel(lang, settings_state, termux_state),
+        CockpitSection::Settings => {
+            settings_panel(lang, settings_state, termux_state, app_update_state, native_bridge)
+        }
     }
 }
 
