@@ -4,11 +4,10 @@
 //! Result:  `files/deepseek-mobile/.tools_smoke_probe_result`
 
 use crate::mobile_runtime_config::default_data_dir;
-use deepseek_mobile_core::tools::{default_mobile_tool_registry, ToolContext, ToolSpec};
+use deepseek_mobile_core::tools::{default_mobile_tool_registry, ToolContext};
 use deepseek_mobile_core::{ExecutorKind, Workspace};
 use serde_json::json;
 use std::fs;
-use std::path::PathBuf;
 
 const REQUEST_FLAG: &str = ".tools_smoke_probe_requested";
 const RESULT_FILE: &str = ".tools_smoke_probe_result";

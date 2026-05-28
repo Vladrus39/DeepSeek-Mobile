@@ -173,6 +173,16 @@ pub fn mcp_panel(lang: AppLanguage, mut state: Signal<McpUiState>) -> Element {
                         },
                         "Connect"
                     }
+                    button {
+                        background_color: "#374151",
+                        color: "white",
+                        border: "1px solid #4b5563",
+                        border_radius: "8px",
+                        padding: "6px 12px",
+                        font_size: "12px",
+                        onclick: move |_| state.write().disconnect_all_stdio_servers(),
+                        {pick(lang, "Stdio off", "Stdio off")}
+                    }
                     if connected > 0 {
                         div { color: "#16a34a", font_size: "12px", "{connected} connected" }
                     }

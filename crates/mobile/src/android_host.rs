@@ -30,6 +30,7 @@ pub enum AndroidHostAction {
     StartPcGatewayDiscovery {
         request_id: String,
         service_type: String,
+        timeout_ms: u64,
     },
     RunTermuxCommand {
         request_id: String,
@@ -122,6 +123,7 @@ fn pc_discovery_action(command: AndroidPcGatewayDiscoveryCommand) -> AndroidHost
     AndroidHostAction::StartPcGatewayDiscovery {
         request_id: command.request_id,
         service_type: command.service_type,
+        timeout_ms: command.timeout_ms,
     }
 }
 

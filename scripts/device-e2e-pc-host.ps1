@@ -37,7 +37,7 @@ function Same-Subnet24([string]$a, [string]$b) {
 
 Write-Host "=== PC Host E2E ===" -ForegroundColor Cyan
 
-$dev = Invoke-Adb @("devices")
+$dev = (Invoke-Adb @("devices") | Out-String)
 if ($dev -notmatch "`tdevice") {
     Write-Host "FAIL no adb device" -ForegroundColor Red
     exit 1
@@ -99,8 +99,23 @@ if ($lanIp) {
     Write-Host "PC LAN IP (phone must reach): http://${lanIp}:8787/health" -ForegroundColor Cyan
 }
 
-# 2) Phone discovery probe
-Invoke-Adb @("shell", "run-as", $pkg, "rm", "-f", "$data/.pc_discovery_probe_result", "$data/.pc_discovery_probe_running") | Out-Null
+# 2) Phone discovery probe (optional manual URL when PC mDNS is blocked, e.g. Windows)
+Invoke-Adb @("shell", "am", "start", "-n", "$pkg/dev.dioxus.main.MainActivity") | Out-Null
+Start-Sleep 3
+Invoke-Adb @("shell", "run-as", $pkg, "mkdir", "-p", $data) | Out-Null
+Invoke-Adb @("shell", "run-as", $pkg, "rm", "-f", "$data/.pc_discovery_probe_result", "$data/.pc_discovery_probe_running", "$data/.pc_discovery_manual_url") | Out-Null
+if ($lanIp) {
+    $manualUrl = "http://${lanIp}:8787"
+    # run-as must wrap the whole `sh -c` (separate adb args break the app UID context).
+    $writeShell = "run-as $pkg sh -c 'cd files/deepseek-mobile && echo $manualUrl > .pc_discovery_manual_url'"
+    $writeOut = Invoke-Adb @("shell", $writeShell)
+    $writeText = ($writeOut | Out-String).Trim()
+    if ($writeText -match "error|denied|not found") {
+        Write-Host "WARN could not write manual discovery URL on device: $writeText" -ForegroundColor Yellow
+    } else {
+        Write-Host "Manual fallback URL for phone probe: $manualUrl" -ForegroundColor Gray
+    }
+}
 Invoke-Adb @("shell", "run-as", $pkg, "touch", "$data/.pc_discovery_probe_requested") | Out-Null
 Invoke-Adb @("shell", "am", "start", "-n", "$pkg/dev.dioxus.main.MainActivity") | Out-Null
 Start-Sleep 4

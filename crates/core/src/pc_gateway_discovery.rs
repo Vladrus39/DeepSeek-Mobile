@@ -7,8 +7,8 @@
 //! transport policy and route scoring logic.
 
 use crate::pc_gateway::{
-    validate_gateway_base_url_for_transport, PcGatewayEndpointCandidate, PcGatewayHealth,
-    PcGatewayTransportMode,
+    is_private_or_loopback_http_url, validate_gateway_base_url_for_transport,
+    PcGatewayEndpointCandidate, PcGatewayHealth, PcGatewayTransportMode,
 };
 use anyhow::{anyhow, Result};
 use reqwest::Client;
@@ -210,6 +210,23 @@ impl PcGatewayDiscoveryService {
         report
     }
 
+    /// Accept a full gateway base URL (LAN `http://192.168.x.x:8787` or remote `https://host`).
+    pub fn from_manual_base_url(
+        &self,
+        raw_url: &str,
+        label: impl Into<String>,
+    ) -> PcGatewayDiscoveryReport {
+        let base_url = normalize_manual_base_url(raw_url);
+        let transport = infer_transport_mode_for_base_url(&base_url);
+        let endpoint =
+            PcGatewayEndpointCandidate::new(label, base_url, transport);
+        let mut report = PcGatewayDiscoveryReport::default();
+        report
+            .candidates
+            .push(self.validate_candidate(PcGatewayDiscoverySource::Manual, endpoint));
+        report
+    }
+
     pub fn subnet_scan_candidates(
         &self,
         subnet_prefix: &str,
@@ -300,6 +317,39 @@ fn normalize_host_for_url(host: &str) -> String {
     }
 }
 
+/// Normalize user input: bare `host:port` → `http://host:port`, trim trailing slash.
+pub fn normalize_manual_base_url(raw: &str) -> String {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return String::new();
+    }
+    let with_scheme = if trimmed.starts_with("http://") || trimmed.starts_with("https://") {
+        trimmed.to_string()
+    } else {
+        format!("http://{}", trimmed.trim_start_matches('/'))
+    };
+    with_scheme.trim_end_matches('/').to_string()
+}
+
+pub fn infer_transport_mode_for_base_url(base_url: &str) -> PcGatewayTransportMode {
+    if base_url.starts_with("https://") {
+        let pseudo_http = base_url.replacen("https://", "http://", 1);
+        if is_private_or_loopback_http_url(&pseudo_http) {
+            PcGatewayTransportMode::LocalNetworkHttps
+        } else {
+            PcGatewayTransportMode::InternetHttps
+        }
+    } else if base_url.starts_with("http://") {
+        if is_private_or_loopback_http_url(base_url) {
+            PcGatewayTransportMode::LocalNetworkHttp
+        } else {
+            PcGatewayTransportMode::InternetHttps
+        }
+    } else {
+        PcGatewayTransportMode::LocalNetworkHttp
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
@@ -340,5 +390,28 @@ mod tests {
         let report = service.subnet_scan_candidates("192.168.1", DEFAULT_PC_GATEWAY_PORT, 10..=12);
         assert_eq!(report.candidates.len(), 3);
         assert!(report.endpoint_candidates().len() == 3);
+    }
+
+    #[test]
+    fn manual_base_url_infers_lan_http() {
+        let service = PcGatewayDiscoveryService::default();
+        let report = service.from_manual_base_url("192.168.1.50:8787", "manual");
+        assert_eq!(report.candidates[0].status, PcGatewayDiscoveryStatus::Found);
+        assert_eq!(
+            report.candidates[0].endpoint.base_url,
+            "http://192.168.1.50:8787"
+        );
+    }
+
+    #[test]
+    fn manual_https_public_is_internet_mode() {
+        let service = PcGatewayDiscoveryService::default();
+        let report =
+            service.from_manual_base_url("https://gateway.example.com", "remote");
+        assert_eq!(report.candidates[0].status, PcGatewayDiscoveryStatus::Found);
+        assert_eq!(
+            report.candidates[0].endpoint.transport_mode,
+            crate::pc_gateway::PcGatewayTransportMode::InternetHttps
+        );
     }
 }

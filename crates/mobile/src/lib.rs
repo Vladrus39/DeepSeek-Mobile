@@ -47,6 +47,7 @@ mod native_pc_discovery;
 mod native_termux;
 mod onboarding_panel;
 mod pc_discovery_probe;
+mod pc_pairing_bundle_probe;
 mod pc_pairing_manager;
 mod pc_pairing_panel;
 mod pc_pairing_state;
@@ -765,7 +766,7 @@ fn app() -> Element {
         }
     }
 
-    let mut active_section_scroll = active_section;
+    let active_section_scroll = active_section;
     use_effect(move || {
         let len = timeline().len();
         if active_section_scroll() == CockpitSection::Chat && len > 0 {
@@ -866,13 +867,14 @@ fn app() -> Element {
                     if tools_smoke_probe::is_probe_requested() {
                         tools_smoke_probe::run_if_requested();
                     }
-                    pc_discovery_probe::recover_stale_running_marker();
-                    if pc_discovery_probe::is_probe_requested() {
-                        pc_discovery_probe::tick();
+                    if pc_pairing_bundle_probe::is_probe_requested() {
+                        pc_pairing_bundle_probe::run_if_requested();
                     }
-                    {
+                    pc_discovery_probe::recover_stale_running_marker();
+                    let manual_discovery_urls = {
                         let mut bridge = android_bridge_poll.write();
                         sync_bridge_from_runtime(&mut bridge);
+                        let manual_urls = pc_discovery_probe::tick(&mut bridge);
                         let mut bridge_changed = false;
                         if let Some(message) = bridge.expire_stale_termux_wait(90) {
                             let mut next_timeline = android_timeline_poll();
@@ -889,6 +891,16 @@ fn app() -> Element {
                         if bridge_changed {
                             crate::native_host_runtime::replace(bridge.clone());
                         }
+                        manual_urls
+                    };
+                    if let Some(urls) = manual_discovery_urls {
+                        spawn(async move {
+                            if !pc_discovery_probe::probe_manual_urls(&urls).await {
+                                pc_discovery_probe::write_result(
+                                    "FAIL manual URL probe: PC Host did not respond (firewall? wrong IP?)",
+                                );
+                            }
+                        });
                     }
                     let termux_ready = android_termux().is_valid() && android_termux().saved;
                     if device_calibration::should_retry_calibration() {
@@ -1683,6 +1695,13 @@ fn app() -> Element {
                     }),
                     EventHandler::new(move |_| templates_open.set(false)),
                 )}
+            }
+
+            if is_loading() {
+                div {
+                    style: "margin-top:8px;color:#93c5fd;font-size:12px;",
+                    {pick(ui_lang(), "Думает…", "Thinking…")}
+                }
             }
 
             div {

@@ -1,59 +1,122 @@
 # Install and update
 
-**Updated:** 2026-05-26
+**Updated:** 2026-05-29
 
-This project is still a source checkout + debug Android build workflow. The commands below are intentionally conservative: they do not download an Android emulator or overwrite local changes.
+DeepSeek-Mobile is distributed as **source + local build**. The Android APK is **not** stored in git (too large, changes every commit). After each `git pull`, rebuild and reinstall the APK on the phone — user data in `files/deepseek-mobile/` is kept (`adb install -r`).
 
-## Windows: install with one command
+## One command — Windows PC (toolchain + repo)
 
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/Vladrus39/DeepSeek-Mobile/main/scripts/install-windows.ps1 | iex"
-```
-
-Default checkout path:
-
-```text
-%USERPROFILE%\DeepSeek-Mobile
-```
-
-Custom path:
+**First install** (Git, Rust MSVC, clone/update repo, `cargo check` / tests):
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$s=irm https://raw.githubusercontent.com/Vladrus39/DeepSeek-Mobile/main/scripts/install-windows.ps1; & ([scriptblock]::Create($s)) -Dir 'D:\DeepSeek-Mobile'"
+Set-ExecutionPolicy -Scope Process Bypass -Force
+$u = 'https://raw.githubusercontent.com/Vladrus39/DeepSeek-Mobile/main/scripts/setup-pc-windows.ps1'
+$s = "$env:TEMP\setup-pc-windows.ps1"
+Invoke-WebRequest $u -OutFile $s
+powershell -ExecutionPolicy Bypass -File $s
 ```
 
-## Windows: update with one command
-
-From inside an existing checkout:
+**Update repo only** (inside an existing checkout):
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\update-windows.ps1
 ```
 
-With a Rust workspace check after update:
+Update repo **and** rebuild/install APK on phone:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\update-windows.ps1 -PhoneApk -Serial RFCNC0PWD4E -Launch
+```
+
+With workspace check after pull:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\update-windows.ps1 -Check
 ```
 
-If local files are modified, the updater stops instead of overwriting them. Commit/stash the changes first, or explicitly pass `-AllowDirty` if you understand the risk.
+If you have local changes, commit/stash first, or use `-AllowDirty` (see script help).
 
-## After install/update
+Details: [`INSTALL_PC_WINDOWS.md`](./INSTALL_PC_WINDOWS.md).
+
+## One command — Android APK (build + install on phone)
+
+Requires: USB debugging, repo-local SDK (`. .\tools\android\env.ps1`), `dx` 0.7.x, Rust Android targets.
+
+**First install or upgrade** (same command — reinstalls over the old app, keeps chats/settings on device):
 
 ```powershell
-cd $HOME\DeepSeek-Mobile
+cd $HOME\DeepSeek-Mobile   # or your clone path
 . .\tools\android\env.ps1
-cargo +stable-x86_64-pc-windows-msvc check --workspace --all-targets
+.\scripts\update-phone-apk.ps1 -Serial <adb-serial> -Launch
 ```
 
-With a USB-debugging phone connected:
+Example:
 
 ```powershell
-dx build --android --package deepseek-mobile --device <serial> --verbose
+.\scripts\update-phone-apk.ps1 -Serial RFCNC0PWD4E -Launch
 ```
 
-## What this does not install
+**Update source + APK in one step:**
 
-- Android emulator / system images — too large for limited daily traffic.
-- Real DeepSeek API key — use `.env` for local debug builds or enter it in the app.
-- Release signing keys — release packaging is a separate step.
+```powershell
+.\scripts\update-phone-apk.ps1 -Serial RFCNC0PWD4E -Pull -Launch
+```
+
+Faster iteration (skip tests, rebuild only if you changed Rust/UI):
+
+```powershell
+.\scripts\update-phone-apk.ps1 -Serial RFCNC0PWD4E -SkipTests
+```
+
+Install existing APK without rebuild:
+
+```powershell
+.\scripts\update-phone-apk.ps1 -Serial RFCNC0PWD4E -SkipBuild -Launch
+```
+
+APK output path (after `dx build`):
+
+```text
+target/dx/deepseek-mobile/debug/android/app/app/build/outputs/apk/debug/app-debug.apk
+```
+
+Alternative helper (install/launch/screenshots): [`scripts/adb-control.ps1`](../scripts/adb-control.ps1) `-Action InstallLaunch`.
+
+## What “initial APK” means
+
+| Item | In git? | Notes |
+|------|---------|--------|
+| Source, scripts, `tools/android/` SDK layout | Yes | Clone or `setup-pc-windows.ps1` |
+| Prebuilt `app-debug.apk` | **No** | Built on your PC with `dx build` |
+| Phone app data | On device | Survives `adb install -r` upgrades |
+
+Every feature merge (PC Host pairing, manual URL, probes, etc.) reaches the phone only after **`update-phone-apk.ps1`** (or CI artifact, when release pipeline exists).
+
+Planned for v1: signed APK on **GitHub Releases**; until then use the script above.
+
+## After install / update
+
+1. Phone: [`DEVICE_SETUP.md`](./DEVICE_SETUP.md) — API key, Termux, workspace path.
+2. PC Host (optional): [`PC_HOST_E2E.md`](./PC_HOST_E2E.md), [`INSTALL_PC_WINDOWS.md`](./INSTALL_PC_WINDOWS.md).
+3. Smoke: `.\scripts\device-smoke.ps1 -Serial <serial>` (does not rebuild APK).
+
+## Full dev pipeline (optional)
+
+From repo root, logs under `target/verify/`:
+
+```powershell
+.\full-rebuild-verify.ps1
+```
+
+Runs `cargo test`, `dx build`, `adb install`, launch smoke. Adjust device serial inside the script or use `update-phone-apk.ps1` for day-to-day work.
+
+## What installers do not provide
+
+- Android emulator images (large; use a physical device).
+- DeepSeek API key (`.env` for debug builds or enter in app).
+- Release signing / Play Store AAB (not yet shipped).
+- Automatic OTA inside the app (not implemented — use `update-phone-apk.ps1`).
+
+## Git status reminder
+
+Documentation and scripts in **your local clone** are only “on GitHub” after `git commit` and `git push`. See `git status` before assuming remote `main` matches your machine.

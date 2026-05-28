@@ -7,7 +7,7 @@ Current factual checkpoint: [`docs/CURRENT_STATE.md`](docs/CURRENT_STATE.md).
 Real device setup: [`docs/DEVICE_SETUP.md`](docs/DEVICE_SETUP.md) (`.env` debug prefill, Termux path, smoke tests).
 Windows PC install/update: [`docs/INSTALL_PC_WINDOWS.md`](docs/INSTALL_PC_WINDOWS.md).
 
-## Current state — 2026-05-28
+## Current state — 2026-05-29
 
 **Primary goal:** full coding agent on the phone (Termux), like the desktop TUI — **not** PC Host pairing first. A debug Android APK builds, installs, and launches on a real USB-debugging phone (`RFCNC0PWD4E`).
 
@@ -106,6 +106,30 @@ Set-ExecutionPolicy -Scope Process Bypass -Force; $u='https://raw.githubusercont
 
 Alternative clone/update from inside a checkout: [`docs/INSTALL_UPDATE.md`](docs/INSTALL_UPDATE.md) (`scripts/install-windows.ps1`, `scripts/update-windows.ps1`).
 
+### Android APK — build and install on phone (one command)
+
+The debug APK is **not** stored in git. It is built locally and installed over USB. User data on the phone (`files/deepseek-mobile/`) is kept on upgrade (`adb install -r`).
+
+```powershell
+cd $HOME\DeepSeek-Mobile
+. .\tools\android\env.ps1
+.\scripts\update-phone-apk.ps1 -Serial RFCNC0PWD4E -Launch
+```
+
+Update git source **and** reinstall the APK:
+
+```powershell
+.\scripts\update-phone-apk.ps1 -Serial RFCNC0PWD4E -Pull -Launch
+```
+
+APK path after build:
+
+```text
+target/dx/deepseek-mobile/debug/android/app/app/build/outputs/apk/debug/app-debug.apk
+```
+
+There is **no in-app OTA** yet — after every `git pull`, run `update-phone-apk.ps1` again. Full details: [`docs/INSTALL_UPDATE.md`](docs/INSTALL_UPDATE.md), phone setup: [`docs/DEVICE_SETUP.md`](docs/DEVICE_SETUP.md).
+
 Run the desktop UI after setup:
 
 ```powershell
@@ -124,6 +148,22 @@ cargo run -p deepseek-pc-host
 ```
 
 ### Android debug APK build
+
+Prefer the one-command installer (build + `adb install -r`):
+
+```powershell
+. .\tools\android\env.ps1
+.\scripts\update-phone-apk.ps1 -Serial RFCNC0PWD4E -Launch
+```
+
+Manual build only:
+
+```powershell
+. .\tools\android\env.ps1
+dx build --android --package deepseek-mobile --device RFCNC0PWD4E --verbose
+```
+
+Output: `target/dx/deepseek-mobile/debug/android/app/app/build/outputs/apk/debug/app-debug.apk`
 
 ### Developer commands
 
@@ -156,7 +196,7 @@ See:
 ## Main documentation
 
 - [`docs/CURRENT_STATE.md`](docs/CURRENT_STATE.md) — current checkpoint and remaining work.
-- [`docs/INSTALL_UPDATE.md`](docs/INSTALL_UPDATE.md) — one-command Windows install/update.
+- [`docs/INSTALL_UPDATE.md`](docs/INSTALL_UPDATE.md) — one-command Windows install/update and phone APK update.
 - [`docs/DEVICE_SETUP.md`](docs/DEVICE_SETUP.md) — real phone setup and smoke tests.
 - [`docs/ADB_CONTROL.md`](docs/ADB_CONTROL.md) — `scripts/adb-control.ps1` device automation.
 - [`docs/INSTALL_PC_WINDOWS.md`](docs/INSTALL_PC_WINDOWS.md) — one-command Windows PC install/update and PC Host startup.

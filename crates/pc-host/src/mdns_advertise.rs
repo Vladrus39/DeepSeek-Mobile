@@ -24,6 +24,11 @@ pub fn register_pc_gateway(
 
     let ip = lan_ipv4_for_mdns(bind_addr)?;
     let port = bind_addr.port();
+    if bind_addr.ip().is_unspecified() {
+        eprintln!(
+            "deepseek-pc-host mDNS: bind is {bind_addr}; advertising on LAN IPv4 {ip}:{port}"
+        );
+    }
     let daemon = ServiceDaemon::new().context("create mDNS daemon")?;
 
     let instance_name = sanitize_instance_name(gateway_label, gateway_id);
@@ -94,7 +99,8 @@ fn sanitize_instance_name(label: &str, gateway_id: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::sanitize_instance_name;
+    use super::{lan_ipv4_for_mdns, sanitize_instance_name};
+    use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
     #[test]
     fn instance_name_is_short_and_safe() {
@@ -103,5 +109,20 @@ mod tests {
         assert!(name
             .chars()
             .all(|ch| ch.is_ascii_alphanumeric() || ch == '-'));
+    }
+
+    #[test]
+    fn specific_bind_uses_that_ipv4() {
+        let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 50)), 8787);
+        assert_eq!(
+            lan_ipv4_for_mdns(addr).expect("ipv4"),
+            Ipv4Addr::new(192, 168, 1, 50)
+        );
+    }
+
+    #[test]
+    fn loopback_bind_falls_back_to_primary_or_errors() {
+        let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 8787);
+        let _ = lan_ipv4_for_mdns(addr);
     }
 }

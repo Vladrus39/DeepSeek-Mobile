@@ -1,6 +1,24 @@
 # Device setup (Android)
 
-**Updated:** 2026-05-28
+**Updated:** 2026-05-29
+
+## 0. Install or update the APK (one command)
+
+The app binary is **not** in git — build and install from your PC checkout. Chats, settings, and workspace on the phone are preserved on upgrade.
+
+```powershell
+cd $HOME\DeepSeek-Mobile   # or your clone path
+. .\tools\android\env.ps1
+.\scripts\update-phone-apk.ps1 -Serial RFCNC0PWD4E -Launch
+```
+
+After `git pull`, run the same command (or add `-Pull` to update source and APK together). See [`INSTALL_UPDATE.md`](./INSTALL_UPDATE.md).
+
+First-time alias: `.\scripts\install-phone-apk.ps1 -Serial RFCNC0PWD4E` (same as above with `-Launch`).
+
+APK path: `target/dx/deepseek-mobile/debug/android/app/app/build/outputs/apk/debug/app-debug.apk`
+
+**No in-app auto-update** — use the script whenever the repo changes.
 
 ## 1. API key (project `.env`)
 
@@ -56,8 +74,12 @@ Scripted E2E only:
 
 **Canonical control script:** [`scripts/adb-control.ps1`](../scripts/adb-control.ps1) — install/launch, capture, Termux grant, chat send. See [`docs/ADB_CONTROL.md`](./ADB_CONTROL.md).
 
+Preferred one-command APK update: [`scripts/update-phone-apk.ps1`](../scripts/update-phone-apk.ps1).
+
 ```powershell
 . .\tools\android\env.ps1
+.\scripts\update-phone-apk.ps1 -Serial RFCNC0PWD4E -SkipBuild -Launch
+# or install/launch only if APK already built:
 .\scripts\adb-control.ps1 -Action InstallLaunch -Serial RFCNC0PWD4E
 adb devices
 adb logcat -s "DeepSeek" "RustStdout" "dioxus" | Select-Object -Last 80

@@ -1,6 +1,6 @@
 # DeepSeek-Mobile — current project status
 
-**Updated:** 2026-05-28
+**Updated:** 2026-05-29
 
 Canonical checkpoint: [`docs/CURRENT_STATE.md`](docs/CURRENT_STATE.md).
 

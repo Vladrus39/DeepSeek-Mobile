@@ -2,10 +2,17 @@
 #
 # From inside the repo:
 #   powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\update-windows.ps1
+#
+# Also update the phone APK after git pull:
+#   powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\update-windows.ps1 -PhoneApk -Serial RFCNC0PWD4E -Launch
 
 param(
     [switch]$Check,
-    [switch]$AllowDirty
+    [switch]$AllowDirty,
+    [switch]$PhoneApk,
+    [string]$Serial = "",
+    [switch]$SkipTests,
+    [switch]$Launch
 )
 
 $ErrorActionPreference = "Stop"
@@ -50,3 +57,14 @@ Write-Host ""
 Write-Host "DeepSeek-Mobile updated." -ForegroundColor Green
 Write-Host "Current commit:"
 git log -1 --oneline
+
+if ($PhoneApk) {
+    Write-Host ""
+    Write-Host "Building and installing Android APK ..." -ForegroundColor Cyan
+    $phoneArgs = @("-SkipPull")
+    if ($Serial) { $phoneArgs += @("-Serial", $Serial) }
+    if ($SkipTests) { $phoneArgs += "-SkipTests" }
+    if ($Launch) { $phoneArgs += "-Launch" }
+    & (Join-Path $RepoRoot "scripts\update-phone-apk.ps1") @phoneArgs
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+}

@@ -1,6 +1,6 @@
 # DeepSeek-Mobile — current state
 
-**Updated:** 2026-05-28 (evening checkpoint)
+**Updated:** 2026-05-29
 
 This is the factual project checkpoint after phone-agent E2E on device.
 
@@ -129,7 +129,7 @@ Run manually on the phone:
   - set `allow-external-apps=true` in `~/.termux/termux.properties`;
   - save a valid Termux project path in Settings;
   - run `pwd` and verify stdout/stderr/exit code callback and model continuation.
-- **PC Host (phase 4):** run `scripts/device-e2e-pc-host.ps1` — requires phone + PC on the **same Wi‑Fi subnet** (`docs/PC_HOST_E2E.md`). Last run blocked: phone `172.18.1.x` vs PC `192.168.1.x`.
+- **PC Host (phase 4):** `scripts/device-e2e-pc-host.ps1` and `scripts/device-e2e-pc-pairing-bundle.ps1` **PASS** on device `RFCNC0PWD4E` when phone + PC share `192.168.1.x`. mDNS from Windows is often blocked; E2E uses manual LAN URL fallback and in-app **Connect manually** (`docs/PC_HOST_E2E.md`).
 
 ### Release work
 

@@ -15,7 +15,7 @@ impl AndroidPcGatewayDiscoveryCommand {
         Self {
             request_id: request_id.into(),
             service_type: "_deepseek-pc-gateway._tcp.".to_string(),
-            timeout_ms: 5_000,
+            timeout_ms: 12_000,
         }
     }
 }

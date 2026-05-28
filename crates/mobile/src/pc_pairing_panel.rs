@@ -1,7 +1,9 @@
-use crate::mobile_runtime_config::activate_default_workspace_connection;
+use crate::mobile_runtime_config::{activate_default_workspace_connection, default_data_dir};
 use crate::native_bridge::NativeBridgeState;
 use crate::pc_pairing_manager::MobilePcPairingRequest;
-use crate::pc_pairing_state::{PcPairingUiState, PcPairingUiStatus, PcReconnectEffect};
+use crate::pc_pairing_state::{
+    PcPairingUiState, PcPairingUiStatus, PcReconnectAction, PcReconnectEffect,
+};
 use dioxus::prelude::*;
 use uuid::Uuid;
 
@@ -22,6 +24,7 @@ pub fn pc_pairing_panel(
     let endpoint_rows = snapshot.endpoint_health_rows();
     let discovery_rows = snapshot.discovery_rows();
     let reconnect_controls = snapshot.reconnect_controls();
+    let mut manual_url = use_signal(String::new);
 
     rsx! {
         div {
@@ -74,6 +77,80 @@ pub fn pc_pairing_panel(
 
                 div { color: "#d1d5db", font_size: "13px", "Status" }
                 div { white_space: "pre-wrap", "{status_text}" }
+            }
+
+            div {
+                background_color: "#1f2937",
+                border_radius: "12px",
+                padding: "12px",
+                display: "flex",
+                flex_direction: "column",
+                gap: "8px",
+
+                div { color: "#d1d5db", font_size: "13px", "Connection mode" }
+                div {
+                    color: "#9ca3af",
+                    font_size: "12px",
+                    "LAN: Scan (mDNS) or enter `http://PC-IP:8787`. Internet: enter `https://your-host`. On Windows run `scripts/enable-pc-host-mdns-windows.ps1` if Scan finds nothing."
+                }
+                input {
+                    r#type: "text",
+                    value: "{manual_url}",
+                    placeholder: "http://192.168.1.10:8787 or https://pc.example.com",
+                    background_color: "#0b1220",
+                    color: "white",
+                    border: "1px solid #4b5563",
+                    border_radius: "8px",
+                    padding: "8px 10px",
+                    font_size: "13px",
+                    oninput: move |event| manual_url.set(event.value()),
+                }
+                div {
+                    display: "flex",
+                    gap: "8px",
+                    flex_wrap: "wrap",
+                    button {
+                        background_color: "#2563eb",
+                        color: "white",
+                        padding: "8px 12px",
+                        border_radius: "8px",
+                        border: "none",
+                        font_size: "12px",
+                        font_weight: "bold",
+                        onclick: move |_| {
+                            let url = manual_url();
+                            let mut pairing = state;
+                            spawn(async move {
+                                let mut next = pairing();
+                                match next.probe_and_connect_manual_url(&url).await {
+                                    Ok(()) => {}
+                                    Err(message) => next.set_error(message),
+                                }
+                                pairing.set(next);
+                            });
+                        },
+                        "Connect manually"
+                    }
+                    button {
+                        background_color: "#374151",
+                        color: "white",
+                        padding: "8px 12px",
+                        border_radius: "8px",
+                        border: "1px solid #4b5563",
+                        font_size: "12px",
+                        onclick: move |_| {
+                            let mut next_state = state();
+                            let effect = next_state.apply_reconnect_action(PcReconnectAction::ScanAgain);
+                            state.set(next_state);
+                            if let PcReconnectEffect::StartDiscovery { request_id } = effect {
+                                let mut bridge = native_bridge();
+                                bridge.enqueue_pc_gateway_discovery(request_id);
+                                native_bridge.set(bridge);
+                            }
+                        },
+                        "Scan LAN (mDNS)"
+                    }
+                }
             }
 
             div {
@@ -252,7 +329,7 @@ pub fn pc_pairing_panel(
                                 state.set(next);
                             }
                             PcPairingUiStatus::ReadyToExport => {
-                                let output_dir = std::env::temp_dir().join("deepseek-mobile-pairing");
+                                let output_dir = default_data_dir().join("pairing-export");
                                 let mut next = state();
                                 next.export_zip(&output_dir);
                                 state.set(next);
@@ -263,21 +340,9 @@ pub fn pc_pairing_panel(
                                 next.mark_waiting_for_pc();
                                 state.set(next);
                                 if let Some(path) = zip_path {
-                                    #[cfg(target_os = "android")]
-                                    {
-                                        let mut next = state();
-                                        next.set_error(format!(
-                                            "Pairing ZIP created at {}, but Android share sheet is disabled in this preview. Copy it with adb or PC Host.",
-                                            path
-                                        ));
-                                        state.set(next);
-                                    }
-                                    #[cfg(not(target_os = "android"))]
-                                    {
                                     let mut bridge = native_bridge();
                                     bridge.enqueue_share_file(&path);
                                     native_bridge.set(bridge);
-                                    }
                                 }
                             }
                             PcPairingUiStatus::WaitingForPc | PcPairingUiStatus::Offline => {

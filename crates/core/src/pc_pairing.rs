@@ -420,6 +420,10 @@ Write-Host "Starting DeepSeek PC Host for workspace: $env:DEEPSEEK_PC_HOST_WORKS
 Write-Host "Keep this window open while the Android app is connected."
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+Set-Location $ScriptDir
+if ($env:DEEPSEEK_PC_HOST_WORKSPACE -eq ".") {{
+    $env:DEEPSEEK_PC_HOST_WORKSPACE = $ScriptDir
+}}
 $LocalCandidates = @(
     (Join-Path $ScriptDir "deepseek-pc-host.exe"),
     (Join-Path $ScriptDir "deepseek-pc-host"),
@@ -463,6 +467,11 @@ echo "Starting DeepSeek PC Host for workspace: $DEEPSEEK_PC_HOST_WORKSPACE"
 echo "Keep this terminal open while the Android app is connected."
 
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+cd "$SCRIPT_DIR" || exit 1
+if [ "$DEEPSEEK_PC_HOST_WORKSPACE" = "." ]; then
+  DEEPSEEK_PC_HOST_WORKSPACE="$SCRIPT_DIR"
+  export DEEPSEEK_PC_HOST_WORKSPACE
+fi
 if [ -x "$SCRIPT_DIR/deepseek-pc-host" ]; then
   exec "$SCRIPT_DIR/deepseek-pc-host"
 elif [ -x "$SCRIPT_DIR/bin/deepseek-pc-host" ]; then

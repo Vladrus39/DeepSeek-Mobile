@@ -1,5 +1,6 @@
 use deepseek_mobile_core::{
-    connect_mcp_server, tools_for_server, McpClientRegistry, McpServerStatus,
+    connect_mcp_server, disconnect_stdio_server, shutdown_all_stdio_sessions, tools_for_server,
+    McpClientRegistry, McpServerStatus, McpTransport,
 };
 use std::path::PathBuf;
 
@@ -46,13 +47,43 @@ impl McpUiState {
 
     /// Toggle server enabled/disabled.
     pub fn toggle_server(&mut self, name: &str, enabled: bool) {
+        if !enabled {
+            if self
+                .registry
+                .servers
+                .iter()
+                .any(|s| s.config.name == name && matches!(s.config.transport, McpTransport::Stdio { .. }))
+            {
+                disconnect_stdio_server(name);
+            }
+            self.registry
+                .set_status(name, McpServerStatus::Disconnected);
+        }
         self.registry.set_enabled(name, enabled);
         self.save();
     }
 
     /// Remove a server.
     pub fn remove_server(&mut self, name: &str) {
+        disconnect_stdio_server(name);
         self.registry.remove_server(name);
+        self.save();
+    }
+
+    /// Close all cached stdio MCP child processes and mark stdio servers disconnected.
+    pub fn disconnect_all_stdio_servers(&mut self) {
+        shutdown_all_stdio_sessions();
+        let stdio_names: Vec<String> = self
+            .registry
+            .servers
+            .iter()
+            .filter(|server| matches!(server.config.transport, McpTransport::Stdio { .. }))
+            .map(|server| server.config.name.clone())
+            .collect();
+        for name in stdio_names {
+            self.registry
+                .set_status(&name, McpServerStatus::Disconnected);
+        }
         self.save();
     }
 

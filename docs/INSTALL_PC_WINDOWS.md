@@ -1,6 +1,10 @@
 # DeepSeek-Mobile — Windows PC install and update
 
+**Updated:** 2026-05-29
+
 This guide is for Windows users who want to run DeepSeek-Mobile on a PC and/or use the PC as a `deepseek-pc-host` backend for the Android app.
+
+Phone APK install/update (build + USB): [`INSTALL_UPDATE.md`](./INSTALL_UPDATE.md) — `scripts/update-phone-apk.ps1`.
 
 The recommended entry point is the bootstrap script:
 
@@ -75,6 +79,20 @@ Faster update without running full tests:
 
 ```powershell
 Set-ExecutionPolicy -Scope Process Bypass -Force; $u='https://raw.githubusercontent.com/Vladrus39/DeepSeek-Mobile/main/scripts/setup-pc-windows.ps1'; $s="$env:TEMP\setup-pc-windows.ps1"; Invoke-WebRequest $u -OutFile $s; powershell -ExecutionPolicy Bypass -File $s -SkipTests
+```
+
+Update repo **and** rebuild/install the Android APK on a connected phone:
+
+```powershell
+cd $HOME\DeepSeek-Mobile
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\update-windows.ps1 -PhoneApk -Serial RFCNC0PWD4E -Launch
+```
+
+Or from inside the repo after PC setup:
+
+```powershell
+. .\tools\android\env.ps1
+.\scripts\update-phone-apk.ps1 -Serial RFCNC0PWD4E -Pull -Launch
 ```
 
 ## Run the desktop UI

@@ -88,8 +88,9 @@ pub use mcp::{
     McpTransport,
 };
 pub use mcp_client::{
-    connect_mcp_server, default_mcp_path, invoke_mcp_tool, invoke_mcp_tool_at_path,
-    load_connected_mcp_tools, tools_for_server,
+    connect_mcp_server, default_mcp_path, disconnect_stdio_server, has_stdio_session,
+    invoke_mcp_tool, invoke_mcp_tool_at_path, load_connected_mcp_tools, shutdown_all_stdio_sessions,
+    tools_for_server,
 };
 pub use model_router::{ModelRouter, RouteDecision, TaskProfile};
 pub use pc_gateway::{

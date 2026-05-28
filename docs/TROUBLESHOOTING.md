@@ -147,8 +147,23 @@ Checklist:
 
 1. Confirm `deepseek-pc-host` is running on the PC.
 2. Open the pairing ZIP launcher or start the host manually with the workspace root and token.
-3. Verify firewall rules for the bind port, default `8787`.
-4. Use the PC Host panel → scan/retry route and check endpoint health rows.
+3. Verify firewall rules for the bind port, default `8787`, and mDNS UDP `5353`:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\enable-pc-host-mdns-windows.ps1
+```
+
+4. On host start, confirm console prints `deepseek-pc-host mDNS: ... on <LAN-IP>:8787`. If mDNS failed, use **Connect manually** with `http://<PC-IP>:8787` on the phone.
+5. Use the PC Host panel → scan/retry route and check endpoint health rows.
+
+### Windows: phone Scan LAN finds 0 hosts
+
+Common causes:
+
+- PC host was started before a fix that kept the mDNS daemon alive — **restart** `deepseek-pc-host` after updating.
+- Windows Firewall blocks multicast (UDP 5353) — run `scripts/enable-pc-host-mdns-windows.ps1` as Administrator.
+- Guest Wi‑Fi / AP isolation — phone and PC must be on the same subnet.
+- Fallback: enter `http://192.168.x.x:8787` in the PC Host panel → **Connect manually**.
 
 ### PC tasks do not update live
 
@@ -161,4 +176,5 @@ API keys and GitHub tokens are stored in encrypted `secrets.enc` with a per-devi
 ## MCP servers
 
 - HTTP/SSE servers: use **Connect** in the MCP panel to run `tools/list`.
-- Stdio servers: require a host OS process; long-lived stdio session reuse is still a remaining v1 item.
+- Stdio servers: **Connect** spawns one long-lived child process per server; tool calls reuse the same session. **Stdio off** closes all stdio children. On invoke failure the client reconnects once automatically.
+- Toggle **OFF** or **Del** on a stdio server also closes its cached process.

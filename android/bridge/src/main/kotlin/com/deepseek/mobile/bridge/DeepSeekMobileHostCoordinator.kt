@@ -76,6 +76,7 @@ class DeepSeekMobileHostCoordinator(
             "start_pc_gateway_discovery" -> {
                 val requestId = action.requestId ?: return
                 val serviceType = action.serviceType ?: "_deepseek-pc-gateway._tcp."
+                val timeoutMs = action.timeoutMs ?: 12_000L
                 // NSD must run on the main looper; host drain uses a background executor.
                 activity.runOnUiThread {
                     Log.i(TAG, "Starting PC gateway NSD discovery requestId=$requestId")
@@ -83,6 +84,7 @@ class DeepSeekMobileHostCoordinator(
                         AndroidPcGatewayDiscoveryCommandPayload(
                             requestId = requestId,
                             serviceType = serviceType,
+                            timeoutMs = timeoutMs,
                         ),
                     )
                 }
@@ -351,6 +353,7 @@ private data class AndroidHostActionJson(
     val mimeTypes: List<String>? = null,
     val allowMultiple: Boolean? = null,
     val serviceType: String? = null,
+    val timeoutMs: Long? = null,
     val command: String? = null,
     val workingDir: String? = null,
     val path: String? = null,
@@ -372,6 +375,7 @@ private data class AndroidHostActionJson(
                     },
                     allowMultiple = if (json.has("allow_multiple")) json.getBoolean("allow_multiple") else null,
                     serviceType = json.optString("service_type").ifBlank { null },
+                    timeoutMs = if (json.has("timeout_ms")) json.optLong("timeout_ms") else null,
                     command = json.optString("command").ifBlank { null },
                     workingDir = json.optString("working_dir").ifBlank { null },
                     path = json.optString("path").ifBlank { null },

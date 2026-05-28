@@ -8,6 +8,7 @@ param(
     [string]$PcHostBind = "127.0.0.1:8787",
     [string]$PcHostToken = "",
     [switch]$OpenFirewall,
+    [switch]$EnableMdnsFirewall,
     [switch]$InstallAutostart
 )
 
@@ -293,6 +294,13 @@ if ($BuildPcHostBundle -or $InstallAutostart) {
 
 if ($OpenFirewall) {
     Open-PcHostFirewall
+}
+
+if ($EnableMdnsFirewall) {
+    Write-Step "Opening Windows Firewall for PC Host LAN + mDNS"
+    & (Join-Path $RepoDir "scripts\enable-pc-host-mdns-windows.ps1") -TcpPort ([int](($PcHostBind -split ":")[-1]))
+    if ($LASTEXITCODE -ne 0) { throw "enable-pc-host-mdns-windows.ps1 failed" }
+    Write-Ok "mDNS/firewall rules applied"
 }
 
 if ($InstallAutostart) {

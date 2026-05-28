@@ -1,8 +1,9 @@
 use crate::pc_pairing_manager::{MobilePcPairingExport, MobilePcPairingRequest, PcPairingManager};
 use deepseek_mobile_core::{
     PcGatewayConfig, PcGatewayDiscoveryCandidate, PcGatewayDiscoveryReport,
-    PcGatewayDiscoveryStatus, PcGatewayEndpointCandidate, PcGatewayEndpointHealth,
-    PcGatewayTransportMode, PcGatewayTrustLevel, WorkspaceConnection, WorkspaceConnectionStatus,
+    PcGatewayDiscoveryService, PcGatewayDiscoveryStatus, PcGatewayEndpointCandidate,
+    PcGatewayEndpointHealth, PcGatewayTransportMode, PcGatewayTrustLevel, WorkspaceConnection,
+    WorkspaceConnectionStatus,
 };
 use std::path::{Path, PathBuf};
 
@@ -121,6 +122,37 @@ impl PcPairingUiState {
 
     pub fn mark_offline(&mut self) {
         self.status = PcPairingUiStatus::Offline;
+    }
+
+    /// Probe a user-supplied base URL (LAN `http://IP:8787` or remote `https://host`).
+    pub async fn probe_and_connect_manual_url(&mut self, raw_url: &str) -> Result<(), String> {
+        let trimmed = raw_url.trim();
+        if trimmed.is_empty() {
+            return Err("Enter PC Host URL (e.g. http://192.168.1.10:8787 or https://your-tunnel)".to_string());
+        }
+        let service = PcGatewayDiscoveryService::new(true);
+        let report = service.from_manual_base_url(trimmed, "manual");
+        let candidate = report
+            .candidates
+            .first()
+            .ok_or_else(|| "No candidate built from URL".to_string())?;
+        if candidate.status == PcGatewayDiscoveryStatus::Rejected {
+            return Err(candidate
+                .message
+                .clone()
+                .unwrap_or_else(|| "URL rejected by transport policy".to_string()));
+        }
+        let probed = service.probe_candidates(report).await;
+        self.apply_discovery_report(probed);
+        if self.best_discovery_candidate().is_some() {
+            self.apply_reconnect_action(PcReconnectAction::UseBestDiscoveredRoute);
+            Ok(())
+        } else {
+            Err(self
+                .last_error
+                .clone()
+                .unwrap_or_else(|| "PC Host did not respond at that URL".to_string()))
+        }
     }
 
     pub fn apply_discovery_report(&mut self, report: PcGatewayDiscoveryReport) {

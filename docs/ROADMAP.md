@@ -76,7 +76,7 @@
 - [ ] Device verification of Import ZIP.
 - [ ] Device verification of Export ZIP/native share.
 - [ ] Device verification of Termux `RUN_COMMAND` result continuation.
-- [ ] Device/LAN verification of PC Host mDNS discovery.
+- [ ] Device/LAN verification of PC Host mDNS discovery (Windows firewall script + daemon lifetime fix landed 2026-05-29).
 
 ## Phase 6 — Product completion 🔄
 
@@ -89,7 +89,7 @@
 - [x] Runtime HTTP task API.
 - [x] PC-running-task synchronization/reconciliation.
 - [x] Runtime SSE/live event streaming.
-- [ ] MCP stdio session reuse and on-device invoke verification.
+- [x] MCP stdio session reuse (cached child per server, reconnect on invoke failure, panel disconnect).
 - [ ] External MCP tool execution behind approvals/workspace boundaries.
 - [ ] Signed Android APK/AAB.
 - [ ] Release notes and install/troubleshooting docs.

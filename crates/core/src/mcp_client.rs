@@ -44,6 +44,26 @@ struct StdioSession {
     next_id: u64,
 }
 
+pub fn disconnect_stdio_server(server_name: &str) {
+    let mut sessions = stdio_sessions();
+    if let Some(map) = sessions.as_mut() {
+        map.remove(server_name);
+    }
+}
+
+/// Drop all cached stdio MCP child processes (app shutdown or MCP panel disconnect).
+pub fn shutdown_all_stdio_sessions() {
+    let mut sessions = stdio_sessions();
+    *sessions = None;
+}
+
+pub fn has_stdio_session(server_name: &str) -> bool {
+    let sessions = stdio_sessions();
+    sessions
+        .as_ref()
+        .is_some_and(|map| map.contains_key(server_name))
+}
+
 static STDIO_SESSIONS: Mutex<Option<HashMap<String, StdioSession>>> = Mutex::new(None);
 
 fn stdio_sessions() -> std::sync::MutexGuard<'static, Option<HashMap<String, StdioSession>>> {
@@ -128,6 +148,8 @@ fn connect_stdio_sync(
     args: &[String],
     env: &HashMap<String, String>,
 ) -> Result<Vec<McpToolDescriptor>> {
+    disconnect_stdio_server(server_name);
+
     let mut child = Command::new(command);
     child.args(args);
     for (key, value) in env {
@@ -169,6 +191,8 @@ fn connect_stdio_sync(
     )?;
     let _ = read_json_rpc(&mut session.stdout, init_id)?;
 
+    write_notification(&mut session.stdin, "notifications/initialized", json!({}))?;
+
     let list_id = session.next_id;
     session.next_id += 1;
     write_json_rpc(&mut session.stdin, list_id, "tools/list", json!({}))?;
@@ -199,7 +223,7 @@ fn connect_stdio_sync(
         .collect())
 }
 
-fn invoke_stdio_tool(server: &str, tool_name: &str, arguments: Value) -> Result<Option<String>> {
+fn invoke_stdio_tool(server: &str, tool_name: &str, arguments: Value) -> Result<String> {
     let mut sessions = stdio_sessions();
     let map = sessions
         .as_mut()
@@ -222,9 +246,21 @@ fn invoke_stdio_tool(server: &str, tool_name: &str, arguments: Value) -> Result<
     if let Some(error) = response.get("error") {
         return Err(anyhow!("MCP tools/call error: {}", error));
     }
-    Ok(Some(serde_json::to_string_pretty(
+    Ok(serde_json::to_string_pretty(
         &response.get("result").cloned().unwrap_or(response),
-    )?))
+    )?)
+}
+
+fn write_notification(stdin: &mut ChildStdin, method: &str, params: Value) -> Result<()> {
+    let line = serde_json::to_string(&json!({
+        "jsonrpc": "2.0",
+        "method": method,
+        "params": params
+    }))?;
+    stdin.write_all(line.as_bytes())?;
+    stdin.write_all(b"\n")?;
+    stdin.flush()?;
+    Ok(())
 }
 
 async fn invoke_http_tool_with_config(
@@ -265,73 +301,23 @@ fn invoke_stdio_tool_with_config(
     tool_name: &str,
     arguments: Value,
 ) -> Result<String> {
-    if let Some(response) = invoke_stdio_tool(&config.name, tool_name, arguments.clone())? {
-        return Ok(response);
+    match invoke_stdio_tool(&config.name, tool_name, arguments.clone()) {
+        Ok(response) => Ok(response),
+        Err(first_error) => {
+            let McpTransport::Stdio { command, args, env } = config.transport.clone() else {
+                return Err(first_error);
+            };
+            disconnect_stdio_server(&config.name);
+            connect_stdio_sync(&config.name, &command, &args, &env)
+                .with_context(|| format!("reconnect stdio MCP server '{}'", config.name))?;
+            invoke_stdio_tool(&config.name, tool_name, arguments).with_context(|| {
+                format!(
+                    "stdio MCP invoke failed after reconnect for '{}': {first_error:#}",
+                    config.name
+                )
+            })
+        }
     }
-    let McpTransport::Stdio { command, args, env } = config.transport.clone() else {
-        return Err(anyhow!("server '{}' is not stdio MCP", config.name));
-    };
-    invoke_stdio_tool_ephemeral(&command, &args, &env, tool_name, arguments)
-}
-
-fn invoke_stdio_tool_ephemeral(
-    command: &str,
-    args: &[String],
-    env: &HashMap<String, String>,
-    tool_name: &str,
-    arguments: Value,
-) -> Result<String> {
-    let mut child = Command::new(command);
-    child.args(args);
-    for (key, value) in env {
-        child.env(key, value);
-    }
-    child
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null());
-    let mut child = child
-        .spawn()
-        .with_context(|| format!("spawn MCP stdio server {command}"))?;
-    let mut stdin = child
-        .stdin
-        .take()
-        .ok_or_else(|| anyhow!("stdio stdin unavailable"))?;
-    let stdout = child
-        .stdout
-        .take()
-        .ok_or_else(|| anyhow!("stdio stdout unavailable"))?;
-    let mut reader = BufReader::new(stdout);
-
-    let mut next_id = 1u64;
-    write_json_rpc(
-        &mut stdin,
-        next_id,
-        "initialize",
-        json!({
-            "protocolVersion": "2024-11-05",
-            "capabilities": {},
-            "clientInfo": {"name": "deepseek-mobile", "version": "0.1.0"}
-        }),
-    )?;
-    let _ = read_json_rpc(&mut reader, next_id)?;
-    next_id += 1;
-    write_json_rpc(
-        &mut stdin,
-        next_id,
-        "tools/call",
-        json!({
-            "name": tool_name,
-            "arguments": arguments
-        }),
-    )?;
-    let response = read_json_rpc(&mut reader, next_id)?;
-    if response.get("error").is_some() {
-        return Err(anyhow!("MCP tools/call error: {}", response));
-    }
-    Ok(serde_json::to_string_pretty(
-        &response.get("result").cloned().unwrap_or(response),
-    )?)
 }
 
 async fn list_tools_http(
@@ -481,7 +467,7 @@ pub async fn load_connected_mcp_tools(path: &std::path::Path) -> Vec<McpToolDesc
 
 #[cfg(test)]
 mod tests {
-    use super::mcp_endpoint;
+    use super::{disconnect_stdio_server, has_stdio_session, mcp_endpoint, shutdown_all_stdio_sessions};
 
     #[test]
     fn mcp_endpoint_appends_suffix_when_missing() {
@@ -493,5 +479,14 @@ mod tests {
             mcp_endpoint("http://localhost:3000/mcp"),
             "http://localhost:3000/mcp"
         );
+    }
+
+    #[test]
+    fn stdio_session_registry_tracks_disconnect() {
+        shutdown_all_stdio_sessions();
+        assert!(!has_stdio_session("demo"));
+        disconnect_stdio_server("demo");
+        shutdown_all_stdio_sessions();
+        assert!(!has_stdio_session("demo"));
     }
 }

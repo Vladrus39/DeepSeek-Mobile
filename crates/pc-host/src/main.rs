@@ -300,14 +300,30 @@ async fn main() -> Result<()> {
     let listener = tokio::net::TcpListener::bind(bind_addr)
         .await
         .with_context(|| format!("bind PC host on {}", bind_addr))?;
-    if let Err(error) = mdns_advertise::register_pc_gateway(bind_addr, &gateway_id, &gateway_label)
-    {
-        eprintln!("deepseek-pc-host mDNS advertise skipped: {error:#}");
-    }
+    // Keep the mDNS daemon alive for the process lifetime (dropping it stops LAN advertisement).
+    let _mdns_guard = match mdns_advertise::register_pc_gateway(
+        bind_addr,
+        &gateway_id,
+        &gateway_label,
+    ) {
+        Ok(Some(advertisement)) => Some(advertisement),
+        Ok(None) => {
+            println!("deepseek-pc-host mDNS disabled (DEEPSEEK_PC_HOST_DISABLE_MDNS is set)");
+            None
+        }
+        Err(error) => {
+            eprintln!("deepseek-pc-host mDNS advertise failed: {error:#}");
+            eprintln!(
+                "  Hint (Windows): run scripts/enable-pc-host-mdns-windows.ps1 as Administrator, then restart the host."
+            );
+            None
+        }
+    };
     println!(
         "deepseek-pc-host '{}' listening on http://{}",
         gateway_label, bind_addr
     );
+    let _keep_mdns = _mdns_guard;
     axum::serve(listener, app).await?;
     Ok(())
 }
