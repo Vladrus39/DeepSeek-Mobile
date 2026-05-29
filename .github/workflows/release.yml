@@ -29,7 +29,7 @@ jobs:
           else { Write-Host "No bundled SDK; ensure ANDROID_HOME is set on the runner" }
 
       - name: Install Dioxus CLI
-        run: cargo install dioxus-cli --locked
+        run: cargo install dioxus-cli --version 0.7.9 --locked
 
       - name: Decode release keystore (optional)
         if: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
