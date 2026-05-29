@@ -10,7 +10,22 @@ fn skip_status_timeline_line(message: &str) -> bool {
     ) || message.starts_with("ModelRouter:")
 }
 
+/// Open the work log while the agent is thinking, calling tools, or waiting for approval.
+pub fn agent_event_opens_worklog(event: &AgentEvent) -> bool {
+    matches!(
+        event,
+        AgentEvent::ToolCallStarted(_)
+            | AgentEvent::ToolCallFinished(_)
+            | AgentEvent::ReasoningDelta(_)
+            | AgentEvent::ApprovalRequired(_)
+            | AgentEvent::PatchProposed(_)
+    )
+}
+
 pub fn push_agent_event(timeline: &mut MobileTimelineState, event: &AgentEvent) -> Option<String> {
+    if agent_event_opens_worklog(event) {
+        timeline.open_worklog_hint = true;
+    }
     match event {
         AgentEvent::Started => None,
         AgentEvent::Status(message) => {
@@ -103,7 +118,6 @@ pub fn push_agent_event(timeline: &mut MobileTimelineState, event: &AgentEvent) 
             Some(id)
         }
         AgentEvent::ToolCallFinished(result) => {
-            timeline.seal_tool_call(&result.name);
             if let Some(snapshot) = result
                 .metadata
                 .as_ref()
@@ -112,7 +126,7 @@ pub fn push_agent_event(timeline: &mut MobileTimelineState, event: &AgentEvent) 
                     serde_json::from_value::<WorkspaceSnapshotRecord>(value.clone()).ok()
                 })
             {
-                timeline.push(
+                let snapshot_id = timeline.push(
                     MobileTimelineItemKind::Status,
                     MobileTimelineItemStatus::Done,
                     "Safety snapshot",
@@ -121,6 +135,7 @@ pub fn push_agent_event(timeline: &mut MobileTimelineState, event: &AgentEvent) 
                         snapshot.id, snapshot.file_count, snapshot.total_bytes
                     ),
                 );
+                timeline.attach_linked_snapshot(&snapshot_id, snapshot.id.clone());
             }
 
             if let Some(request_id) = result
@@ -157,6 +172,19 @@ pub fn push_agent_event(timeline: &mut MobileTimelineState, event: &AgentEvent) 
                 );
             }
 
+            let paths = crate::chat_file_links::extract_paths_from_tool_result(
+                &result.name,
+                &result.output,
+                result.metadata.as_ref(),
+            );
+            if let Some(id) = timeline.complete_tool_call(
+                &result.name,
+                result.success,
+                &result.output,
+                paths.clone(),
+            ) {
+                return Some(id);
+            }
             let id = timeline.push(
                 MobileTimelineItemKind::ToolCall,
                 if result.success {
@@ -164,13 +192,8 @@ pub fn push_agent_event(timeline: &mut MobileTimelineState, event: &AgentEvent) 
                 } else {
                     MobileTimelineItemStatus::Failed
                 },
-                format!("Tool result: {}", result.name),
-                result.output.clone(),
-            );
-            let paths = crate::chat_file_links::extract_paths_from_tool_result(
-                &result.name,
-                &result.output,
-                result.metadata.as_ref(),
+                format!("Tool: {}", result.name),
+                crate::agent_timeline::format_tool_step_with_output("", &result.output),
             );
             timeline.attach_linked_paths(&id, paths);
             Some(id)
@@ -186,12 +209,19 @@ pub fn push_agent_event(timeline: &mut MobileTimelineState, event: &AgentEvent) 
                 risk_label(&request.risk_level)
             ),
         )),
-        AgentEvent::PatchProposed(patch) => Some(timeline.push(
-            MobileTimelineItemKind::ToolCall,
-            MobileTimelineItemStatus::WaitingForApproval,
-            format!("Patch proposed: {}", patch.file_path),
-            patch.diff.clone(),
-        )),
+        AgentEvent::PatchProposed(patch) => {
+            let id = timeline.push(
+                MobileTimelineItemKind::ToolCall,
+                MobileTimelineItemStatus::WaitingForApproval,
+                format!("Patch proposed: {}", patch.file_path),
+                patch.diff.clone(),
+            );
+            timeline.attach_linked_paths(
+                &id,
+                crate::chat_file_links::extract_paths_from_text(&patch.file_path),
+            );
+            Some(id)
+        }
         AgentEvent::SessionUpdated {
             messages,
             model,
@@ -334,9 +364,12 @@ mod tests {
                 metadata: None,
             }),
         );
-        assert_eq!(timeline.len(), 2);
+        assert_eq!(timeline.len(), 1);
         assert_eq!(timeline.items[0].kind, MobileTimelineItemKind::ToolCall);
-        assert_eq!(timeline.items[1].status, MobileTimelineItemStatus::Done);
+        assert_eq!(timeline.items[0].title, "Tool: read_file");
+        assert_eq!(timeline.items[0].status, MobileTimelineItemStatus::Done);
+        assert!(timeline.items[0].body.contains("── Output ──"));
+        assert!(timeline.items[0].body.contains("ok"));
     }
 
     #[test]
@@ -370,7 +403,8 @@ mod tests {
         assert_eq!(timeline.items.len(), 3);
         assert_eq!(timeline.items[0].title, "Safety snapshot");
         assert_eq!(timeline.items[1].title, "Post-edit diagnostics");
-        assert_eq!(timeline.items[2].title, "Tool result: write_file");
+        assert_eq!(timeline.items[2].title, "Tool: write_file");
+        assert!(timeline.items[2].body.contains("── Output ──"));
     }
 
     #[test]
@@ -393,7 +427,7 @@ mod tests {
         assert_eq!(timeline.items.len(), 2);
         assert_eq!(timeline.items[0].title, "Termux native execution queued");
         assert!(timeline.items[0].body.contains("termux-tool-3"));
-        assert_eq!(timeline.items[1].title, "Tool result: exec_shell");
+        assert_eq!(timeline.items[1].title, "Tool: exec_shell");
     }
 
     #[test]

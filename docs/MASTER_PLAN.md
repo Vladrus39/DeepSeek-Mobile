@@ -413,7 +413,7 @@ Acceptance criteria:
 | MCP | Keep, PC-first | Partial: registry + HTTP/stdio + proxy tools in engine; device verification pending |
 | Skills | Keep after core | Done for local manifest discovery, enable/disable state and context listing |
 | Hooks | Keep after tool parity | Missing |
-| Sub-agents | Later | Missing |
+| Sub-agents | Later | Missing (TUI `task_manager` ≠ LLM sub-agents; phone has Tasks + single engine) |
 | RLM | Later | Missing |
 | Cost/prefix-cache telemetry | Later | Missing |
 | Notifications | Later | Missing |

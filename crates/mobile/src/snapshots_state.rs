@@ -106,6 +106,12 @@ impl SnapshotsUiState {
     pub fn latest(&self) -> Option<&WorkspaceSnapshotRecord> {
         self.snapshots.first()
     }
+
+    pub fn replace_all(&mut self, mut snapshots: Vec<WorkspaceSnapshotRecord>) {
+        snapshots.sort_by(|left, right| right.created_unix.cmp(&left.created_unix));
+        self.snapshots = snapshots;
+        self.last_error = None;
+    }
 }
 
 #[cfg(test)]

@@ -1,5 +1,14 @@
 # DeepSeek-Mobile — Release Notes
 
+## v0.1.2 — 2026-05-30
+
+- **Chat rollback:** «Откатить к safety snapshot» under assistant replies and in **Work log**; inline confirm in chat (no need to open Snapshots first).
+- **Work log (Cursor-style):** each step expands on tap — full tool input/output, merged tool call + result, reasoning block.
+- **File links in chat:** «Открыть в Файлах» on assistant bubbles and work-log steps when paths are known.
+- **Snapshots panel:** auto-refresh on open + **Refresh list** button (reads on-disk snapshot store).
+- **ADB:** `device-e2e-snapshots.ps1` + checklist step `snapshots_list`.
+- Device checklist on `RFCNC0PWD4E`: install, ZIP, Termux, full verify, PC host — **PASS** (PC discovery health from phone still often blocked by Windows firewall unless admin setup).
+
 ## v0.1.1 — 2026-05-29
 
 - Version bump **0.1.1**; first [GitHub Release](https://github.com/Vladrus39/DeepSeek-Mobile/releases/tag/v0.1.1) with `deepseek-mobile-0.1.1.apk`.

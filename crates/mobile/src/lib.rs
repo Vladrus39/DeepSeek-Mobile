@@ -69,6 +69,7 @@ mod setup_panel;
 mod setup_status;
 mod skills_panel;
 mod skills_state;
+mod snapshots_list_probe;
 mod snapshots_panel;
 mod snapshots_state;
 mod tasks_panel;
@@ -83,7 +84,7 @@ mod zip_transfer_probe;
 
 use agent_event_adapter::push_agent_event;
 use agent_timeline::{MobileTimelineItemKind, MobileTimelineItemStatus, MobileTimelineState};
-use agent_timeline_panel::agent_timeline_panel;
+use agent_timeline_panel::{agent_timeline_panel, ChatSnapshotRollbackProps};
 use chat_attachment::ChatComposerState;
 use chat_history_panel::chat_history_panel;
 use chat_quick_actions::chat_quick_actions_bar;
@@ -351,6 +352,15 @@ fn app() -> Element {
     let mut is_loading = use_signal(|| false);
     let mut templates_open = use_signal(|| false);
     let mut worklog_open = use_signal(|| false);
+    let mut timeline_worklog_hint = timeline;
+    use_effect(move || {
+        if timeline_worklog_hint().open_worklog_hint {
+            worklog_open.set(true);
+            let mut next = timeline_worklog_hint();
+            next.open_worklog_hint = false;
+            timeline_worklog_hint.set(next);
+        }
+    });
     let mut chat_history_open = use_signal(|| false);
     let mut drawer_open = use_signal(|| false);
     let mut active_section = use_signal(|| CockpitSection::Chat);
@@ -901,6 +911,9 @@ fn app() -> Element {
                     }
                     if tools_smoke_probe::is_probe_requested() {
                         tools_smoke_probe::run_if_requested();
+                    }
+                    if snapshots_list_probe::is_probe_requested() {
+                        snapshots_list_probe::run_if_requested();
                     }
                     if pc_pairing_bundle_probe::is_probe_requested() {
                         pc_pairing_bundle_probe::run_if_requested();
@@ -1503,7 +1516,86 @@ fn app() -> Element {
                 id: chat_scroll::CHAT_SCROLL_PANEL_ID,
                 style: "{ui_layout::main_scroll_panel_style()}",
                 if active_section() == CockpitSection::Chat {
-                    {agent_timeline_panel(
+                    {
+                        let snap = snapshots_state();
+                        let snapshot_rollback = ChatSnapshotRollbackProps {
+                            latest_id: snap.latest().map(|s| s.id.clone()),
+                            latest_summary: snap.latest().map(|s| {
+                                format!(
+                                    "{} · {} file(s) · {} bytes",
+                                    s.id, s.file_count, s.total_bytes
+                                )
+                            }),
+                            pending: snap.pending_restore_snapshot().map(|s| {
+                                (s.id.clone(), s.file_count, s.total_bytes)
+                            }),
+                            restore_in_progress: snap.restore_in_progress,
+                            on_request_restore: EventHandler::new(move |snapshot_id: String| {
+                                snapshots_state.write().request_restore(&snapshot_id);
+                            }),
+                            on_confirm_restore: EventHandler::new(move |_| {
+                                let snapshot_id = snapshots_state()
+                                    .pending_restore_snapshot_id
+                                    .clone();
+                                let Some(snapshot_id) = snapshot_id else {
+                                    return;
+                                };
+                                let settings_signal = settings_state;
+                                let mut snapshots_signal = snapshots_state;
+                                let mut timeline_signal = timeline;
+                                is_loading.set(true);
+                                spawn(async move {
+                                    snapshots_signal.write().confirm_restore();
+                                    let config = settings_signal().to_config();
+                                    let runtime =
+                                        crate::mobile_runtime_config::MobileRuntimeConfig::default_mobile();
+                                    match crate::mobile_snapshot_runner::restore_snapshot_by_id(
+                                        config,
+                                        runtime,
+                                        &snapshot_id,
+                                    )
+                                    .await
+                                    {
+                                        Ok(report) => {
+                                            let mut s = snapshots_signal.write();
+                                            s.restore_in_progress = false;
+                                            s.pending_restore_snapshot_id = None;
+                                            s.last_restore_report = Some(report.clone());
+                                            s.last_error = None;
+                                            let mut next_timeline = timeline_signal();
+                                            push_agent_event(
+                                                &mut next_timeline,
+                                                &AgentEvent::Status(format!(
+                                                    "Restored snapshot {}: {} file(s) restored",
+                                                    snapshot_id, report
+                                                )),
+                                            );
+                                            timeline_signal.set(next_timeline);
+                                        }
+                                        Err(error) => {
+                                            let mut s = snapshots_signal.write();
+                                            s.restore_in_progress = false;
+                                            s.pending_restore_snapshot_id = None;
+                                            s.last_error = Some(error.to_string());
+                                            let mut next_timeline = timeline_signal();
+                                            push_agent_event(
+                                                &mut next_timeline,
+                                                &AgentEvent::Error(format!(
+                                                    "Snapshot restore failed: {}",
+                                                    error
+                                                )),
+                                            );
+                                            timeline_signal.set(next_timeline);
+                                        }
+                                    }
+                                    is_loading.set(false);
+                                });
+                            }),
+                            on_cancel_restore: EventHandler::new(move |_| {
+                                snapshots_state.write().cancel_restore();
+                            }),
+                        };
+                        agent_timeline_panel(
                         ui_lang(),
                         &timeline(),
                         &approval_cards(),
@@ -1614,6 +1706,7 @@ fn app() -> Element {
                                     spawn(async move {
                                         let mut files = files_signal();
                                         files.workspace_root = workspace_root;
+                                        files.reset_to_workspace_root();
                                         files.loaded = true;
                                         let _ = files
                                             .open_file_via_pc(&client, &path, &workspace_id)
@@ -1628,12 +1721,51 @@ fn app() -> Element {
                                 crate::mobile_runtime_config::MobileRuntimeConfig::default_mobile();
                             let mut files = project_files_state.write();
                             files.workspace_root = runtime.workspace_root_display();
+                            files.reset_to_workspace_root();
                             files.refresh();
                             files.open_file(path);
                         }),
+                        EventHandler::new(move |_| {
+                            active_section.set(CockpitSection::Files);
+                            chat_history_open.set(false);
+                            drawer_open.set(false);
+
+                            if let Some(connection) =
+                                pc_pairing_state().active_workspace_connection()
+                            {
+                                if let Some(gateway_config) = connection.pc_gateway.clone() {
+                                    let client =
+                                        deepseek_mobile_core::PcGatewayClient::new(gateway_config);
+                                    let workspace_id = connection.workspace_id.clone();
+                                    let workspace_root =
+                                        connection.workspace_root.display().to_string();
+                                    let mut files_signal = project_files_state;
+                                    spawn(async move {
+                                        let mut files = files_signal();
+                                        files.workspace_root = workspace_root;
+                                        files.reset_to_workspace_root();
+                                        files.loaded = true;
+                                        let _ = files
+                                            .refresh_via_pc(&client, &workspace_id)
+                                            .await;
+                                        files_signal.set(files);
+                                    });
+                                    return;
+                                }
+                            }
+
+                            let runtime =
+                                crate::mobile_runtime_config::MobileRuntimeConfig::default_mobile();
+                            let mut files = project_files_state.write();
+                            files.workspace_root = runtime.workspace_root_display();
+                            files.reset_to_workspace_root();
+                            files.refresh();
+                        }),
                         worklog_open(),
                         EventHandler::new(move |_| worklog_open.set(!worklog_open())),
-                    )}
+                        snapshot_rollback,
+                        )
+                    }
                 } else {
                     {cockpit_section_panel(
                         active_section(),

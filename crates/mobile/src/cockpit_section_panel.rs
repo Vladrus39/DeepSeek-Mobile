@@ -82,7 +82,7 @@ pub fn cockpit_section_panel(
             )
         }
         CockpitSection::Snapshots => {
-            snapshots_panel(snapshots_state, settings_state)
+            snapshots_panel(lang(), snapshots_state, settings_state)
         }
         CockpitSection::Diagnostics => diagnostics_panel(&diagnostics_state()),
         CockpitSection::Terminal => terminal_panel(

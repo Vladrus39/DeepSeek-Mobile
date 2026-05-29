@@ -146,6 +146,14 @@ impl ProjectFilesUiState {
         self.loaded = false;
     }
 
+    /// Clear subfolder navigation and file preview so workspace-relative paths resolve from root.
+    pub fn reset_to_workspace_root(&mut self) {
+        self.browsing_dir = String::new();
+        self.selected_path = None;
+        self.preview = None;
+        self.pending_diff = None;
+    }
+
     pub fn open_file(&mut self, path: impl Into<String>) {
         let path = path.into();
         match &self.backend {
@@ -358,6 +366,7 @@ fn first_string_arg(card: &ApprovalCardView, keys: &[&str]) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::ProjectFilesUiState;
+    use crate::project_files::ProjectFilePreview;
     use crate::project_files_state::FileBrowserBackend;
     use std::fs;
 
@@ -443,5 +452,24 @@ mod tests {
         assert_eq!(state.browsing_dir, "subdir");
         assert!(state.selected_path.is_none());
         assert!(!state.loaded);
+    }
+
+    #[test]
+    fn reset_to_workspace_root_clears_navigation() {
+        let mut state = ProjectFilesUiState::default();
+        state.browsing_dir = "src".into();
+        state.selected_path = Some("lib.rs".into());
+        state.preview = Some(ProjectFilePreview {
+            path: "lib.rs".into(),
+            display_name: "lib.rs".into(),
+            content: "fn main() {}".into(),
+            size_bytes: 12,
+            line_count: 1,
+            truncated: false,
+        });
+        state.reset_to_workspace_root();
+        assert!(state.browsing_dir.is_empty());
+        assert!(state.selected_path.is_none());
+        assert!(state.preview.is_none());
     }
 }

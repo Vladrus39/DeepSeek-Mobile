@@ -66,6 +66,7 @@ if (-not $SkipBuild) {
 Run-Step "zip_import" { & (Join-Path $ProjectRoot "scripts\device-e2e-zip-import.ps1") -Serial $serial }
 Run-Step "zip_export" { & (Join-Path $ProjectRoot "scripts\device-e2e-zip-export.ps1") -Serial $serial }
 Run-Step "termux_pwd" { & (Join-Path $ProjectRoot "scripts\device-termux-pwd-probe.ps1") -Serial $serial }
+Run-Step "snapshots_list" { & (Join-Path $ProjectRoot "scripts\device-e2e-snapshots.ps1") -Serial $serial }
 Run-Step "device_full_verify" {
     $fv = Join-Path $ProjectRoot "scripts\device-full-verify.ps1"
     if ($SkipPcHost) { & $fv -Serial $serial -SkipBuild -SkipPcHost }

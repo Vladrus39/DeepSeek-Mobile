@@ -1,5 +1,6 @@
+use crate::locale::{pick, AppLanguage};
 use crate::mobile_runtime_config::MobileRuntimeConfig;
-use crate::mobile_snapshot_runner::restore_snapshot_by_id;
+use crate::mobile_snapshot_runner::{list_workspace_snapshots, restore_snapshot_by_id};
 use crate::settings_state::SettingsFormState;
 use crate::snapshots_state::SnapshotsUiState;
 use dioxus::prelude::*;
@@ -13,9 +14,30 @@ struct SnapshotDisplayInfo {
 }
 
 pub fn snapshots_panel(
+    ui_lang: AppLanguage,
     mut state: Signal<SnapshotsUiState>,
     settings_state: Signal<SettingsFormState>,
 ) -> Element {
+    let refresh_label = pick(ui_lang, "Обновить список", "Refresh list");
+    let refresh_running = use_signal(|| false);
+
+    use_effect(move || {
+        let settings = settings_state;
+        let mut snapshots = state;
+        let mut running = refresh_running;
+        spawn(async move {
+            running.set(true);
+            let config = settings().to_config();
+            let runtime = MobileRuntimeConfig::default_mobile();
+            match list_workspace_snapshots(config, runtime).await {
+                Ok(records) => snapshots.write().replace_all(records),
+                Err(error) => {
+                    snapshots.write().last_error = Some(error.to_string());
+                }
+            }
+            running.set(false);
+        });
+    });
     let latest = state.read().latest().cloned();
     let pending_info = state
         .read()
@@ -110,7 +132,41 @@ pub fn snapshots_panel(
                 flex_direction: "column",
                 gap: "6px",
 
-                div { font_size: "18px", font_weight: "bold", "Snapshots" }
+                div {
+                    display: "flex",
+                    justify_content: "space_between",
+                    align_items: "center",
+                    gap: "8px",
+                    div { font_size: "18px", font_weight: "bold", "Snapshots" }
+                    button {
+                        background_color: "#1d4ed8",
+                        border: "none",
+                        border_radius: "8px",
+                        padding: "6px 12px",
+                        color: "white",
+                        font_size: "12px",
+                        font_weight: "bold",
+                        disabled: refresh_running(),
+                        onclick: move |_| {
+                            let settings = settings_state;
+                            let mut snapshots = state;
+                            let mut running = refresh_running;
+                            spawn(async move {
+                                running.set(true);
+                                let config = settings().to_config();
+                                let runtime = MobileRuntimeConfig::default_mobile();
+                                match list_workspace_snapshots(config, runtime).await {
+                                    Ok(records) => snapshots.write().replace_all(records),
+                                    Err(error) => {
+                                        snapshots.write().last_error = Some(error.to_string());
+                                    }
+                                }
+                                running.set(false);
+                            });
+                        },
+                        "{refresh_label}"
+                    }
+                }
                 if let Some(ref snapshot) = latest {
                     div { color: "#d1d5db", font_size: "13px", "Latest safety point: {snapshot.id}" }
                     div { color: "#9ca3af", font_size: "12px", "{snapshot.file_count} file(s) · {snapshot.total_bytes} bytes · {snapshot.reason}" }

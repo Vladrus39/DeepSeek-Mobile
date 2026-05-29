@@ -1,12 +1,12 @@
 # DeepSeek-Mobile — current state
 
-**Updated:** 2026-05-29
+**Updated:** 2026-05-30 (v0.1.2)
 
 This is the factual project checkpoint after phone-agent E2E on device.
 
 ## Short version
 
-The project builds and launches as an Android debug APK on a real phone. **Primary focus: full phone agent via Termux (TUI parity), not PC Host pairing.** PC connection is deferred to a later phase. Core agent, mobile cockpit, Termux bridge, and local toolchain are in place; release packaging and optional PC Host LAN verification remain.
+The project builds and launches as an Android debug/release APK on a real phone (`RFCNC0PWD4E`). **Primary focus: full phone agent via Termux.** v0.1.2 adds chat snapshot rollback, expandable work log with per-step tool details, open project folder from work log, and snapshots panel refresh. PC Host pairing is optional; Windows firewall often blocks phone→PC health from LAN unless `Setup-DeepSeek-PC-Host` ran as admin.
 
 ## Priority order (product)
 

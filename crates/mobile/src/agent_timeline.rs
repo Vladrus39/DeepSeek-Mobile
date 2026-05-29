@@ -28,6 +28,8 @@ pub struct MobileTimelineItem {
     pub body: String,
     /// Workspace-relative paths for "Open in Files" from chat / tool cards.
     pub linked_file_paths: Vec<String>,
+    /// Safety snapshot id for one-tap rollback from chat / work log.
+    pub linked_snapshot_id: Option<String>,
 }
 
 impl MobileTimelineItem {
@@ -45,13 +47,109 @@ impl MobileTimelineItem {
             title: title.into(),
             body: body.into(),
             linked_file_paths: Vec::new(),
+            linked_snapshot_id: None,
         }
+    }
+
+    pub fn snapshot_id(&self) -> Option<String> {
+        if let Some(id) = self.linked_snapshot_id.clone() {
+            return Some(id);
+        }
+        if self.title == "Safety snapshot" {
+            return parse_safety_snapshot_id(&self.body);
+        }
+        None
     }
 
     pub fn with_linked_file_paths(mut self, paths: Vec<String>) -> Self {
         self.linked_file_paths = paths;
         self
     }
+}
+
+fn linked_paths_since_last_user_message(
+    items: &[MobileTimelineItem],
+    assistant_index: usize,
+) -> Vec<String> {
+    let start = items[..assistant_index]
+        .iter()
+        .rposition(|item| item.kind == MobileTimelineItemKind::UserMessage)
+        .map(|index| index + 1)
+        .unwrap_or(0);
+    let mut paths = Vec::new();
+    for item in &items[start..assistant_index] {
+        merge_linked_paths(&mut paths, item.linked_file_paths.clone());
+        if matches!(
+            item.kind,
+            MobileTimelineItemKind::ToolCall
+                | MobileTimelineItemKind::Status
+                | MobileTimelineItemKind::NativeCommand
+                | MobileTimelineItemKind::Attachment
+        ) {
+            merge_linked_paths(
+                &mut paths,
+                crate::chat_file_links::extract_paths_from_text(&format!(
+                    "{} {}",
+                    item.title, item.body
+                )),
+            );
+        }
+    }
+    paths
+}
+
+pub const TOOL_STEP_INPUT_MARKER: &str = "── Input ──\n";
+pub const TOOL_STEP_OUTPUT_MARKER: &str = "\n\n── Output ──\n";
+
+pub fn tool_name_from_step_title(title: &str) -> Option<&str> {
+    title
+        .strip_prefix("Tool: ")
+        .or_else(|| title.strip_prefix("Tool result: "))
+}
+
+pub fn parse_safety_snapshot_id(body: &str) -> Option<String> {
+    let token = body.split('·').next()?.trim();
+    if token.is_empty() {
+        None
+    } else {
+        Some(token.to_string())
+    }
+}
+
+pub fn format_tool_step_with_output(input: &str, output: &str) -> String {
+    format!("{TOOL_STEP_INPUT_MARKER}{input}{TOOL_STEP_OUTPUT_MARKER}{output}")
+}
+
+pub fn split_tool_step_body(body: &str) -> Option<(&str, &str)> {
+    let input_start = body.find(TOOL_STEP_INPUT_MARKER)? + TOOL_STEP_INPUT_MARKER.len();
+    let output_marker = body.find(TOOL_STEP_OUTPUT_MARKER)?;
+    let input = &body[input_start..output_marker];
+    let output_start = output_marker + TOOL_STEP_OUTPUT_MARKER.len();
+    Some((input, &body[output_start..]))
+}
+
+fn merge_tool_result_into_call(call: &mut MobileTimelineItem, result: &MobileTimelineItem) -> bool {
+    if call.kind != MobileTimelineItemKind::ToolCall
+        || result.kind != MobileTimelineItemKind::ToolCall
+    {
+        return false;
+    }
+    let Some(call_name) = tool_name_from_step_title(&call.title) else {
+        return false;
+    };
+    let Some(result_name) = tool_name_from_step_title(&result.title) else {
+        return false;
+    };
+    if call.title.starts_with("Tool result:") || !result.title.starts_with("Tool result:") {
+        return false;
+    }
+    if call_name != result_name {
+        return false;
+    }
+    call.body = format_tool_step_with_output(&call.body, &result.body);
+    call.status = result.status.clone();
+    merge_linked_paths(&mut call.linked_file_paths, result.linked_file_paths.clone());
+    true
 }
 
 fn merge_linked_paths(existing: &mut Vec<String>, mut more: Vec<String>) {
@@ -71,6 +169,8 @@ pub struct MobileTimelineState {
     pub items: Vec<MobileTimelineItem>,
     live_assistant_item_id: Option<String>,
     live_reasoning_item_id: Option<String>,
+    /// UI: expand «Work log» while tools / reasoning are in flight.
+    pub open_worklog_hint: bool,
 }
 
 impl MobileTimelineState {
@@ -132,6 +232,7 @@ impl MobileTimelineState {
             body,
         );
         self.live_assistant_item_id = None;
+        self.enrich_assistant_file_links(&id);
         id
     }
 
@@ -162,11 +263,26 @@ impl MobileTimelineState {
         if let Some(id) = self.live_assistant_item_id.take() {
             if let Some(item) = self.items.iter_mut().find(|item| item.id == id) {
                 item.status = MobileTimelineItemStatus::Done;
-                let paths = crate::chat_file_links::extract_paths_from_text(&item.body.clone());
-                merge_linked_paths(&mut item.linked_file_paths, paths);
             }
+            self.enrich_assistant_file_links(&id);
         }
         self.finish_live_reasoning();
+    }
+
+    /// Attach file paths from this turn's tools (and assistant text) to the reply bubble.
+    pub fn enrich_assistant_file_links(&mut self, assistant_id: &str) {
+        let Some(assistant_idx) = self.items.iter().position(|item| item.id == assistant_id) else {
+            return;
+        };
+        let body = self.items[assistant_idx].body.clone();
+        let mut paths = crate::chat_file_links::extract_paths_from_text(&body);
+        merge_linked_paths(
+            &mut paths,
+            linked_paths_since_last_user_message(&self.items, assistant_idx),
+        );
+        if let Some(item) = self.items.get_mut(assistant_idx) {
+            merge_linked_paths(&mut item.linked_file_paths, paths);
+        }
     }
 
     pub fn attach_linked_paths(&mut self, item_id: &str, paths: Vec<String>) {
@@ -175,6 +291,16 @@ impl MobileTimelineState {
         }
         if let Some(item) = self.items.iter_mut().find(|row| row.id == item_id) {
             merge_linked_paths(&mut item.linked_file_paths, paths);
+        }
+    }
+
+    pub fn attach_linked_snapshot(&mut self, item_id: &str, snapshot_id: impl Into<String>) {
+        let snapshot_id = snapshot_id.into();
+        if snapshot_id.is_empty() {
+            return;
+        }
+        if let Some(item) = self.items.iter_mut().find(|row| row.id == item_id) {
+            item.linked_snapshot_id = Some(snapshot_id);
         }
     }
 
@@ -300,6 +426,38 @@ impl MobileTimelineState {
         }
     }
 
+    /// Attach tool output to the in-flight `Tool: …` row (one card per tool, Cursor-style).
+    pub fn complete_tool_call(
+        &mut self,
+        tool_name: &str,
+        success: bool,
+        output: &str,
+        paths: Vec<String>,
+    ) -> Option<String> {
+        let title = format!("Tool: {tool_name}");
+        let item_id = self
+            .items
+            .iter()
+            .rev()
+            .find(|item| {
+                item.kind == MobileTimelineItemKind::ToolCall
+                    && item.title == title
+                    && item.status == MobileTimelineItemStatus::Running
+            })
+            .map(|item| item.id.clone())?;
+        if let Some(item) = self.items.iter_mut().find(|row| row.id == item_id) {
+            let input = item.body.clone();
+            item.body = format_tool_step_with_output(&input, output);
+            item.status = if success {
+                MobileTimelineItemStatus::Done
+            } else {
+                MobileTimelineItemStatus::Failed
+            };
+        }
+        self.attach_linked_paths(&item_id, paths);
+        Some(item_id)
+    }
+
     /// Keep the chat usable when many old failures were persisted on disk.
     pub fn retain_recent(&mut self, max_items: usize) {
         if self.items.len() > max_items {
@@ -325,6 +483,9 @@ impl MobileTimelineState {
                 {
                     last.body.push_str(&item.body);
                     last.status = item.status;
+                    continue;
+                }
+                if merge_tool_result_into_call(last, &item) {
                     continue;
                 }
             }
@@ -441,7 +602,8 @@ pub fn timeline_status_label(status: &MobileTimelineItemStatus) -> &'static str 
 #[cfg(test)]
 mod tests {
     use super::{
-        timeline_kind_label, MobileTimelineItemKind, MobileTimelineItemStatus, MobileTimelineState,
+        parse_safety_snapshot_id, timeline_kind_label, MobileTimelineItemKind,
+        MobileTimelineItemStatus, MobileTimelineState,
     };
 
     #[test]
@@ -477,5 +639,79 @@ mod tests {
         assert_eq!(timeline.items[0].status, MobileTimelineItemStatus::Running);
         timeline.finish_live_assistant_message();
         assert_eq!(timeline.items[0].status, MobileTimelineItemStatus::Done);
+    }
+
+    #[test]
+    fn parses_safety_snapshot_id_from_body() {
+        assert_eq!(
+            parse_safety_snapshot_id("snap-abc · 3 file(s) · 120 bytes"),
+            Some("snap-abc".to_string())
+        );
+    }
+
+    #[test]
+    fn complete_tool_call_merges_output_into_running_row() {
+        let mut timeline = MobileTimelineState::default();
+        let id = timeline.push(
+            MobileTimelineItemKind::ToolCall,
+            MobileTimelineItemStatus::Running,
+            "Tool: write_file",
+            r#"{"path":"src/a.rs"}"#.to_string(),
+        );
+        let completed = timeline.complete_tool_call(
+            "write_file",
+            true,
+            "Wrote 10 bytes",
+            vec!["src/a.rs".to_string()],
+        );
+        assert_eq!(completed.as_deref(), Some(id.as_str()));
+        assert_eq!(timeline.len(), 1);
+        assert!(timeline.items[0].body.contains("── Output ──"));
+        assert!(timeline.items[0].linked_file_paths.contains(&"src/a.rs".to_string()));
+    }
+
+    #[test]
+    fn compact_for_display_merges_legacy_tool_result_rows() {
+        let mut timeline = MobileTimelineState::default();
+        timeline.push(
+            MobileTimelineItemKind::ToolCall,
+            MobileTimelineItemStatus::Done,
+            "Tool: read_file",
+            r#"{"path":"Cargo.toml"}"#.to_string(),
+        );
+        timeline.push(
+            MobileTimelineItemKind::ToolCall,
+            MobileTimelineItemStatus::Done,
+            "Tool result: read_file",
+            "ok".to_string(),
+        );
+        timeline.compact_for_display();
+        assert_eq!(timeline.len(), 1);
+        assert!(timeline.items[0].body.contains("── Output ──"));
+        assert!(timeline.items[0].body.contains("ok"));
+    }
+
+    #[test]
+    fn assistant_reply_inherits_paths_from_tools_in_same_turn() {
+        let mut timeline = MobileTimelineState::default();
+        timeline.push_user_message("create demo");
+        let tool_id = timeline.push(
+            MobileTimelineItemKind::ToolCall,
+            MobileTimelineItemStatus::Done,
+            "Tool result: write_file",
+            "Wrote 3 bytes to pkg/demo.rs",
+        );
+        timeline.attach_linked_paths(&tool_id, vec!["pkg/demo.rs".to_string()]);
+        timeline.append_live_assistant_delta("Готово, файл создан.");
+        timeline.finish_live_assistant_message();
+        let assistant = timeline
+            .items
+            .iter()
+            .find(|item| item.kind == MobileTimelineItemKind::AssistantMessage)
+            .expect("assistant bubble");
+        assert!(
+            assistant.linked_file_paths.contains(&"pkg/demo.rs".to_string()),
+            "paths from tools should appear on the assistant reply"
+        );
     }
 }

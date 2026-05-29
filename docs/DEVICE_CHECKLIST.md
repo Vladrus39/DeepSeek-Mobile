@@ -25,9 +25,10 @@ Automated probes run from repo root with USB debugging enabled.
 - **In-app:** Settings → App update (works when installed version &lt; 0.1.1)
 - **Dev signing:** release APK signed with standard Android debug keystore so it can upgrade debug installs
 
-## Chat → Files links
+## Chat → Files
 
-- After `write_file` / `edit_file` / assistant text mentioning paths, chat shows **Open in Files** buttons (v0.1.2+).
+- **Work log:** «Открыть папку проекта» opens the Files tab at workspace root; per-file links only inside expanded tool steps.
+- **Rollback:** «Откатить к safety snapshot» in work log with inline confirm in chat.
 
 ## Still manual
 
