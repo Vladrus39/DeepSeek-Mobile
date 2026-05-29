@@ -1,8 +1,8 @@
 # Device verification checklist
 
 **Device:** `RFCNC0PWD4E`  
-**Date:** 2026-05-29  
-**App version on device:** 0.1.1 (debug, after E2E rebuild)
+**Date:** 2026-05-30  
+**App version on device:** 0.1.1 (debug)
 
 Automated probes run from repo root with USB debugging enabled.
 
@@ -16,7 +16,8 @@ Automated probes run from repo root with USB debugging enabled.
 | API probe | `device-full-verify.ps1 -SkipBuild` | **PASS** |
 | Agent turn probe | `device-full-verify.ps1 -SkipBuild` | **PASS** (`PROBE_OK`) |
 | Termux calibration file | `device-full-verify.ps1 -SkipBuild` | **PASS** |
-| PC mDNS discovery probe | `device-full-verify.ps1 -SkipBuild` | (see probe file on device) |
+| PC mDNS discovery probe | `device-full-verify.ps1 -SkipBuild` | **PASS** (manual URL `http://192.168.1.111:8787`) |
+| Full verify bundle | `run-device-checklist.ps1 -SkipBuild` | **PASS** except pairing-bundle phone→PC health (firewall) |
 
 ## GitHub Release / OTA
 
