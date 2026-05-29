@@ -660,7 +660,7 @@ fn user_message_bubble(item: &MobileTimelineItem) -> Element {
 }
 
 fn open_project_folder_button(ui_lang: AppLanguage, on_open: EventHandler<()>) -> Element {
-    let label = pick(ui_lang, "Открыть папку проекта", "Open project folder");
+    let label = pick(ui_lang, "Открыть в проводнике", "Open in file manager");
     rsx! {
         button {
             style: "align-self:flex-start;background:#1e3a5f;color:#93c5fd;border:1px solid #3b82f6;border-radius:10px;padding:6px 10px;font-size:12px;font-weight:600;margin-top:4px;",

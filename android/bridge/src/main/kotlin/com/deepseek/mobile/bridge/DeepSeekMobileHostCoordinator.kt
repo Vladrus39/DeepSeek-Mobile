@@ -5,6 +5,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
+import android.provider.DocumentsContract
 import android.provider.Settings
 import android.util.Log
 import androidx.activity.ComponentActivity
@@ -267,6 +268,12 @@ class DeepSeekMobileHostCoordinator(
                     )
                 }
             }
+            "open_workspace_folder" -> {
+                val path = action.path ?: return
+                activity.runOnUiThread {
+                    openWorkspaceFolder(path)
+                }
+            }
             "request_termux_permission" -> {
                 val pkg = DeepSeekTermuxBridge.TERMUX_PACKAGE_NAME
                 val granted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
@@ -280,6 +287,122 @@ class DeepSeekMobileHostCoordinator(
             }
             else -> Unit
         }
+    }
+
+    private fun openWorkspaceFolder(path: String) {
+        val target = File(path)
+        val dir = when {
+            target.isDirectory -> target
+            target.parentFile?.isDirectory == true -> target.parentFile!!
+            else -> {
+                deliverWorkspaceFolderFailed(path, "path not found: $path")
+                return
+            }
+        }
+
+        if (tryOpenTermuxFiles(dir)) {
+            deliverWorkspaceFolderOpened(path)
+            return
+        }
+
+        if (tryOpenAppSandboxFolder(dir)) {
+            deliverWorkspaceFolderOpened(path)
+            return
+        }
+
+        if (tryOpenGenericFolder(dir)) {
+            deliverWorkspaceFolderOpened(path)
+            return
+        }
+
+        deliverWorkspaceFolderFailed(path, "no file manager could open $path")
+    }
+
+    private fun tryOpenTermuxFiles(dir: File): Boolean {
+        val termuxPrefix = "/data/data/com.termux/files"
+        if (!dir.absolutePath.startsWith(termuxPrefix)) {
+            return false
+        }
+        val pkg = "com.termux.files"
+        if (activity.packageManager.getLaunchIntentForPackage(pkg) == null) {
+            return false
+        }
+        val relative = dir.absolutePath.removePrefix(termuxPrefix).trimStart('/')
+        val uri = if (relative.isEmpty()) {
+            Uri.parse("content://com.termux.files/documents")
+        } else {
+            Uri.parse("content://com.termux.files/documents/$relative")
+        }
+        val intent = Intent(Intent.ACTION_VIEW).apply {
+            setPackage(pkg)
+            data = uri
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        return launchExternal(intent)
+    }
+
+    private fun tryOpenAppSandboxFolder(dir: File): Boolean {
+        val appFiles = activity.filesDir.canonicalFile
+        val canonicalDir = dir.canonicalFile
+        if (!canonicalDir.absolutePath.startsWith(appFiles.absolutePath)) {
+            return false
+        }
+        val authority = "${activity.packageName}.fileprovider"
+        return try {
+            val uri = FileProvider.getUriForFile(activity, authority, canonicalDir)
+            val intent = Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(uri, DocumentsContract.Document.MIME_TYPE_DIR)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            launchExternal(intent)
+        } catch (e: Throwable) {
+            Log.w(TAG, "FileProvider folder open failed for ${dir.absolutePath}", e)
+            false
+        }
+    }
+
+    private fun tryOpenGenericFolder(dir: File): Boolean {
+        val authority = "${activity.packageName}.fileprovider"
+        return try {
+            val uri = FileProvider.getUriForFile(activity, authority, dir)
+            val intent = Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(uri, DocumentsContract.Document.MIME_TYPE_DIR)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            launchExternal(intent)
+        } catch (_: Throwable) {
+            val fallback = Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(Uri.fromFile(dir), "resource/folder")
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            launchExternal(fallback)
+        }
+    }
+
+    private fun launchExternal(intent: Intent): Boolean {
+        return try {
+            onExternalActivityLaunched()
+            activity.startActivity(intent)
+            true
+        } catch (e: Throwable) {
+            Log.w(TAG, "External folder launch failed", e)
+            false
+        }
+    }
+
+    private fun deliverWorkspaceFolderOpened(path: String) {
+        deliverCallbackJson(
+            """{"kind":"workspace_folder_opened","path":${org.json.JSONObject.quote(path)}}""",
+        )
+    }
+
+    private fun deliverWorkspaceFolderFailed(path: String, message: String) {
+        deliverCallbackJson(
+            """{"kind":"workspace_folder_open_failed","path":${org.json.JSONObject.quote(path)},"message":${org.json.JSONObject.quote(message)}}""",
+        )
     }
 
     companion object {

@@ -2,4 +2,5 @@
 <paths>
     <files-path name="exports" path="." />
     <files-path name="attachments" path="attachments/" />
+    <files-path name="project_workspace" path="Project workspace/" />
 </paths>

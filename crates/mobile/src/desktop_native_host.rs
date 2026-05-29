@@ -83,6 +83,28 @@ pub fn try_execute(action: &AndroidHostAction, bridge: &mut NativeBridgeState) -
         AndroidHostAction::OpenSystemSettings => {
             Some("open_system_settings is Android-only".to_string())
         }
+        AndroidHostAction::OpenWorkspaceFolder { path } => {
+            let folder = PathBuf::from(path);
+            if !folder.is_dir() {
+                bridge.accept_event(NativeMobileEvent::WorkspaceFolderOpenFailed {
+                    path: path.clone(),
+                    message: format!("not a directory: {path}"),
+                });
+                return Some(format!("Workspace folder not found: {path}"));
+            }
+            if open::that(&folder).is_ok() {
+                bridge.accept_event(NativeMobileEvent::WorkspaceFolderOpened {
+                    path: path.clone(),
+                });
+                Some(format!("Opened workspace folder: {path}"))
+            } else {
+                bridge.accept_event(NativeMobileEvent::WorkspaceFolderOpenFailed {
+                    path: path.clone(),
+                    message: "desktop file manager launch failed".to_string(),
+                });
+                Some(format!("Failed to open workspace folder: {path}"))
+            }
+        }
         AndroidHostAction::OpenTerminal { .. }
         | AndroidHostAction::TerminalInput { .. }
         | AndroidHostAction::CloseTerminal { .. } => {

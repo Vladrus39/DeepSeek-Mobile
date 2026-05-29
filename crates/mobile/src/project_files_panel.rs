@@ -95,7 +95,9 @@ pub fn project_files_panel(
                     "Loading project tree…"
                 }
             }
-            {transfer_card(&transfer, picker, native_bridge, transfer_state, is_pc)}
+            if !state().focus_tree {
+                {transfer_card(&transfer, picker, native_bridge, transfer_state, state, is_pc)}
+            }
             if let Some(error) = last_error {
                 div {
                     background_color: "#7f1d1d",
@@ -119,6 +121,7 @@ fn transfer_card(
     mut picker: Signal<DocumentPickerState>,
     mut native_bridge: Signal<NativeBridgeState>,
     mut transfer_state: Signal<ProjectTransferState>,
+    mut files_state: Signal<ProjectFilesUiState>,
     is_pc: bool,
 ) -> Element {
     let status_text = transfer.status_text();
@@ -157,6 +160,7 @@ fn transfer_card(
                         padding: "6px 10px",
                         font_size: "12px",
                         onclick: move |_| {
+                            files_state.write().focus_tree = false;
                             let request = DocumentPickerRequest::project_import();
                             picker.write().request(request.clone());
                             native_bridge.write().enqueue_document_picker(request);
@@ -173,6 +177,7 @@ fn transfer_card(
                         font_size: "12px",
                         disabled: !can_export,
                         onclick: move |_| {
+                            files_state.write().focus_tree = false;
                             let mut transfer_signal = transfer_state;
                             let mut bridge_signal = native_bridge;
                             spawn(async move {

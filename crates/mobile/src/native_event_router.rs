@@ -129,6 +129,15 @@ pub fn route_native_mobile_event(
         } => {
             timeline.push_error(format!("Termux command {} failed: {}", request_id, message));
         }
+        NativeMobileEvent::WorkspaceFolderOpened { path } => {
+            timeline.push_status(format!("Opened workspace folder in file manager: {}", path));
+        }
+        NativeMobileEvent::WorkspaceFolderOpenFailed { path, message } => {
+            timeline.push_error(format!(
+                "Could not open workspace folder {} in file manager: {}",
+                path, message
+            ));
+        }
     }
 
     NativeEventRouteResult {

@@ -38,6 +38,8 @@ pub struct ProjectFilesUiState {
     pub last_error: Option<String>,
     pub pending_diff: Option<ProjectDiffPreview>,
     pub loaded: bool,
+    /// When true, the Files panel hides import/export and shows the tree first.
+    pub focus_tree: bool,
     /// Which file backend is active. `None` means uninitialised – use
     /// `detect_source()` or an explicit `set_backend()` before refreshing.
     pub backend: FileBrowserBackend,
@@ -59,6 +61,7 @@ impl Default for ProjectFilesUiState {
             last_error: None,
             pending_diff: None,
             loaded: false,
+            focus_tree: false,
             backend: FileBrowserBackend::Local,
         }
     }

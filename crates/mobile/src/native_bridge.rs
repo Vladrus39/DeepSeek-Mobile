@@ -27,6 +27,9 @@ pub enum NativeMobileCommand {
         package: String,
     },
     OpenSystemSettings,
+    OpenWorkspaceFolder {
+        path: String,
+    },
     OpenTerminal {
         workspace_id: String,
     },
@@ -74,6 +77,13 @@ pub enum NativeMobileEvent {
     TermuxCommandCompleted(TermuxExecResult),
     TermuxCommandFailed {
         request_id: String,
+        message: String,
+    },
+    WorkspaceFolderOpened {
+        path: String,
+    },
+    WorkspaceFolderOpenFailed {
+        path: String,
         message: String,
     },
 }
@@ -184,6 +194,12 @@ impl NativeBridgeState {
 
     pub fn enqueue_install_apk(&mut self, path: impl Into<String>) {
         self.enqueue(NativeMobileCommand::InstallApk {
+            path: path.into(),
+        });
+    }
+
+    pub fn enqueue_open_workspace_folder(&mut self, path: impl Into<String>) {
+        self.enqueue(NativeMobileCommand::OpenWorkspaceFolder {
             path: path.into(),
         });
     }

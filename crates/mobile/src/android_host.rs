@@ -52,6 +52,9 @@ pub enum AndroidHostAction {
         package: String,
     },
     OpenSystemSettings,
+    OpenWorkspaceFolder {
+        path: String,
+    },
     OpenTerminal {
         workspace_id: String,
     },
@@ -98,6 +101,9 @@ pub fn drain_next_host_action(bridge: &mut NativeBridgeState) -> Option<AndroidH
             Some(AndroidHostAction::LaunchApp { package })
         }
         NativeMobileCommand::OpenSystemSettings => Some(AndroidHostAction::OpenSystemSettings),
+        NativeMobileCommand::OpenWorkspaceFolder { path } => {
+            Some(AndroidHostAction::OpenWorkspaceFolder { path })
+        }
         NativeMobileCommand::OpenDocumentPicker(_)
         | NativeMobileCommand::StartPcGatewayDiscovery(_)
         | NativeMobileCommand::RunTermuxCommand(_) => drain_next_host_action(bridge),
@@ -348,6 +354,31 @@ pub fn apply_host_callback_json(
                 },
             ))
         }
+        "workspace_folder_opened" => {
+            let path = value
+                .get("path")
+                .and_then(|v| v.as_str())
+                .unwrap_or(".")
+                .to_string();
+            let event = NativeMobileEvent::WorkspaceFolderOpened { path };
+            bridge.accept_event(event.clone());
+            Some(event)
+        }
+        "workspace_folder_open_failed" => {
+            let path = value
+                .get("path")
+                .and_then(|v| v.as_str())
+                .unwrap_or(".")
+                .to_string();
+            let message = value
+                .get("message")
+                .and_then(|v| v.as_str())
+                .unwrap_or("workspace folder open failed")
+                .to_string();
+            let event = NativeMobileEvent::WorkspaceFolderOpenFailed { path, message };
+            bridge.accept_event(event.clone());
+            Some(event)
+        }
         _ => None,
     }
 }
@@ -390,6 +421,28 @@ mod tests {
             crate::native_bridge::NativeMobileEvent::DocumentsPicked(_)
         ));
         assert!(!bridge.is_waiting_for_document_picker_callback());
+    }
+
+    #[test]
+    fn drains_open_workspace_folder_action() {
+        let mut bridge = NativeBridgeState::default();
+        bridge.enqueue_open_workspace_folder("/data/user/0/com.deepseek.mobile/files/Project workspace");
+        let action = drain_next_host_action(&mut bridge).expect("folder action");
+        assert!(matches!(
+            action,
+            AndroidHostAction::OpenWorkspaceFolder { .. }
+        ));
+    }
+
+    #[test]
+    fn applies_workspace_folder_open_failed_callback() {
+        let mut bridge = NativeBridgeState::default();
+        let payload = r#"{"kind":"workspace_folder_open_failed","path":"/tmp/missing","message":"path not found"}"#;
+        let event = super::apply_host_callback_json(&mut bridge, payload).expect("event");
+        assert!(matches!(
+            event,
+            crate::native_bridge::NativeMobileEvent::WorkspaceFolderOpenFailed { .. }
+        ));
     }
 
     #[test]

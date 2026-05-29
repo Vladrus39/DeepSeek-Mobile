@@ -60,6 +60,7 @@ mod project_diff;
 mod project_files;
 mod project_files_panel;
 mod project_files_state;
+mod project_folder_open;
 mod project_transfer_state;
 mod runtime_health;
 mod saved_timeline_loader;
@@ -117,6 +118,10 @@ use native_bridge::{NativeBridgeState, NativeMobileCommand, NativeMobileEvent};
 use native_event_router::route_native_mobile_event;
 use pc_pairing_state::{PcPairingUiState, PcPairingUiStatus};
 use project_files_state::ProjectFilesUiState;
+use project_folder_open::{
+    active_workspace_folder_path, clear_files_focus_tree_if_leaving,
+    show_in_app_files_focus_tree, try_open_pc_workspace_folder,
+};
 use project_transfer_state::{default_phone_workspace_root, ProjectTransferState};
 use readiness_strip::readiness_strip;
 use runtime_health::RuntimeHealthSnapshot;
@@ -861,6 +866,10 @@ fn app() -> Element {
         let mut android_route_pc = pc_pairing_state;
         let mut android_route_timeline = timeline;
         let mut android_last_routed = use_signal(|| 0u64);
+        let android_active_section = active_section;
+        let android_chat_history = chat_history_open;
+        let android_drawer = drawer_open;
+        let android_project_files = project_files_state;
         use_effect(move || {
             if android_poll_started() {
                 return;
@@ -926,6 +935,10 @@ fn app() -> Element {
                             && bridge.last_event_id != android_last_routed()
                         {
                             if let Some(event) = bridge.last_event.clone() {
+                                let folder_open_failed = matches!(
+                                    event,
+                                    NativeMobileEvent::WorkspaceFolderOpenFailed { .. }
+                                );
                                 android_last_routed.set(bridge.last_event_id);
                                 let routed = route_native_mobile_event(
                                     android_route_composer(),
@@ -941,6 +954,15 @@ fn app() -> Element {
                                 android_route_timeline.set(routed.timeline);
                                 bridge = routed.native_bridge;
                                 crate::native_host_runtime::replace(bridge.clone());
+                                if folder_open_failed {
+                                    show_in_app_files_focus_tree(
+                                        android_active_section,
+                                        android_chat_history,
+                                        android_drawer,
+                                        android_project_files,
+                                        &android_route_pc(),
+                                    );
+                                }
                             }
                         }
                         let manual_urls = pc_discovery_probe::tick(&mut bridge);
@@ -1218,6 +1240,11 @@ fn app() -> Element {
                 drawer_summary,
                 ui_lang(),
                 EventHandler::new(move |section| {
+                    clear_files_focus_tree_if_leaving(
+                        active_section(),
+                        section,
+                        project_files_state,
+                    );
                     active_section.set(section);
                     drawer_open.set(false);
                 }),
@@ -1726,10 +1753,8 @@ fn app() -> Element {
                             files.open_file(path);
                         }),
                         EventHandler::new(move |_| {
-                            active_section.set(CockpitSection::Files);
-                            chat_history_open.set(false);
-                            drawer_open.set(false);
-
+                            let folder_path =
+                                active_workspace_folder_path(&pc_pairing_state());
                             if let Some(connection) =
                                 pc_pairing_state().active_workspace_connection()
                             {
@@ -1737,29 +1762,48 @@ fn app() -> Element {
                                     let client =
                                         deepseek_mobile_core::PcGatewayClient::new(gateway_config);
                                     let workspace_id = connection.workspace_id.clone();
-                                    let workspace_root =
-                                        connection.workspace_root.display().to_string();
-                                    let mut files_signal = project_files_state;
+                                    let mut active = active_section;
+                                    let mut history = chat_history_open;
+                                    let mut drawer = drawer_open;
+                                    let files = project_files_state;
+                                    let pairing = pc_pairing_state();
                                     spawn(async move {
-                                        let mut files = files_signal();
-                                        files.workspace_root = workspace_root;
-                                        files.reset_to_workspace_root();
-                                        files.loaded = true;
-                                        let _ = files
-                                            .refresh_via_pc(&client, &workspace_id)
-                                            .await;
-                                        files_signal.set(files);
+                                        if !try_open_pc_workspace_folder(&client, &workspace_id)
+                                            .await
+                                        {
+                                            show_in_app_files_focus_tree(
+                                                active,
+                                                history,
+                                                drawer,
+                                                files,
+                                                &pairing,
+                                            );
+                                        }
                                     });
                                     return;
                                 }
                             }
 
-                            let runtime =
-                                crate::mobile_runtime_config::MobileRuntimeConfig::default_mobile();
-                            let mut files = project_files_state.write();
-                            files.workspace_root = runtime.workspace_root_display();
-                            files.reset_to_workspace_root();
-                            files.refresh();
+                            native_bridge
+                                .write()
+                                .enqueue_open_workspace_folder(folder_path);
+                            #[cfg(not(target_os = "android"))]
+                            {
+                                let mut bridge = native_bridge.write();
+                                run_host_tick(&mut bridge);
+                                if matches!(
+                                    bridge.last_event,
+                                    Some(NativeMobileEvent::WorkspaceFolderOpenFailed { .. })
+                                ) {
+                                    show_in_app_files_focus_tree(
+                                        active_section,
+                                        chat_history_open,
+                                        drawer_open,
+                                        project_files_state,
+                                        &pc_pairing_state(),
+                                    );
+                                }
+                            }
                         }),
                         worklog_open(),
                         EventHandler::new(move |_| worklog_open.set(!worklog_open())),
@@ -2184,6 +2228,11 @@ fn app() -> Element {
                 bottom_nav_summary,
                 ui_lang(),
                 EventHandler::new(move |section| {
+                    clear_files_focus_tree_if_leaving(
+                        active_section(),
+                        section,
+                        project_files_state,
+                    );
                     active_section.set(section);
                 })
             )}

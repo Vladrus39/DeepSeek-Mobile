@@ -1,10 +1,15 @@
 # DeepSeek-Mobile — Release Notes
 
+## v0.1.3 — 2026-05-30
+
+- **Work log → проводник:** «Открыть в проводнике» открывает системный файловый менеджер (PC Host `open_path`, на телефоне — Termux Files / FileProvider). При ошибке — fallback в раздел «Файлы» с деревом проекта без блока import/export.
+- **Файлы:** флаг `focus_tree` скрывает import/export, пока пользователь смотрит дерево; сбрасывается при уходе из раздела или ручном import/export.
+
 ## v0.1.2 — 2026-05-30
 
-- **Chat rollback:** «Откатить к safety snapshot» under assistant replies and in **Work log**; inline confirm in chat (no need to open Snapshots first).
-- **Work log (Cursor-style):** each step expands on tap — full tool input/output, merged tool call + result, reasoning block.
-- **File links in chat:** «Открыть в Файлах» on assistant bubbles and work-log steps when paths are known.
+- **Chat rollback:** «Откатить к safety snapshot» in **Work log** with inline confirm in chat (no need to open Snapshots first).
+- **Work log:** each step expands on tap — full tool input/output, merged tool call + result, reasoning block.
+- **Files from chat:** «Открыть в проводнике» in work log; per-file «Открыть в Файлах» only inside expanded tool steps.
 - **Snapshots panel:** auto-refresh on open + **Refresh list** button (reads on-disk snapshot store).
 - **ADB:** `device-e2e-snapshots.ps1` + checklist step `snapshots_list`.
 - Device checklist on `RFCNC0PWD4E`: install, ZIP, Termux, full verify, PC host — **PASS** (PC discovery health from phone still often blocked by Windows firewall unless admin setup).
