@@ -81,7 +81,9 @@ pub fn cockpit_section_panel(
                 project_transfer_state,
             )
         }
-        CockpitSection::Snapshots => snapshots_panel(snapshots_state),
+        CockpitSection::Snapshots => {
+            snapshots_panel(snapshots_state, settings_state)
+        }
         CockpitSection::Diagnostics => diagnostics_panel(&diagnostics_state()),
         CockpitSection::Terminal => terminal_panel(
             terminal_state,

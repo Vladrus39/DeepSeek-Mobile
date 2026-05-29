@@ -15,6 +15,8 @@ pub struct RuntimeHealthSnapshot {
     pub execution_mode: ExecutionMode,
     pub pc_status_label: String,
     pub pc_online: bool,
+    /// `active_workspace_connection()` — agent/files can use PC workspace.
+    pub pc_files_sync_ready: bool,
     pub pc_workspace_active: bool,
     pub termux_configured: bool,
     pub termux_valid: bool,
@@ -37,6 +39,7 @@ impl RuntimeHealthSnapshot {
         mcp: &McpUiState,
         bridge: &NativeBridgeState,
     ) -> Self {
+        let lang = load_ui_language();
         let api_configured =
             !settings.api_key.trim().is_empty() && settings.api_key.trim().starts_with("sk-");
         let pc_online = pc
@@ -56,25 +59,8 @@ impl RuntimeHealthSnapshot {
             .filter(|s| s.status == deepseek_mobile_core::McpServerStatus::Connected)
             .count();
 
-        let pc_status_label = match &pc.status {
-            crate::pc_pairing_state::PcPairingUiStatus::Online => "Online".to_string(),
-            crate::pc_pairing_state::PcPairingUiStatus::Offline => "Offline".to_string(),
-            crate::pc_pairing_state::PcPairingUiStatus::WaitingForPc => {
-                "Waiting for PC host".to_string()
-            }
-            crate::pc_pairing_state::PcPairingUiStatus::Exported => {
-                "Bundle exported — start PC host".to_string()
-            }
-            crate::pc_pairing_state::PcPairingUiStatus::ReadyToExport => {
-                "Ready to export pairing".to_string()
-            }
-            crate::pc_pairing_state::PcPairingUiStatus::NotConfigured => {
-                "Not configured".to_string()
-            }
-            crate::pc_pairing_state::PcPairingUiStatus::Error(message) => {
-                format!("Error: {message}")
-            }
-        };
+        let pc_status_label = localized_pc_status(lang, &pc.status);
+        let pc_files_sync_ready = pc.active_workspace_connection().is_some();
 
         let native_pending = bridge.has_pending_commands()
             || bridge.is_waiting_for_document_picker_callback()
@@ -83,7 +69,6 @@ impl RuntimeHealthSnapshot {
 
         let full_agent_on_phone_ready = api_configured && termux_valid;
 
-        let lang = load_ui_language();
         let mut recommendations = Vec::new();
         if !api_configured {
             recommendations.push(
@@ -182,6 +167,7 @@ impl RuntimeHealthSnapshot {
             execution_mode: settings.execution_mode.clone(),
             pc_status_label,
             pc_online,
+            pc_files_sync_ready,
             pc_workspace_active,
             termux_configured,
             termux_valid,
@@ -212,6 +198,42 @@ impl RuntimeHealthSnapshot {
 
     pub fn workstation_ready(&self) -> bool {
         self.pc_boost_ready()
+    }
+}
+
+fn localized_pc_status(
+    lang: crate::locale::AppLanguage,
+    status: &crate::pc_pairing_state::PcPairingUiStatus,
+) -> String {
+    use crate::locale::AppLanguage;
+    use crate::pc_pairing_state::PcPairingUiStatus;
+    match (lang, status) {
+        (AppLanguage::Ru, PcPairingUiStatus::Online) => "В сети".to_string(),
+        (AppLanguage::En, PcPairingUiStatus::Online) => "Online".to_string(),
+        (AppLanguage::Ru, PcPairingUiStatus::Offline) => "Офлайн".to_string(),
+        (AppLanguage::En, PcPairingUiStatus::Offline) => "Offline".to_string(),
+        (AppLanguage::Ru, PcPairingUiStatus::WaitingForPc) => {
+            "Ожидание PC host".to_string()
+        }
+        (AppLanguage::En, PcPairingUiStatus::WaitingForPc) => {
+            "Waiting for PC host".to_string()
+        }
+        (AppLanguage::Ru, PcPairingUiStatus::Exported) => {
+            "ZIP создан — запустите PC".to_string()
+        }
+        (AppLanguage::En, PcPairingUiStatus::Exported) => {
+            "Bundle exported — start PC host".to_string()
+        }
+        (AppLanguage::Ru, PcPairingUiStatus::ReadyToExport) => {
+            "Готов к экспорту ZIP".to_string()
+        }
+        (AppLanguage::En, PcPairingUiStatus::ReadyToExport) => {
+            "Ready to export pairing".to_string()
+        }
+        (AppLanguage::Ru, PcPairingUiStatus::NotConfigured) => "Не настроен".to_string(),
+        (AppLanguage::En, PcPairingUiStatus::NotConfigured) => "Not configured".to_string(),
+        (AppLanguage::Ru, PcPairingUiStatus::Error(message)) => format!("Ошибка: {message}"),
+        (AppLanguage::En, PcPairingUiStatus::Error(message)) => format!("Error: {message}"),
     }
 }
 

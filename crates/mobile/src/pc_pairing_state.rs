@@ -72,6 +72,29 @@ impl Default for PcPairingUiState {
 }
 
 impl PcPairingUiState {
+    /// Create a default pairing request so Files/Tasks can use PC after URL-only connect.
+    pub fn ensure_workspace_request_if_missing(&mut self) {
+        if self.request.is_some() {
+            return;
+        }
+        let request = MobilePcPairingRequest::new(
+            "pc-gateway",
+            "PC Host",
+            "android-phone",
+            "Android",
+            "default",
+            deepseek_mobile_core::project_workspace_relative_name(),
+            uuid::Uuid::new_v4().simple().to_string(),
+        );
+        self.request = Some(request);
+        if self.last_error.is_none() {
+            self.last_error = Some(
+                "Pairing request auto-created. PC host token must match deepseek-pc-host.env from your ZIP."
+                    .to_string(),
+            );
+        }
+    }
+
     pub fn configure(&mut self, request: MobilePcPairingRequest) {
         self.request = Some(request);
         self.export = None;
@@ -146,6 +169,7 @@ impl PcPairingUiState {
         self.apply_discovery_report(probed);
         if self.best_discovery_candidate().is_some() {
             self.apply_reconnect_action(PcReconnectAction::UseBestDiscoveredRoute);
+            self.ensure_workspace_request_if_missing();
             Ok(())
         } else {
             Err(self
@@ -173,6 +197,7 @@ impl PcPairingUiState {
         self.discovery_report = Some(report);
         if has_online {
             self.mark_online();
+            self.ensure_workspace_request_if_missing();
         } else if has_candidates {
             self.mark_waiting_for_pc();
         } else {

@@ -126,6 +126,26 @@ pub fn start_new_chat(title: Option<String>) -> Result<(String, MobileTimelineSt
     Ok((id, MobileTimelineState::default()))
 }
 
+pub fn delete_chat_thread(thread_id: &str) -> Result<String, String> {
+    let mut index = load_index();
+    if index.threads.len() <= 1 {
+        return Err("Cannot delete the only chat thread".to_string());
+    }
+    if !index.threads.iter().any(|thread| thread.id == thread_id) {
+        return Err(format!("chat thread not found: {thread_id}"));
+    }
+    index.threads.retain(|thread| thread.id != thread_id);
+    if index.active_thread_id == thread_id {
+        index.active_thread_id = index
+            .threads
+            .first()
+            .map(|thread| thread.id.clone())
+            .unwrap_or_else(|| LEGACY_THREAD.to_string());
+    }
+    save_index(&index)?;
+    Ok(index.active_thread_id.clone())
+}
+
 pub fn touch_active_thread() {
     let mut index = load_index();
     let now = unix_now();

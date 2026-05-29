@@ -19,6 +19,8 @@ fn status_label(status: &McpServerStatus) -> &'static str {
 
 pub fn mcp_panel(lang: AppLanguage, mut state: Signal<McpUiState>) -> Element {
     let layout = screen_layout();
+    let mut pending_delete = use_signal(|| None::<String>);
+    let confirm_delete = pick(lang, "Подтвердить", "Confirm");
     let mut loaded = use_signal(|| false);
     if !*loaded.peek() {
         state.write().refresh();
@@ -97,14 +99,21 @@ pub fn mcp_panel(lang: AppLanguage, mut state: Signal<McpUiState>) -> Element {
                                 if enabled { "ON" } else { "OFF" }
                             }
                             button {
-                                background_color: "#991b1b",
+                                background_color: if pending_delete() == Some(server_name2.clone()) { "#dc2626" } else { "#991b1b" },
                                 border: "none",
                                 border_radius: "8px",
                                 padding: "4px 10px",
                                 color: "white",
                                 font_size: "11px",
-                                onclick: move |_| state.write().remove_server(&server_name2),
-                                "Del"
+                                onclick: move |_| {
+                                    if pending_delete() == Some(server_name2.clone()) {
+                                        state.write().remove_server(&server_name2);
+                                        pending_delete.set(None);
+                                    } else {
+                                        pending_delete.set(Some(server_name2.clone()));
+                                    }
+                                },
+                                if pending_delete() == Some(server_name2.clone()) { "{confirm_delete}" } else { "Del" }
                             }
                         }
                     }

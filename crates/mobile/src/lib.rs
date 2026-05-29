@@ -52,7 +52,10 @@ mod pc_discovery_probe;
 mod pc_pairing_bundle_probe;
 mod pc_pairing_manager;
 mod pc_pairing_panel;
+mod pc_pairing_persist;
 mod pc_pairing_state;
+mod readiness_strip;
+mod mobile_snapshot_runner;
 mod project_diff;
 mod project_files;
 mod project_files_panel;
@@ -109,9 +112,13 @@ use mobile_engine_runner::{
     run_mobile_turn_streaming, MobileApprovalContinuationUiResult, MobileTurnUiResult,
 };
 use native_bridge::{NativeBridgeState, NativeMobileCommand, NativeMobileEvent};
+#[cfg(target_os = "android")]
+use native_event_router::route_native_mobile_event;
 use pc_pairing_state::{PcPairingUiState, PcPairingUiStatus};
 use project_files_state::ProjectFilesUiState;
 use project_transfer_state::{default_phone_workspace_root, ProjectTransferState};
+use readiness_strip::readiness_strip;
+use runtime_health::RuntimeHealthSnapshot;
 use saved_timeline_loader::load_active_saved_events;
 use settings_state::{save_config as save_settings_config, SettingsFormState};
 use setup_panel::setup_panel;
@@ -244,14 +251,19 @@ fn build_chrome_summary(
     git: &GitUiState,
     tasks: &TasksUiState,
 ) -> MobileChromeSummary {
-    let (pc_label, pc_online) = match &pc.status {
-        PcPairingUiStatus::NotConfigured => ("PC SETUP".to_string(), false),
-        PcPairingUiStatus::ReadyToExport => ("PAIR".to_string(), false),
-        PcPairingUiStatus::Exported => ("ZIP".to_string(), false),
-        PcPairingUiStatus::WaitingForPc => ("PC WAIT".to_string(), false),
-        PcPairingUiStatus::Online => ("PC ON".to_string(), true),
-        PcPairingUiStatus::Offline => ("PC OFF".to_string(), false),
-        PcPairingUiStatus::Error(_) => ("PC ERR".to_string(), false),
+    let pc_files_sync_ready = pc.active_workspace_connection().is_some();
+    let (pc_label, pc_online) = if pc_files_sync_ready {
+        ("PC OK".to_string(), true)
+    } else {
+        match &pc.status {
+            PcPairingUiStatus::NotConfigured => ("PC SETUP".to_string(), false),
+            PcPairingUiStatus::ReadyToExport => ("PAIR".to_string(), false),
+            PcPairingUiStatus::Exported => ("ZIP".to_string(), false),
+            PcPairingUiStatus::WaitingForPc => ("PC WAIT".to_string(), false),
+            PcPairingUiStatus::Online => ("PC LINK".to_string(), true),
+            PcPairingUiStatus::Offline => ("PC OFF".to_string(), false),
+            PcPairingUiStatus::Error(_) => ("PC ERR".to_string(), false),
+        }
     };
 
     let (active_project_title, active_project_subtitle) =
@@ -283,6 +295,7 @@ fn build_chrome_summary(
         api_configured: !settings.api_key.trim().is_empty(),
         pc_label,
         pc_online,
+        pc_files_sync_ready,
         active_project_title,
         active_project_subtitle,
         pending_approvals: approvals,
@@ -341,7 +354,14 @@ fn app() -> Element {
     let mut chat_history_open = use_signal(|| false);
     let mut drawer_open = use_signal(|| false);
     let mut active_section = use_signal(|| CockpitSection::Chat);
-    let pc_pairing_state = use_signal(PcPairingUiState::default);
+    let pc_pairing_state = use_signal(|| {
+        crate::pc_pairing_persist::load_persisted_pairing().unwrap_or_default()
+    });
+    let pc_pairing_persist_signal = pc_pairing_state;
+    use_effect(move || {
+        let snapshot = pc_pairing_persist_signal();
+        crate::pc_pairing_persist::save_pairing(&snapshot);
+    });
     let mut project_files_state = use_signal(ProjectFilesUiState::default);
     let project_transfer_state = use_signal(ProjectTransferState::default);
     let mut snapshots_state = use_signal(SnapshotsUiState::default);
@@ -630,7 +650,11 @@ fn app() -> Element {
                         event_timeline.set(next_timeline);
 
                         if let Some(final_text) = result.final_text.clone() {
-                            messages.push(("assistant".to_string(), final_text));
+                            let mut event_messages = messages;
+                            event_messages.write().push((
+                                "assistant".to_string(),
+                                final_text,
+                            ));
                         }
 
                         event_cards.set(result.approval_cards);
@@ -822,6 +846,11 @@ fn app() -> Element {
         let mut android_poll_started = use_signal(|| false);
         let mut android_is_loading = is_loading;
         let mut android_loading_since = use_signal(|| None::<u64>);
+        let mut android_route_composer = composer;
+        let mut android_route_picker = picker;
+        let mut android_route_pc = pc_pairing_state;
+        let mut android_route_timeline = timeline;
+        let mut android_last_routed = use_signal(|| 0u64);
         use_effect(move || {
             if android_poll_started() {
                 return;
@@ -878,8 +907,29 @@ fn app() -> Element {
                     }
                     pc_discovery_probe::recover_stale_running_marker();
                     let manual_discovery_urls = {
-                        let mut bridge = android_bridge_poll.write();
+                        let mut bridge = android_bridge_poll();
                         sync_bridge_from_runtime(&mut bridge);
+                        if bridge.last_event_id > 0
+                            && bridge.last_event_id != android_last_routed()
+                        {
+                            if let Some(event) = bridge.last_event.clone() {
+                                android_last_routed.set(bridge.last_event_id);
+                                let routed = route_native_mobile_event(
+                                    android_route_composer(),
+                                    android_route_picker(),
+                                    bridge.clone(),
+                                    android_route_pc(),
+                                    android_route_timeline(),
+                                    event,
+                                );
+                                android_route_composer.set(routed.composer);
+                                android_route_picker.set(routed.picker);
+                                android_route_pc.set(routed.pc_pairing);
+                                android_route_timeline.set(routed.timeline);
+                                bridge = routed.native_bridge;
+                                crate::native_host_runtime::replace(bridge.clone());
+                            }
+                        }
                         let manual_urls = pc_discovery_probe::tick(&mut bridge);
                         let mut bridge_changed = false;
                         if let Some(message) = bridge.expire_stale_termux_wait(90) {
@@ -897,6 +947,7 @@ fn app() -> Element {
                         if bridge_changed {
                             crate::native_host_runtime::replace(bridge.clone());
                         }
+                        android_bridge_poll.set(bridge);
                         manual_urls
                     };
                     if let Some(urls) = manual_discovery_urls {
@@ -1325,6 +1376,24 @@ fn app() -> Element {
                         }),
                     )}
 
+                    {
+                        let health_snapshot = RuntimeHealthSnapshot::collect(
+                            &settings_state(),
+                            &pc_pairing_state(),
+                            &termux_state(),
+                            &mcp_state(),
+                            &native_bridge(),
+                        );
+                        readiness_strip(
+                            ui_lang(),
+                            &health_snapshot,
+                            EventHandler::new(move |section: CockpitSection| {
+                                active_section.set(section);
+                                drawer_open.set(false);
+                            }),
+                        )
+                    }
+
                     if chat_history_open() {
                         div {
                             style: "max-height:min(40vh,320px);overflow-y:auto;flex-shrink:0;",
@@ -1338,10 +1407,15 @@ fn app() -> Element {
                                     Ok(saved_timeline) => {
                                         timeline.set(saved_timeline);
                                         messages.set(Vec::new());
-                                        approval_cards.set(Vec::new());
                                         worklog_open.set(false);
                                         chat_history_open.set(false);
                                         chat_sessions.set(load_index());
+                                        match load_mobile_approval_cards(
+                                            chat_session::runtime_for_active_thread(),
+                                        ) {
+                                            Ok(cards) => approval_cards.set(cards),
+                                            Err(_) => approval_cards.set(Vec::new()),
+                                        }
                                     }
                                     Err(error) => {
                                         let mut next = timeline();
@@ -1376,6 +1450,48 @@ fn app() -> Element {
                             EventHandler::new(move |_| {
                                 active_section.set(CockpitSection::Files);
                                 chat_history_open.set(false);
+                            }),
+                            EventHandler::new(move |thread_id: String| {
+                                match chat_session::delete_chat_thread(&thread_id) {
+                                    Ok(active_id) => {
+                                        chat_sessions.set(load_index());
+                                        match switch_chat_thread(&active_id) {
+                                            Ok(saved_timeline) => {
+                                                timeline.set(saved_timeline);
+                                                messages.set(Vec::new());
+                                                approval_cards.set(Vec::new());
+                                                match load_mobile_approval_cards(
+                                                    chat_session::runtime_for_active_thread(),
+                                                ) {
+                                                    Ok(cards) => approval_cards.set(cards),
+                                                    Err(_) => approval_cards.set(Vec::new()),
+                                                }
+                                            }
+                                            Err(error) => {
+                                                let mut next = timeline();
+                                                push_agent_event(
+                                                    &mut next,
+                                                    &AgentEvent::Error(format!(
+                                                        "Switch after delete failed: {}",
+                                                        error
+                                                    )),
+                                                );
+                                                timeline.set(next);
+                                            }
+                                        }
+                                    }
+                                    Err(error) => {
+                                        let mut next = timeline();
+                                        push_agent_event(
+                                            &mut next,
+                                            &AgentEvent::Error(format!(
+                                                "Delete chat failed: {}",
+                                                error
+                                            )),
+                                        );
+                                        timeline.set(next);
+                                    }
+                                }
                             }),
                             )}
                         }
@@ -1484,7 +1600,32 @@ fn app() -> Element {
                             active_section.set(CockpitSection::Files);
                             chat_history_open.set(false);
                             drawer_open.set(false);
-                            let runtime = crate::mobile_runtime_config::MobileRuntimeConfig::default_mobile();
+
+                            if let Some(connection) =
+                                pc_pairing_state().active_workspace_connection()
+                            {
+                                if let Some(gateway_config) = connection.pc_gateway.clone() {
+                                    let client =
+                                        deepseek_mobile_core::PcGatewayClient::new(gateway_config);
+                                    let workspace_id = connection.workspace_id.clone();
+                                    let workspace_root =
+                                        connection.workspace_root.display().to_string();
+                                    let mut files_signal = project_files_state;
+                                    spawn(async move {
+                                        let mut files = files_signal();
+                                        files.workspace_root = workspace_root;
+                                        files.loaded = true;
+                                        let _ = files
+                                            .open_file_via_pc(&client, &path, &workspace_id)
+                                            .await;
+                                        files_signal.set(files);
+                                    });
+                                    return;
+                                }
+                            }
+
+                            let runtime =
+                                crate::mobile_runtime_config::MobileRuntimeConfig::default_mobile();
                             let mut files = project_files_state.write();
                             files.workspace_root = runtime.workspace_root_display();
                             files.refresh();
@@ -1608,6 +1749,14 @@ fn app() -> Element {
                             match action {
                                 HealthQuickAction::OpenSettings => {
                                     active_section.set(CockpitSection::Settings);
+                                    drawer_open.set(false);
+                                }
+                                HealthQuickAction::OpenPcHost => {
+                                    active_section.set(CockpitSection::PcHost);
+                                    drawer_open.set(false);
+                                }
+                                HealthQuickAction::OpenFiles => {
+                                    active_section.set(CockpitSection::Files);
                                     drawer_open.set(false);
                                 }
                                 HealthQuickAction::RunTermuxCheck => {

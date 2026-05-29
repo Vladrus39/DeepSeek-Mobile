@@ -1,3 +1,6 @@
+use crate::mobile_runtime_config::MobileRuntimeConfig;
+use crate::mobile_snapshot_runner::restore_snapshot_by_id;
+use crate::settings_state::SettingsFormState;
 use crate::snapshots_state::SnapshotsUiState;
 use dioxus::prelude::*;
 
@@ -9,7 +12,10 @@ struct SnapshotDisplayInfo {
     reason: String,
 }
 
-pub fn snapshots_panel(mut state: Signal<SnapshotsUiState>) -> Element {
+pub fn snapshots_panel(
+    mut state: Signal<SnapshotsUiState>,
+    settings_state: Signal<SettingsFormState>,
+) -> Element {
     let latest = state.read().latest().cloned();
     let pending_info = state
         .read()
@@ -114,7 +120,7 @@ pub fn snapshots_panel(mut state: Signal<SnapshotsUiState>) -> Element {
             }
 
             // --- Restore confirmation dialog ---
-            if let Some((ref snapshot_id, file_count, total_bytes)) = pending_info {
+            if let Some((snapshot_id, file_count, total_bytes)) = pending_info {
                 div {
                     background_color: "#422006",
                     border: "2px solid #ca8a04",
@@ -145,10 +151,37 @@ pub fn snapshots_panel(mut state: Signal<SnapshotsUiState>) -> Element {
                             font_size: "13px",
                             font_weight: "bold",
                             onclick: move |_| {
-                                let mut s = state.write();
-                                s.confirm_restore();
+                                let snapshot_id_for_restore = snapshot_id.clone();
+                                let settings_signal = settings_state;
+                                let mut state_signal = state;
+                                spawn(async move {
+                                    state_signal.write().confirm_restore();
+                                    let config = settings_signal().to_config();
+                                    let runtime = MobileRuntimeConfig::default_mobile();
+                                    match restore_snapshot_by_id(
+                                        config,
+                                        runtime,
+                                        &snapshot_id_for_restore,
+                                    )
+                                    .await
+                                    {
+                                        Ok(report) => {
+                                            let mut s = state_signal.write();
+                                            s.restore_in_progress = false;
+                                            s.pending_restore_snapshot_id = None;
+                                            s.last_restore_report = Some(report);
+                                            s.last_error = None;
+                                        }
+                                        Err(error) => {
+                                            let mut s = state_signal.write();
+                                            s.restore_in_progress = false;
+                                            s.pending_restore_snapshot_id = None;
+                                            s.last_error = Some(error.to_string());
+                                        }
+                                    }
+                                });
                             },
-                            disabled: if restore_running { "true" } else { "false" },
+                            disabled: restore_running,
                             "Confirm Restore"
                         }
                         button {

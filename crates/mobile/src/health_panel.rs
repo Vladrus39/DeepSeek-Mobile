@@ -8,6 +8,8 @@ use dioxus::prelude::*;
 pub enum HealthQuickAction {
     RunTermuxCheck,
     OpenSettings,
+    OpenPcHost,
+    OpenFiles,
 }
 
 pub fn health_panel(
@@ -56,7 +58,7 @@ pub fn health_panel(
                 "{tr(lang, Tr::HealthSubtitle)}"
             }
 
-            {health_row(
+            {health_row_action(
                 pick(lang, "DeepSeek API", "DeepSeek API"),
                 if snapshot.api_configured {
                     pick(lang, "Настроен", "Configured")
@@ -64,6 +66,9 @@ pub fn health_panel(
                     pick(lang, "Не задан", "Missing")
                 },
                 snapshot.api_configured,
+                pick(lang, "Настройки", "Settings"),
+                true,
+                EventHandler::new(move |_| on_quick_action.call(HealthQuickAction::OpenSettings)),
             )}
             div {
                 style: "color:#6b7280;font-size:11px;word-break:break-all;",
@@ -96,19 +101,27 @@ pub fn health_panel(
                 },
                 snapshot.termux_valid,
             )}
-            {health_row(
-                pick(lang, "PC Host (опционально)", "PC Host (optional)"),
+            {health_row_action(
+                pick(lang, "PC Host (ping)", "PC Host (ping)"),
                 &snapshot.pc_status_label,
-                snapshot.pc_online || !snapshot.pc_workspace_active,
+                snapshot.pc_online,
+                pick(lang, "Открыть PC", "Open PC"),
+                snapshot.pc_online || snapshot.pc_status_label.contains("Waiting") || snapshot.pc_status_label.contains("Ожидание"),
+                EventHandler::new(move |_| on_quick_action.call(HealthQuickAction::OpenPcHost)),
             )}
-            {health_row(
-                pick(lang, "Рабочая область PC", "PC workspace"),
-                if snapshot.pc_workspace_active {
-                    pick(lang, "Активное ускорение", "Active boost")
+            {health_row_action(
+                pick(lang, "Файлы PC (sync)", "PC files (sync)"),
+                if snapshot.pc_files_sync_ready {
+                    pick(lang, "Готово — агент видит PC", "Ready — agent sees PC")
+                } else if snapshot.pc_online {
+                    pick(lang, "Нужен pairing request", "Needs pairing request")
                 } else {
                     pick(lang, "Не используется", "Not used")
                 },
-                !snapshot.pc_workspace_active || snapshot.pc_online,
+                snapshot.pc_files_sync_ready,
+                pick(lang, "Файлы", "Files"),
+                snapshot.pc_files_sync_ready || snapshot.pc_online,
+                EventHandler::new(move |_| on_quick_action.call(HealthQuickAction::OpenFiles)),
             )}
             {health_row(
                 pick(lang, "MCP-серверы", "MCP servers"),
@@ -187,6 +200,48 @@ pub fn health_panel(
                 color: "#6b7280",
                 font_size: "11px",
                 "{offline_hint}"
+            }
+        }
+    }
+}
+
+fn health_row_action(
+    label: &str,
+    value: &str,
+    ok: bool,
+    action_label: &str,
+    show_action: bool,
+    on_action: EventHandler<()>,
+) -> Element {
+    let (bg, border) = if ok {
+        ("#064e3b", "#10b981")
+    } else {
+        ("#1f2937", "#4b5563")
+    };
+    let border_style = format!("1px solid {border}");
+    rsx! {
+        div {
+            background_color: bg,
+            border: "{border_style}",
+            border_radius: "12px",
+            padding: "10px 12px",
+            display: "flex",
+            flex_direction: "column",
+            gap: "8px",
+            font_size: "12px",
+            div {
+                display: "flex",
+                justify_content: "space-between",
+                gap: "12px",
+                span { font_weight: "bold", "{label}" }
+                span { color: "#d1d5db", text_align: "right", "{value}" }
+            }
+            if show_action {
+                button {
+                    style: "align-self:flex-end;background:#1d4ed8;color:white;border:none;border-radius:8px;padding:6px 10px;font-size:11px;font-weight:bold;",
+                    onclick: move |_| on_action.call(()),
+                    "{action_label}"
+                }
             }
         }
     }

@@ -10,7 +10,9 @@ pub fn chat_history_panel(
     on_select_chat: EventHandler<String>,
     on_new_chat: EventHandler<()>,
     on_open_files: EventHandler<()>,
+    on_delete_chat: EventHandler<String>,
 ) -> Element {
+    let delete_label = pick(lang, "Удалить", "Delete");
     let title = pick(lang, "История", "History");
     let chats_title = pick(lang, "Чаты", "Chats");
     let project_title = pick(lang, "Активный проект", "Active project");
@@ -91,23 +93,33 @@ pub fn chat_history_panel(
                     for thread in threads {
                         {
                             let thread_id = thread.id.clone();
+                            let thread_id_delete = thread_id.clone();
                             let active = thread.id == index.active_thread_id;
                             rsx! {
-                                button {
+                                div {
                                     key: "{thread.id}",
-                                    style: if active {
-                                        "min-width:150px;max-width:190px;background:#1e3a8a;color:white;border:1px solid #3b82f6;border-radius:14px;padding:9px;text-align:left;flex-shrink:0;"
-                                    } else {
-                                        "min-width:150px;max-width:190px;background:#111827;color:#e5e7eb;border:1px solid #273244;border-radius:14px;padding:9px;text-align:left;flex-shrink:0;"
-                                    },
-                                    onclick: move |_| on_select_chat.call(thread_id.clone()),
-                                    div {
-                                        style: "font-size:13px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;",
-                                        "{thread.title}"
+                                    style: "display:flex;gap:4px;align-items:stretch;flex-shrink:0;",
+                                    button {
+                                        style: if active {
+                                            "min-width:150px;max-width:190px;background:#1e3a8a;color:white;border:1px solid #3b82f6;border-radius:14px;padding:9px;text-align:left;"
+                                        } else {
+                                            "min-width:150px;max-width:190px;background:#111827;color:#e5e7eb;border:1px solid #273244;border-radius:14px;padding:9px;text-align:left;"
+                                        },
+                                        onclick: move |_| on_select_chat.call(thread_id.clone()),
+                                        div {
+                                            style: "font-size:13px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;",
+                                            "{thread.title}"
+                                        }
+                                        div {
+                                            style: "color:#94a3b8;font-size:10px;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;",
+                                            "{thread.id}"
+                                        }
                                     }
-                                    div {
-                                        style: "color:#94a3b8;font-size:10px;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;",
-                                        "{thread.id}"
+                                    button {
+                                        style: "background:#7f1d1d;color:#fecaca;border:1px solid #dc2626;border-radius:14px;padding:0 8px;font-size:11px;font-weight:bold;",
+                                        title: "{delete_label}",
+                                        onclick: move |_| on_delete_chat.call(thread_id_delete.clone()),
+                                        "×"
                                     }
                                 }
                             }

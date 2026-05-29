@@ -67,6 +67,8 @@ pub fn pc_pairing_panel(
                 }
             }
 
+            {pairing_wizard_strip(&snapshot)}
+
             div {
                 background_color: "#1f2937",
                 border_radius: "12px",
@@ -389,6 +391,44 @@ pub fn pc_pairing_panel(
                         state.set(next);
                     },
                     "Instructions"
+                }
+            }
+        }
+    }
+}
+
+fn pairing_wizard_strip(state: &PcPairingUiState) -> Element {
+    let step1 = state.request.is_some();
+    let step2 = state.export.is_some();
+    let step3 = state.active_endpoint.is_some()
+        || matches!(
+            state.status,
+            PcPairingUiStatus::WaitingForPc | PcPairingUiStatus::Online | PcPairingUiStatus::Offline
+        );
+    let step4 = state.active_workspace_connection().is_some();
+
+    let steps = [
+        ("1 Pairing", step1),
+        ("2 ZIP", step2),
+        ("3 Network", step3),
+        ("4 Files", step4),
+    ];
+
+    rsx! {
+        div {
+            display: "flex",
+            gap: "6px",
+            flex_wrap: "wrap",
+            for (label, done) in steps {
+                div {
+                    background_color: if done { "#064e3b" } else { "#1f2937" },
+                    border: if done { "1px solid #10b981" } else { "1px solid #4b5563" },
+                    border_radius: "999px",
+                    padding: "4px 10px",
+                    font_size: "11px",
+                    font_weight: "bold",
+                    color: if done { "#a7f3d0" } else { "#9ca3af" },
+                    "{label}"
                 }
             }
         }

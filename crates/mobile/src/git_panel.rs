@@ -6,6 +6,11 @@ pub fn git_panel(
     on_action: EventHandler<GitPanelAction>,
     on_commit_message_change: EventHandler<String>,
 ) -> Element {
+    let mut booted = use_signal(|| false);
+    if !booted() {
+        booted.set(true);
+        on_action.call(GitPanelAction::RefreshStatus);
+    }
     let dirty = state.is_dirty();
     let can_commit = state.can_commit();
 

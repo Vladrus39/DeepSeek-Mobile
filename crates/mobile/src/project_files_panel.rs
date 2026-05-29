@@ -25,6 +25,7 @@ pub fn project_files_panel(
     transfer_state: Signal<ProjectTransferState>,
 ) -> Element {
     let needs_backend_switch = pc_gateway_connection.is_some() != state().is_pc_backend();
+    let is_loading_tree = !state().loaded || needs_backend_switch;
 
     // Trigger a refresh when the panel is first opened, navigation happened, or
     // the active backend changed between local and PC gateway.
@@ -83,6 +84,17 @@ pub fn project_files_panel(
             gap: "12px",
 
             {header_card(&snapshot, state, is_pc)}
+            if is_loading_tree {
+                div {
+                    background_color: "#1e3a8a",
+                    border: "1px solid #3b82f6",
+                    border_radius: "10px",
+                    padding: "8px 10px",
+                    font_size: "12px",
+                    color: "#bfdbfe",
+                    "Loading project tree…"
+                }
+            }
             {transfer_card(&transfer, picker, native_bridge, transfer_state, is_pc)}
             if let Some(error) = last_error {
                 div {
@@ -190,6 +202,23 @@ fn transfer_card(
             }
 
             div { color: "#cbd5e1", font_size: "12px", "{status_text}" }
+            if matches!(
+                transfer.status,
+                crate::project_transfer_state::ProjectTransferStatus::Importing
+                    | crate::project_transfer_state::ProjectTransferStatus::Exporting
+            ) {
+                div {
+                    height: "4px",
+                    background_color: "#1f2937",
+                    border_radius: "999px",
+                    overflow: "hidden",
+                    div {
+                        width: "60%",
+                        height: "100%",
+                        background_color: "#3b82f6",
+                    }
+                }
+            }
             if is_pc {
                 div {
                     color: "#fbbf24",

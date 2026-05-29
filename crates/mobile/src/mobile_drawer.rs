@@ -103,6 +103,7 @@ pub struct MobileChromeSummary {
     pub api_configured: bool,
     pub pc_label: String,
     pub pc_online: bool,
+    pub pc_files_sync_ready: bool,
     pub active_project_title: String,
     pub active_project_subtitle: String,
     pub pending_approvals: usize,
@@ -119,6 +120,7 @@ impl Default for MobileChromeSummary {
             api_configured: false,
             pc_label: "PC SETUP".to_string(),
             pc_online: false,
+            pc_files_sync_ready: false,
             active_project_title: "Local workspace".to_string(),
             active_project_subtitle: "No PC workspace is active yet".to_string(),
             pending_approvals: 0,
@@ -149,8 +151,10 @@ impl MobileChromeSummary {
     }
 
     pub fn pc_chip_colors(&self) -> (&'static str, &'static str, &'static str) {
-        if self.pc_online {
+        if self.pc_files_sync_ready {
             ("#052e2b", "#10b981", "#a7f3d0")
+        } else if self.pc_online {
+            ("#78350f", "#f59e0b", "#fde68a")
         } else if self.pc_label.contains("ERR") || self.pc_label.contains("OFF") {
             ("#3f1d1d", "#ef4444", "#fecaca")
         } else {
@@ -464,9 +468,14 @@ pub fn default_nav_items(lang: AppLanguage) -> Vec<NavItem> {
             short: "📁",
         },
         NavItem {
-            section: CockpitSection::Git,
-            label: "Git",
-            short: "⬡",
+            section: CockpitSection::Approvals,
+            label: CockpitSection::Approvals.localized_title(lang),
+            short: "✓",
+        },
+        NavItem {
+            section: CockpitSection::Health,
+            label: CockpitSection::Health.localized_title(lang),
+            short: "♥",
         },
     ]
 }
@@ -485,7 +494,7 @@ pub fn bottom_nav_bar(
             border_top: "1px solid #1f2937",
             padding: "6px 4px 4px",
             display: "grid",
-            grid_template_columns: "repeat(6, minmax(0, 1fr))",
+            grid_template_columns: "repeat(7, minmax(0, 1fr))",
             gap: "4px",
             overflow_x: "hidden",
 
@@ -581,8 +590,9 @@ mod tests {
         let labels: Vec<&str> = items.iter().map(|i| i.label).collect();
         assert!(labels.contains(&"MCP"));
         assert!(labels.contains(&"Skills"));
-        assert!(labels.contains(&"Git"));
-        assert_eq!(items.len(), 6);
+        assert!(labels.contains(&"Approvals"));
+        assert!(labels.contains(&"Health"));
+        assert_eq!(items.len(), 7);
     }
 
     #[test]

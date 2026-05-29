@@ -4,7 +4,7 @@ use deepseek_mobile_core::{
 };
 use std::path::{Path, PathBuf};
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct MobilePcPairingRequest {
     pub gateway_id: String,
     pub gateway_label: String,
