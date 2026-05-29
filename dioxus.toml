@@ -1,6 +1,6 @@
 [application]
 name = "DeepSeek Mobile"
-version = "0.1.0"
+version = "0.1.1"
 # `dx --package deepseek-mobile` resolves this path from `crates/mobile/Cargo.toml`.
 android_main_activity = "../../android/MainActivity.kt"
 android_manifest = "../../android/AndroidManifest.xml"

@@ -44,6 +44,8 @@ The project currently supports:
 | PC Host discovery | mDNS is implemented but requires same LAN/subnet and firewall; manual LAN URL fallback is documented |
 | Android icon | Manifest uses `@mipmap/deepseek_launcher` and `@mipmap/deepseek_launcher_round` |
 | Local Android SDK | Isolated under `tools/android/`; no dependency on `D:\Project V` |
+| Signed release APK | `dist/deepseek-mobile-0.1.1.apk` (v0.1.1, APK Signature Scheme v4); GitHub Release `v0.1.1` |
+| In-app full-agent E2E | Phone agent built, ran and git-committed `demo_app` (Fibonacci) and `calc_app` (calculator + tests) from chat — see `docs/DEVICE_E2E_RESULTS.md` |
 
 ## Fixed in recent checkpoints
 
@@ -72,15 +74,22 @@ The project currently supports:
 | Termux executor | Automated probes pass when configured | Manual user-chat flow: ask for `pwd`, approve, confirm continuation text |
 | PC Host discovery | Host, mDNS, manual URL fallback implemented | Same-subnet LAN test with phone and PC both on `192.168.1.x` or equivalent |
 | UI polish | Onboarding/cockpit render path works | Walk every bottom-nav/drawer panel on small/large phone widths |
-| Release APK | Build/publish scripts and release workflow exist | Configure signing secrets/keystore, tag release, verify asset installs and in-app updater sees it |
+| Release APK | v0.1.1 on GitHub Releases; in-app updater when installed version is older | Play Store AAB optional |
 
-## Priority
+## Priority (2026-05-29)
 
-1. **Phone agent (Termux)** — primary; keep hardening manual chat + shell flows.
-2. Release signing and signed APK/AAB / GitHub Release asset.
-3. PC Host bundle/service polish after phone path remains stable.
-4. MCP stdio session reuse and external execution hardening.
-5. UI/touch sweep across all panels.
+1. **Phone agent (Termux)** — primary; full-agent project E2E verified on device. Keep hardening chat + shell flows.
+2. Release signing and signed APK — **done** (v0.1.1 + GitHub Release). Optional: Play Store AAB.
+3. **PC Host** — LAN pairing/mDNS when firewall allows; bundle/service installer still open.
+4. MCP stdio reuse and approval gates — **done**; UI/touch sweep across all panels.
+
+## Highest-value remaining work
+
+1. Manual checklist: document picker with system UI (chat attachment).
+2. Optional Play Store AAB submission.
+3. PC Host pairing on real LAN (firewall + same subnet).
+4. PC-host release bundle and autostart/service installer.
+5. Final UI/touch polish on all cockpit panels.
 
 ## GitHub CI note
 

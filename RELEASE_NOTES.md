@@ -1,5 +1,12 @@
 # DeepSeek-Mobile — Release Notes
 
+## v0.1.1 — 2026-05-29
+
+- Version bump **0.1.1**; first [GitHub Release](https://github.com/Vladrus39/DeepSeek-Mobile/releases/tag/v0.1.1) with `deepseek-mobile-0.1.1.apk`.
+- **Settings → App update:** check / download / install from GitHub Releases.
+- Device E2E: ZIP import/export, Termux pwd, PC Host (manual URL), API + agent probes — see `docs/DEVICE_CHECKLIST.md`.
+- `scripts/build-release-apk.ps1` runs Gradle `assembleRelease` when dx does not emit a release APK.
+
 ## Build 2026-05-29 — PC Host pairing, Windows mDNS, MCP reuse
 
 ### New

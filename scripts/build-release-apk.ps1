@@ -26,8 +26,11 @@ $version = (Select-String -Path "crates\mobile\Cargo.toml" -Pattern '^version = 
 if (-not $version) { throw "Could not read version from crates/mobile/Cargo.toml" }
 
 $assetName = "deepseek-mobile-$version.apk"
-$releaseApkRel = "target\dx\deepseek-mobile\release\android\app\app\build\outputs\apk\release\app-release.apk"
+$releaseApkDirRel = "target\dx\deepseek-mobile\release\android\app\app\build\outputs\apk\release"
+$releaseApkRel = "$releaseApkDirRel\app-release.apk"
 $releaseApkPath = Join-Path $ProjectRoot $releaseApkRel
+$dxReleaseApp = Join-Path $ProjectRoot "target\dx\deepseek-mobile\release\android\app"
+$repoKeystoreProps = Join-Path $ProjectRoot "android\keystore.properties"
 $distDir = Join-Path $ProjectRoot "dist"
 $distApk = Join-Path $distDir $assetName
 
@@ -64,7 +67,30 @@ if ($Serial) {
 if ($LASTEXITCODE -ne 0) { throw "dx build --release failed" }
 
 if (-not (Test-Path $releaseApkPath)) {
-    throw "Release APK not found: $releaseApkPath"
+    $gradlew = Join-Path $dxReleaseApp "gradlew.bat"
+    if (Test-Path $gradlew) {
+        if (Test-Path $repoKeystoreProps) {
+            Copy-Item -Force $repoKeystoreProps (Join-Path $dxReleaseApp "keystore.properties")
+        }
+        Write-Host "Running Gradle assembleRelease (dx bundle did not emit release APK)..." -ForegroundColor Cyan
+        Push-Location $dxReleaseApp
+        & $gradlew assembleRelease
+        if ($LASTEXITCODE -ne 0) { Pop-Location; throw "gradlew assembleRelease failed" }
+        Pop-Location
+    }
+}
+if (-not (Test-Path $releaseApkPath)) {
+    $signed = Join-Path $ProjectRoot "$releaseApkDirRel\app-release.apk"
+    $unsigned = Join-Path $ProjectRoot "$releaseApkDirRel\app-release-unsigned.apk"
+    if (Test-Path $signed) {
+        $releaseApkPath = $signed
+    } elseif (Test-Path $unsigned) {
+        $releaseApkPath = $unsigned
+        Write-Host "Using unsigned release APK (configure android/keystore.properties for Gradle signing)." -ForegroundColor Yellow
+    }
+}
+if (-not (Test-Path $releaseApkPath)) {
+    throw "Release APK not found under target/dx/deepseek-mobile/release"
 }
 
 New-Item -ItemType Directory -Force -Path $distDir | Out-Null

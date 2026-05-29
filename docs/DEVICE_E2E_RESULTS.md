@@ -4,6 +4,19 @@
 **Device:** Samsung SM_G781B · `RFCNC0PWD4E`  
 **Package:** `com.deepseek.mobile`
 
+## In-app full-agent project creation (live, driven from chat)
+
+These runs were performed by typing a request into the app's chat on the device (not by ADB scripts), exercising the real agent tool-calling loop against the Termux executor.
+
+| Project | What the agent did | Observed output |
+|---------|--------------------|-----------------|
+| `demo_app` | Created folder, wrote `run.sh` (Fibonacci), `chmod +x`, ran it, then `git init` + commit | Real Fibonacci sequence `0,1,1,2,3,5,…`; git commit created |
+| `calc_app` | Wrote `calc.py` (add/subtract/multiply/divide + main), `test_calc.py` with assert tests, ran the program and the tests, then `git init` + commit | `add(10,5)=15`, `subtract(10,5)=5`, `multiply(10,5)=50`, `divide(10,5)=2.0`; tests pass; commit with 2 files / 55 insertions |
+
+The agent generated correct shell (heredoc file creation, `&&`-chained commands) and produced **differentiated, correct program output** — evidence of real tool execution, not chat text.
+
+**Verification boundary (Android sandboxing).** The agent works in Termux's private home `/data/data/com.termux/files/home/`. This directory is **not** readable by `adb` (Termux is not a debuggable app), Android 11+ scoped storage blocks Termux from writing to `/sdcard` (confirmed: even after `pm grant …_EXTERNAL_STORAGE`, a Termux copy to `/sdcard/dsproof` does not appear to `adb`), and the app's Files tab reads a separate app-private workspace dir. There is therefore no external (adb) porthole into Termux home on this device; the created files are confirmed in-app via the Termux view and the agent's live command output.
+
 ## Automated probes (ADB)
 
 | Check | Status | Notes |

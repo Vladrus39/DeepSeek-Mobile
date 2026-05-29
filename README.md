@@ -19,6 +19,8 @@ Verified locally:
 - APK installs and launches on Samsung `SM_G781B` / serial `RFCNC0PWD4E`.
 - Android UI renders on device. Latest hardware smoke test reaches the setup screen with API/Agent ready and Termux path still pending; with completed setup it opens the main cockpit with `API OK`.
 - Custom Android icon/adaptive launcher icon is included.
+- **Signed release APK** `dist/deepseek-mobile-0.1.1.apk` (v0.1.1, APK Signature Scheme v4) built via `scripts/build-release-apk.ps1`, published as GitHub Release `v0.1.1`.
+- **Live in-app full-agent run on device:** the phone agent created complete Termux projects from chat — a Fibonacci demo and a calculator with assert-based tests — ran them (real differentiated output, e.g. `add(10,5)=15 … divide(10,5)=2.0`), and `git init`/committed each project. Termux's home is app-private (not adb-readable, and Android scoped storage blocks Termux writes to `/sdcard`), so the created files are confirmed through the app's Termux view rather than an external adb dump.
 
 The Android startup issues found during device testing were fixed:
 
@@ -63,10 +65,11 @@ PC pairing is not file sync. It grants the phone access to a PC Host workspace. 
    - Files → Export ZIP and native share;
    - Termux `RUN_COMMAND` permission/result callback with a safe command such as `pwd`;
    - PC Host mDNS discovery and persisted route on a real network.
-2. Release packaging:
-   - release signing config outside the repo;
-   - signed APK/AAB;
-   - release notes and install instructions.
+2. Release packaging — **done** (v0.1.1):
+   - release signing config outside the repo (`android/keystore.properties`); ✅
+   - signed APK in `dist/` + GitHub Release `v0.1.1`; ✅
+   - release notes (`RELEASE_NOTES.md`) and install instructions. ✅
+   - remaining/optional: Play Store AAB submission.
 3. PC Host packaging:
    - bundled host binaries for pairing ZIP/release package;
    - optional service/autostart installer.

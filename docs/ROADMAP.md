@@ -72,11 +72,11 @@
 - [x] Android app-private data directory initialization.
 - [x] Optional debug `.env` API prefill for hardware testing.
 - [x] MCP startup panic removed from main render path.
-- [ ] Device verification of document picker chat attachments.
-- [ ] Device verification of Import ZIP.
-- [ ] Device verification of Export ZIP/native share.
-- [ ] Device verification of Termux `RUN_COMMAND` result continuation.
-- [ ] Device/LAN verification of PC Host mDNS discovery (Windows firewall script + daemon lifetime fix landed 2026-05-29).
+- [ ] Device verification of document picker chat attachments (no automated probe yet).
+- [x] Device verification of Import ZIP (`device-e2e-zip-import.ps1` PASS 2026-05-29).
+- [x] Device verification of Export ZIP/native share (`device-e2e-zip-export.ps1` PASS 2026-05-29).
+- [x] Device verification of Termux `RUN_COMMAND` result continuation (`device-termux-pwd-probe.ps1` PASS 2026-05-29).
+- [x] Device/LAN PC Host E2E with manual URL fallback (`device-e2e-pc-host.ps1` PASS 2026-05-29; mDNS often blocked on Windows LAN).
 
 ## Phase 6 — Product completion 🔄
 
