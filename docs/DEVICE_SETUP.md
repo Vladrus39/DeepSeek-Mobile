@@ -4,7 +4,7 @@
 
 ## 0. Install or update the APK (one command)
 
-The app binary is **not** in git — build and install from your PC checkout. Chats, settings, and workspace on the phone are preserved on upgrade.
+For day-to-day development, the app binary is **not** stored in git — build and install it from your PC checkout. Chats, settings, and workspace on the phone are preserved on upgrade because the scripts use `adb install -r`.
 
 ```powershell
 cd $HOME\DeepSeek-Mobile   # or your clone path
@@ -12,13 +12,23 @@ cd $HOME\DeepSeek-Mobile   # or your clone path
 .\scripts\update-phone-apk.ps1 -Serial RFCNC0PWD4E -Launch
 ```
 
-After `git pull`, run the same command (or add `-Pull` to update source and APK together). See [`INSTALL_UPDATE.md`](./INSTALL_UPDATE.md).
+After `git pull`, run the same command again, or add `-Pull` to update source and APK together. See [`INSTALL_UPDATE.md`](./INSTALL_UPDATE.md).
 
-First-time alias: `.\scripts\install-phone-apk.ps1 -Serial RFCNC0PWD4E` (same as above with `-Launch`).
+```powershell
+.\scripts\update-phone-apk.ps1 -Serial RFCNC0PWD4E -Pull -Launch
+```
 
-APK path: `target/dx/deepseek-mobile/debug/android/app/app/build/outputs/apk/debug/app-debug.apk`
+First-time alias: `./scripts/install-phone-apk.ps1 -Serial RFCNC0PWD4E` (same install/launch path).
 
-**No in-app auto-update** — use the script whenever the repo changes.
+APK path:
+
+```text
+target/dx/deepseek-mobile/debug/android/app/app/build/outputs/apk/debug/app-debug.apk
+```
+
+**Developer default:** use `update-phone-apk.ps1` after source changes.
+
+**Release/OTA path:** optional GitHub Releases + in-app updater exists, but it depends on publishing a signed release asset named `deepseek-mobile-<version>.apk`. Until you publish releases, the reliable update path is USB/ADB from the PC.
 
 ## 1. API key (project `.env`)
 
@@ -26,7 +36,7 @@ Debug builds can prefill onboarding from repo `.env` (`DEEPSEEK_API_KEY=sk-…`)
 
 ## 2. Termux (required for TUI-class agent)
 
-**Product priority:** full phone agent first; PC Host pairing is a later phase.
+**Product priority:** full phone agent first; PC Host pairing is optional for large repos / desktop toolchains.
 
 1. Install **Termux** from F-Droid (or use **Установить Termux** on the in-app setup screen).
 2. In Termux (one-time, cannot be set from our app):
