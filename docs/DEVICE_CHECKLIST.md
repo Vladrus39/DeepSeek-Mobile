@@ -25,6 +25,10 @@ Automated probes run from repo root with USB debugging enabled.
 - **In-app:** Settings → App update (works when installed version &lt; 0.1.1)
 - **Dev signing:** release APK signed with standard Android debug keystore so it can upgrade debug installs
 
+## Chat → Files links
+
+- After `write_file` / `edit_file` / assistant text mentioning paths, chat shows **Open in Files** buttons (v0.1.2+).
+
 ## Still manual
 
 - Document picker with system UI (chat attachment) — no headless probe yet
@@ -36,5 +40,8 @@ Automated probes run from repo root with USB debugging enabled.
 If phone cannot reach `http://<PC-LAN>:8787/health`, allow **TCP 8787** (and UDP 5353 for mDNS) on Windows:
 
 ```powershell
-.\scripts\enable-pc-host-mdns-windows.ps1   # admin
+# From repo root (or use full path to the .ps1 — not from C:\Windows\System32):
+cd C:\Users\vladi\Desktop\DeepSeek-Mobile
+.\scripts\enable-pc-host-mdns-windows.ps1
+# Or: right-click enable-pc-host-firewall.cmd -> Run as administrator
 ```

@@ -26,6 +26,8 @@ pub struct MobileTimelineItem {
     pub status: MobileTimelineItemStatus,
     pub title: String,
     pub body: String,
+    /// Workspace-relative paths for "Open in Files" from chat / tool cards.
+    pub linked_file_paths: Vec<String>,
 }
 
 impl MobileTimelineItem {
@@ -42,6 +44,23 @@ impl MobileTimelineItem {
             status,
             title: title.into(),
             body: body.into(),
+            linked_file_paths: Vec::new(),
+        }
+    }
+
+    pub fn with_linked_file_paths(mut self, paths: Vec<String>) -> Self {
+        self.linked_file_paths = paths;
+        self
+    }
+}
+
+fn merge_linked_paths(existing: &mut Vec<String>, mut more: Vec<String>) {
+    for path in more.drain(..) {
+        if path.is_empty() {
+            continue;
+        }
+        if !existing.iter().any(|p| p == &path) {
+            existing.push(path);
         }
     }
 }
@@ -143,9 +162,20 @@ impl MobileTimelineState {
         if let Some(id) = self.live_assistant_item_id.take() {
             if let Some(item) = self.items.iter_mut().find(|item| item.id == id) {
                 item.status = MobileTimelineItemStatus::Done;
+                let paths = crate::chat_file_links::extract_paths_from_text(&item.body.clone());
+                merge_linked_paths(&mut item.linked_file_paths, paths);
             }
         }
         self.finish_live_reasoning();
+    }
+
+    pub fn attach_linked_paths(&mut self, item_id: &str, paths: Vec<String>) {
+        if paths.is_empty() {
+            return;
+        }
+        if let Some(item) = self.items.iter_mut().find(|row| row.id == item_id) {
+            merge_linked_paths(&mut item.linked_file_paths, paths);
+        }
     }
 
     pub fn append_live_reasoning_delta(&mut self, delta: &str) -> String {

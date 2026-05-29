@@ -11,6 +11,7 @@ pub fn agent_timeline_panel(
     timeline: &MobileTimelineState,
     approval_cards: &[ApprovalCardView],
     on_approval_decision: EventHandler<(String, ReviewDecision)>,
+    on_open_file_path: EventHandler<String>,
     activity_open: bool,
     on_activity_toggle: EventHandler<()>,
 ) -> Element {
@@ -79,6 +80,7 @@ pub fn agent_timeline_panel(
                     timeline,
                     approval_cards,
                     on_approval_decision,
+                    on_open_file_path,
                     item,
                 )}
             }
@@ -115,21 +117,36 @@ fn timeline_item_view(
     timeline: &MobileTimelineState,
     approval_cards: &[ApprovalCardView],
     on_approval_decision: EventHandler<(String, ReviewDecision)>,
+    on_open_file_path: EventHandler<String>,
     item: &MobileTimelineItem,
 ) -> Element {
     match item.kind {
         MobileTimelineItemKind::UserMessage => user_message_bubble(item),
-        MobileTimelineItemKind::AssistantMessage => assistant_message_bubble(ui_lang, item),
+        MobileTimelineItemKind::AssistantMessage => {
+            assistant_message_bubble(ui_lang, item, on_open_file_path)
+        }
         MobileTimelineItemKind::Status => system_status_line(ui_lang, item),
         MobileTimelineItemKind::Attachment | MobileTimelineItemKind::NativeCommand => {
-            compact_tool_card(ui_lang, item)
+            compact_tool_card(ui_lang, item, on_open_file_path)
         }
         MobileTimelineItemKind::ToolCall => {
-            tool_call_with_inline_approval(ui_lang, timeline, approval_cards, on_approval_decision, item)
+            tool_call_with_inline_approval(
+                ui_lang,
+                timeline,
+                approval_cards,
+                on_approval_decision,
+                on_open_file_path,
+                item,
+            )
         }
-        MobileTimelineItemKind::Approval => {
-            approval_with_linked_tool(ui_lang, timeline, approval_cards, on_approval_decision, item)
-        }
+        MobileTimelineItemKind::Approval => approval_with_linked_tool(
+            ui_lang,
+            timeline,
+            approval_cards,
+            on_approval_decision,
+            on_open_file_path,
+            item,
+        ),
         MobileTimelineItemKind::Error => assistant_error_bubble(ui_lang, item),
     }
 }
@@ -187,6 +204,7 @@ fn approval_with_linked_tool(
     timeline: &MobileTimelineState,
     approval_cards: &[ApprovalCardView],
     on_approval_decision: EventHandler<(String, ReviewDecision)>,
+    on_open_file_path: EventHandler<String>,
     item: &MobileTimelineItem,
 ) -> Element {
     let card = pending_card_for_item(approval_cards, item);
@@ -207,7 +225,7 @@ fn approval_with_linked_tool(
                     {attention_card(ui_lang, item)}
                 }
                 if let Some(tool) = linked_tool {
-                    {compact_tool_card(ui_lang, tool)}
+                    {compact_tool_card(ui_lang, tool, on_open_file_path)}
                 }
             }
         }
@@ -219,10 +237,11 @@ fn tool_call_with_inline_approval(
     _timeline: &MobileTimelineState,
     approval_cards: &[ApprovalCardView],
     on_approval_decision: EventHandler<(String, ReviewDecision)>,
+    on_open_file_path: EventHandler<String>,
     item: &MobileTimelineItem,
 ) -> Element {
     if item.status != MobileTimelineItemStatus::WaitingForApproval {
-        return compact_tool_card(ui_lang, item);
+        return compact_tool_card(ui_lang, item, on_open_file_path);
     }
     let card = pending_card_for_item(approval_cards, item);
     rsx! {
@@ -233,7 +252,7 @@ fn tool_call_with_inline_approval(
                 if let Some(card) = card {
                     {inline_approval_card(card, on_approval_decision)}
                 }
-                {compact_tool_card(ui_lang, item)}
+                {compact_tool_card(ui_lang, item, on_open_file_path)}
             }
         }
     }
@@ -419,7 +438,40 @@ fn user_message_bubble(item: &MobileTimelineItem) -> Element {
     }
 }
 
-fn assistant_message_bubble(ui_lang: AppLanguage, item: &MobileTimelineItem) -> Element {
+fn file_path_link_buttons(
+    ui_lang: AppLanguage,
+    paths: &[String],
+    on_open_file_path: EventHandler<String>,
+) -> Element {
+    if paths.is_empty() {
+        return rsx! {};
+    }
+    let open_label = pick(ui_lang, "Открыть в Файлах", "Open in Files");
+    rsx! {
+        div {
+            style: "display:flex;flex-direction:column;gap:6px;margin-top:8px;",
+            for path in paths.iter().cloned() {
+                {
+                    let label = format!("{open_label}: {path}");
+                    rsx! {
+                        button {
+                            style: "align-self:flex-start;background:#1e3a5f;color:#93c5fd;border:1px solid #3b82f6;border-radius:10px;padding:6px 10px;font-size:12px;font-weight:600;max-width:100%;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;",
+                            title: "{path}",
+                            onclick: move |_| on_open_file_path.call(path.clone()),
+                            "{label}"
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn assistant_message_bubble(
+    ui_lang: AppLanguage,
+    item: &MobileTimelineItem,
+    on_open_file_path: EventHandler<String>,
+) -> Element {
     let title = pick(ui_lang, "DeepSeek", "DeepSeek");
     let body = if item.body.trim().is_empty() && item.status == MobileTimelineItemStatus::Running {
         pick(ui_lang, "Печатает…", "Typing…")
@@ -451,6 +503,7 @@ fn assistant_message_bubble(ui_lang: AppLanguage, item: &MobileTimelineItem) -> 
                     style: "font-size:15px;line-height:1.45;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;",
                     "{body}"
                 }
+                {file_path_link_buttons(ui_lang, &item.linked_file_paths, on_open_file_path)}
             }
         }
     }
@@ -509,7 +562,11 @@ fn system_status_line(ui_lang: AppLanguage, item: &MobileTimelineItem) -> Elemen
     }
 }
 
-fn compact_tool_card(ui_lang: AppLanguage, item: &MobileTimelineItem) -> Element {
+fn compact_tool_card(
+    ui_lang: AppLanguage,
+    item: &MobileTimelineItem,
+    on_open_file_path: EventHandler<String>,
+) -> Element {
     let kind = timeline_kind_label(ui_lang, &item.kind);
     let status = timeline_status_label(ui_lang, &item.status);
     let accent = item_badge_color(&item.kind);
@@ -539,6 +596,7 @@ fn compact_tool_card(ui_lang: AppLanguage, item: &MobileTimelineItem) -> Element
                     style: "margin-top:8px;color:#9ca3af;font-size:12px;line-height:1.4;white-space:pre-wrap;max-height:150px;overflow:auto;",
                     "{item.body}"
                 }
+                {file_path_link_buttons(ui_lang, &item.linked_file_paths, on_open_file_path)}
             }
         }
     }

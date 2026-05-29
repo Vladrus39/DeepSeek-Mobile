@@ -11,6 +11,7 @@ mod api_probe;
 mod approval_diff_preview;
 mod attachment_ingestion;
 mod chat_attachment;
+mod chat_file_links;
 mod chat_history_panel;
 mod chat_quick_actions;
 pub mod chat_scroll;
@@ -341,7 +342,7 @@ fn app() -> Element {
     let mut drawer_open = use_signal(|| false);
     let mut active_section = use_signal(|| CockpitSection::Chat);
     let pc_pairing_state = use_signal(PcPairingUiState::default);
-    let project_files_state = use_signal(ProjectFilesUiState::default);
+    let mut project_files_state = use_signal(ProjectFilesUiState::default);
     let project_transfer_state = use_signal(ProjectTransferState::default);
     let mut snapshots_state = use_signal(SnapshotsUiState::default);
     let tasks_state = use_signal(TasksUiState::default);
@@ -1478,6 +1479,16 @@ fn app() -> Element {
                                 }
                                 is_loading.set(false);
                             });
+                        }),
+                        EventHandler::new(move |path: String| {
+                            active_section.set(CockpitSection::Files);
+                            chat_history_open.set(false);
+                            drawer_open.set(false);
+                            let runtime = crate::mobile_runtime_config::MobileRuntimeConfig::default_mobile();
+                            let mut files = project_files_state.write();
+                            files.workspace_root = runtime.workspace_root_display();
+                            files.refresh();
+                            files.open_file(path);
                         }),
                         worklog_open(),
                         EventHandler::new(move |_| worklog_open.set(!worklog_open())),

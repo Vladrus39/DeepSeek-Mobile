@@ -90,12 +90,18 @@ pub fn push_agent_event(timeline: &mut MobileTimelineState, event: &AgentEvent) 
             timeline.finish_live_assistant_message();
             None
         }
-        AgentEvent::ToolCallStarted(tool) => Some(timeline.push(
-            MobileTimelineItemKind::ToolCall,
-            MobileTimelineItemStatus::Running,
-            format!("Tool: {}", tool.name),
-            tool.args.clone(),
-        )),
+        AgentEvent::ToolCallStarted(tool) => {
+            let id = timeline.push(
+                MobileTimelineItemKind::ToolCall,
+                MobileTimelineItemStatus::Running,
+                format!("Tool: {}", tool.name),
+                tool.args.clone(),
+            );
+            let paths =
+                crate::chat_file_links::extract_paths_from_tool_args(&tool.name, &tool.args);
+            timeline.attach_linked_paths(&id, paths);
+            Some(id)
+        }
         AgentEvent::ToolCallFinished(result) => {
             timeline.seal_tool_call(&result.name);
             if let Some(snapshot) = result
@@ -151,7 +157,7 @@ pub fn push_agent_event(timeline: &mut MobileTimelineState, event: &AgentEvent) 
                 );
             }
 
-            Some(timeline.push(
+            let id = timeline.push(
                 MobileTimelineItemKind::ToolCall,
                 if result.success {
                     MobileTimelineItemStatus::Done
@@ -160,7 +166,14 @@ pub fn push_agent_event(timeline: &mut MobileTimelineState, event: &AgentEvent) 
                 },
                 format!("Tool result: {}", result.name),
                 result.output.clone(),
-            ))
+            );
+            let paths = crate::chat_file_links::extract_paths_from_tool_result(
+                &result.name,
+                &result.output,
+                result.metadata.as_ref(),
+            );
+            timeline.attach_linked_paths(&id, paths);
+            Some(id)
         }
         AgentEvent::ApprovalRequired(request) => Some(timeline.push_with_id(
             request.id.clone(),

@@ -122,6 +122,15 @@ Every feature merge (PC Host pairing, manual URL, probes, etc.) reaches the phon
 
 CI also builds on tag push `v*` (`.github/workflows/release.yml`) when repository secrets `ANDROID_KEYSTORE_*` are set.
 
+**Windows firewall (PC Host LAN):** run from repo root, not `C:\Windows\System32`:
+
+```powershell
+cd C:\Users\vladi\Desktop\DeepSeek-Mobile
+.\scripts\enable-pc-host-mdns-windows.ps1
+```
+
+Or right-click **`enable-pc-host-firewall.cmd`** in the repo root → Run as administrator.
+
 Asset name on the release: `deepseek-mobile-<version>.apk` (matches in-app update check).
 
 ## In-app update (Settings)
