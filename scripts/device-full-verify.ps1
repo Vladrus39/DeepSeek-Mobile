@@ -145,3 +145,7 @@ foreach ($k in $results.Keys) {
     $c = if ($results[$k] -match "^PASS") { "Green" } elseif ($results[$k] -match "FAIL") { "Red" } else { "Yellow" }
     Write-Host ("  {0,-16} {1}" -f $k, $results[$k]) -ForegroundColor $c
 }
+
+$fail = @($results.Values | Where-Object { $_ -match "FAIL" })
+if ($fail.Count -gt 0) { exit 1 }
+exit 0
