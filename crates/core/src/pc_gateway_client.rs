@@ -191,6 +191,18 @@ impl PcGatewayClient {
         .await
     }
 
+    pub async fn grant_trusted_path(
+        &self,
+        workspace_id: impl Into<String>,
+        path: impl Into<String>,
+    ) -> Result<PcGatewayResponse> {
+        self.send(PcGatewayRequest::GrantTrustedPath {
+            workspace_id: workspace_id.into(),
+            path: path.into(),
+        })
+        .await
+    }
+
     pub async fn execute_command(
         &self,
         workspace_id: impl Into<String>,

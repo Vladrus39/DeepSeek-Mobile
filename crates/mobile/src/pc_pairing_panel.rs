@@ -321,7 +321,8 @@ pub fn pc_pairing_panel(
                                     "phone-1".to_string(),
                                     "My Phone".to_string(),
                                     "default".to_string(),
-                                    ".".to_string(),
+                                    deepseek_mobile_core::project_workspace_relative_name()
+                                        .to_string(),
                                     Uuid::new_v4().simple().to_string(),
                                 );
                                 let mut next = state();

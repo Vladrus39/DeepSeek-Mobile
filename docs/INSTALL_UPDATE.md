@@ -105,6 +105,23 @@ Alternative helper (install/launch/screenshots): [`scripts/adb-control.ps1`](../
 
 Every feature merge (PC Host pairing, manual URL, probes, etc.) reaches the phone only after **`update-phone-apk.ps1`** (or CI artifact, when release pipeline exists).
 
+## PC Host pairing ZIP (phone → Windows PC)
+
+End-user flow (no git clone required on the PC):
+
+1. Phone: **PC Host** → export pairing ZIP.
+2. PC: unzip → double-click **`Setup-DeepSeek-PC-Host.cmd`**.
+3. One-time Administrator UAC for firewall rules; scheduled task starts `deepseek-pc-host` at logon.
+4. Projects go in the **`Project workspace`** folder next to the bundle.
+
+Developers: build host binaries before export so the ZIP embeds `deepseek-pc-host.exe`:
+
+```powershell
+.\scripts\build-pc-host-bundles.ps1
+```
+
+Details: [`PC_HOST_E2E.md`](./PC_HOST_E2E.md) (security model, trusted-path grants, mDNS).
+
 ## GitHub Releases (signed APK, optional)
 
 1. Copy `android/keystore.properties.example` to `android/keystore.properties` and create a release keystore (keep secrets out of git).

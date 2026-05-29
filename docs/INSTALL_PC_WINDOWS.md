@@ -159,7 +159,18 @@ cd $HOME\DeepSeek-Mobile
 
 This builds `deepseek-pc-host.exe` and copies it to `tools/pc-host/bin/` for pairing/release bundle embedding.
 
-## Install PC Host autostart
+## Pairing ZIP one-click setup (phone export)
+
+For end users pairing from the Android app (no dev checkout on the PC):
+
+1. Phone: **PC Host** → export pairing ZIP.
+2. PC: unzip anywhere → double-click **`Setup-DeepSeek-PC-Host.cmd`**.
+3. Approve one-time UAC for Private-network firewall (TCP gateway port + UDP 5353 mDNS).
+4. Host registers logon scheduled task `DeepSeekPcHost` and creates **`Project workspace`** beside the bundle.
+
+If the ZIP lacks `deepseek-pc-host.exe`, run `-BuildPcHostBundle` above and re-export from the phone. Full flow and security notes: [`PC_HOST_E2E.md`](./PC_HOST_E2E.md).
+
+## Install PC Host autostart (dev checkout)
 
 Run PowerShell as Administrator:
 

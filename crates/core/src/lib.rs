@@ -32,11 +32,13 @@ pub mod session;
 pub mod skills;
 pub mod snapshots;
 pub mod tool_call;
+pub mod tool_approval_paths;
 pub mod tool_execution;
 pub mod tool_loop;
 pub mod tools;
 pub mod turn;
 pub mod workspace;
+pub mod workspace_layout;
 pub mod workspace_connection;
 pub mod workspace_connection_store;
 pub mod workspace_diagnostics;
@@ -146,6 +148,9 @@ pub use tools::{
 };
 pub use turn::{TokenUsage, TurnContext, TurnStatus, TurnToolCall};
 pub use workspace::{ExecutorKind, Workspace};
+pub use workspace_layout::{
+    join_project_workspace, project_workspace_relative_name, PROJECT_WORKSPACE_DIR_NAME,
+};
 pub use workspace_connection::{
     WorkspaceBackendKind, WorkspaceConnection, WorkspaceConnectionManager,
     WorkspaceConnectionStatus, WorkspaceSelectionPolicy,

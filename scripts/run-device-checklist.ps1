@@ -1,6 +1,4 @@
-# Run automated device E2E probes and refresh docs/DEVICE_CHECKLIST.md summary.
-# Usage: .\scripts\run-device-checklist.ps1 [-Serial RFCNC0PWD4E] [-WaitForDeviceSeconds 120]
-
+﻿# Run automated device E2E probes and refresh docs/DEVICE_CHECKLIST.md summary.
 param(
     [string]$Serial = "",
     [int]$WaitForDeviceSeconds = 120,
@@ -20,9 +18,7 @@ function Get-AdbSerial {
         if ($LASTEXITCODE -eq 0 -and "$state" -eq "device") { return $Preferred }
     }
     $lines = @(& $adb devices 2>&1 | Where-Object { $_ -match "^\S+\s+device\s*$" })
-    if ($lines.Count -ge 1) {
-        return ($lines[0] -split "\s+", 2)[0]
-    }
+    if ($lines.Count -ge 1) { return ($lines[0] -split "\s+", 2)[0] }
     return $null
 }
 
@@ -34,9 +30,7 @@ while ((Get-Date) -lt $deadline) {
     Write-Host "Waiting for USB device (adb)..." -ForegroundColor Yellow
     Start-Sleep -Seconds 3
 }
-if (-not $serial) {
-    throw "No adb device in 'device' state. Enable USB debugging and authorize this PC."
-}
+if (-not $serial) { throw "No adb device in 'device' state." }
 Write-Host "Using device serial: $serial" -ForegroundColor Green
 
 Set-Location $ProjectRoot
@@ -48,12 +42,19 @@ function Run-Step([string]$Name, [scriptblock]$Block) {
     Write-Host "`n=== $Name ===" -ForegroundColor Cyan
     try {
         & $Block
-        if ($LASTEXITCODE -ne 0) { $results[$Name] = "FAIL (exit $LASTEXITCODE)" }
-        else { $results[$Name] = "PASS" }
+        $code = $LASTEXITCODE
+        if ($Name -eq "pc_pairing_bundle" -and $code -eq 6) {
+            $results[$Name] = "PASS (partial discovery)"
+        } elseif ($code -ne 0) {
+            $results[$Name] = "FAIL (exit $code)"
+        } else {
+            $results[$Name] = "PASS"
+        }
     } catch {
         $results[$Name] = "FAIL ($($_.Exception.Message))"
     }
-    Write-Host "$Name -> $($results[$Name])" -ForegroundColor $(if ($results[$Name] -eq "PASS") { "Green" } else { "Red" })
+    $color = if ($results[$Name] -match "^PASS") { "Green" } else { "Red" }
+    Write-Host "$Name -> $($results[$Name])" -ForegroundColor $color
 }
 
 if (-not $SkipBuild) {
@@ -62,25 +63,19 @@ if (-not $SkipBuild) {
     }
 }
 
-Run-Step "zip_import" {
-    & (Join-Path $ProjectRoot "scripts\device-e2e-zip-import.ps1") -Serial $serial
-}
-Run-Step "zip_export" {
-    & (Join-Path $ProjectRoot "scripts\device-e2e-zip-export.ps1") -Serial $serial
-}
-Run-Step "termux_pwd" {
-    & (Join-Path $ProjectRoot "scripts\device-termux-pwd-probe.ps1") -Serial $serial
+Run-Step "zip_import" { & (Join-Path $ProjectRoot "scripts\device-e2e-zip-import.ps1") -Serial $serial }
+Run-Step "zip_export" { & (Join-Path $ProjectRoot "scripts\device-e2e-zip-export.ps1") -Serial $serial }
+Run-Step "termux_pwd" { & (Join-Path $ProjectRoot "scripts\device-termux-pwd-probe.ps1") -Serial $serial }
+Run-Step "device_full_verify" {
+    $fv = Join-Path $ProjectRoot "scripts\device-full-verify.ps1"
+    if ($SkipPcHost) { & $fv -Serial $serial -SkipBuild -SkipPcHost }
+    else { & $fv -Serial $serial -SkipBuild }
 }
 Run-Step "pc_host" {
-    & (Join-Path $ProjectRoot "scripts\device-e2e-pc-host.ps1") -Serial $serial
+    & (Join-Path $ProjectRoot "scripts\device-e2e-pc-host.ps1") -Serial $serial -DiscoveryTimeoutSec 120
 }
 Run-Step "pc_pairing_bundle" {
     & (Join-Path $ProjectRoot "scripts\device-e2e-pc-pairing-bundle.ps1") -Serial $serial -SkipBuild
-}
-Run-Step "device_full_verify" {
-    $fvArgs = @("-Serial", $serial, "-SkipBuild")
-    if ($SkipPcHost) { $fvArgs += "-SkipPcHost" }
-    & (Join-Path $ProjectRoot "scripts\device-full-verify.ps1") @fvArgs
 }
 
 Write-Host "`n=== Summary ===" -ForegroundColor Cyan

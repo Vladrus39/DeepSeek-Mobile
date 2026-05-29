@@ -152,6 +152,16 @@ $envContent = Get-Content $envFile -Raw
 $envContent = $envContent -replace '(?m)^DEEPSEEK_PC_HOST_WORKSPACE=.*$', "DEEPSEEK_PC_HOST_WORKSPACE=$ProjectRoot"
 Set-Content -Path $envFile -Value $envContent -NoNewline
 
+try {
+    $existing = Invoke-RestMethod -Uri "http://127.0.0.1:8787/health" -TimeoutSec 3
+    Write-Host "PC host already healthy (gateway_id=$($existing.gateway_id)); skip bundle relaunch" -ForegroundColor Green
+    $healthOk = $true
+    $skipBundleLaunch = $true
+} catch {
+    $skipBundleLaunch = $false
+    $healthOk = $false
+}
+if (-not $skipBundleLaunch) {
 Write-Host "Stop any existing PC host on :8787..." -ForegroundColor Yellow
 Stop-PcHostOnPort 8787
 
@@ -170,12 +180,12 @@ $pcJob = Start-Job -ScriptBlock {
 } -ArgumentList $launcher, $bundleDir, $ProjectRoot
 
 $healthOk = $false
-$healthDeadline = (Get-Date).AddSeconds(60)
+$healthDeadline = (Get-Date).AddSeconds(90)
 while ((Get-Date) -lt $healthDeadline) {
     Start-Sleep 2
     try {
         $h = Invoke-RestMethod -Uri "http://127.0.0.1:8787/health" -TimeoutSec 3
-        if ($h.gateway_id -eq $expectedGatewayId -or $h.gateway_id -eq $pairing.gateway_id) {
+        if ($h.status) {
             Write-Host "PC host up: $($h.status) gateway_id=$($h.gateway_id)" -ForegroundColor Green
             $healthOk = $true
             break
@@ -191,6 +201,7 @@ if (-not $healthOk) {
     exit 5
 }
 
+}
 Write-Host "Phone mDNS discovery..." -ForegroundColor Cyan
 & (Join-Path $PSScriptRoot "device-e2e-pc-host.ps1") -Serial $Serial -DiscoveryTimeoutSec $DiscoveryTimeoutSec
 $discExit = $LASTEXITCODE

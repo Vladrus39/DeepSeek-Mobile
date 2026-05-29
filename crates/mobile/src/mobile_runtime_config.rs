@@ -26,10 +26,13 @@ impl MobileRuntimeConfig {
 
     pub fn from_base_dir(base_dir: impl Into<PathBuf>) -> Self {
         let base_dir = base_dir.into();
+        let project_workspace =
+            deepseek_mobile_core::join_project_workspace(&base_dir);
+        let _ = std::fs::create_dir_all(&project_workspace);
         Self::new(
             "mobile-default-thread",
             base_dir.join("runtime_store"),
-            base_dir.join("workspace"),
+            project_workspace,
         )
     }
 
@@ -143,7 +146,9 @@ mod tests {
         assert!(config
             .runtime_store_root_display()
             .contains("runtime_store"));
-        assert!(config.workspace_root_display().contains("workspace"));
+        assert!(config
+            .workspace_root_display()
+            .contains(deepseek_mobile_core::PROJECT_WORKSPACE_DIR_NAME));
     }
 
     #[test]

@@ -682,6 +682,11 @@ pub enum PcGatewayRequest {
         workspace_id: String,
         path: String,
     },
+    /// After user approves a tool targeting a path outside the project workspace, allow that path on the PC host.
+    GrantTrustedPath {
+        workspace_id: String,
+        path: String,
+    },
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -742,6 +747,9 @@ pub enum PcGatewayResponse {
     SnapshotList(Vec<WorkspaceSnapshotRecord>),
     SnapshotRestoreReport(WorkspaceRestoreReport),
     PathOpened {
+        path: String,
+    },
+    TrustedPathGranted {
         path: String,
     },
 }

@@ -115,8 +115,15 @@ fn normalize_path(path: &str) -> String {
         normalized = normalized[2..].to_string();
     }
     if normalized.starts_with('/') && normalized.len() > 1 {
-        if let Some(idx) = normalized.rfind("/deepseek-mobile/workspace/") {
+        if let Some(idx) = normalized.rfind("/deepseek-mobile/Project workspace/") {
+            normalized =
+                normalized[idx + "/deepseek-mobile/Project workspace/".len()..].to_string();
+        } else if let Some(idx) = normalized.rfind("/deepseek-mobile/workspace/") {
             normalized = normalized[idx + "/deepseek-mobile/workspace/".len()..].to_string();
+        } else if let Some(idx) = normalized.rfind("/files/deepseek-mobile/Project workspace/") {
+            normalized = normalized
+                [idx + "/files/deepseek-mobile/Project workspace/".len()..]
+                .to_string();
         } else if let Some(idx) = normalized.rfind("/files/deepseek-mobile/workspace/") {
             normalized = normalized[idx + "/files/deepseek-mobile/workspace/".len()..].to_string();
         }

@@ -36,10 +36,11 @@ flowchart TB
 Use only when the user opens **PC Host** panel or activates a PC workspace:
 
 - Pairing ZIP + embedded `deepseek-pc-host`
-- Trusted paths (`DEEPSEEK_PC_HOST_TRUSTED_PATHS`)
+- One-click Windows setup (`Setup-DeepSeek-PC-Host.cmd` / `.ps1`: firewall UAC once, logon scheduled task)
+- **`Project workspace`** folder beside the unzipped bundle (same name as phone sandbox subfolder)
+- Trusted paths (`DEEPSEEK_PC_HOST_TRUSTED_PATHS`) + **grant on chat approval** for paths outside workspace
 - `open_path` in OS file manager on PC
 - Tasks / SSE / terminal on pc-host
-- Autostart scripts (`install-pc-host-from-pairing.*`)
 
 **Not** the default onboarding message (“you must pair PC to be pro”).
 
@@ -49,12 +50,15 @@ Use only when the user opens **PC Host** panel or activates a PC workspace:
 - Cloud relay / tunnel as default (LAN pairing is enough for v1)
 - MCP proxy **only on PC** — nice-to-have; prefer **on-device MCP** first for phone-first parity
 
-## Security (unchanged)
+## Security (LAN gateway, not VPN)
 
-1. Pairing token = secret; short TTL optional.
-2. Grants visible in Settings (trusted paths).
-3. Plan mode never runs tools.
-4. Approvals for shell/write/network.
+1. Pairing token in the ZIP = shared secret; optional expiry in bundle metadata.
+2. Default transport on LAN is **plain HTTP** — not end-to-end encrypted unless HTTPS is configured.
+3. Same-LAN actors with token + IP:port can reach the gateway; firewall limits profile to Private networks on Windows setup.
+4. Workspace root + explicit trusted paths only; chat approval grants extra paths per session.
+5. Grants visible in Settings (trusted paths synced into pairing export).
+6. Plan mode never runs tools.
+7. Approvals for shell/write/network.
 
 ## How to verify phone-first locally
 
@@ -65,6 +69,7 @@ Use only when the user opens **PC Host** panel or activates a PC workspace:
 
 ## How to verify optional PC boost
 
-1. `.\scripts\build-pc-host-bundles.ps1` → export pairing ZIP.
-2. Start host on PC → activate PC workspace in app (user choice).
-3. Run tests/git against PC project path.
+1. `.\scripts\build-pc-host-bundles.ps1` (dev machine) so the phone can embed `deepseek-pc-host.exe` in the export.
+2. Phone: export pairing ZIP → PC: unzip → double-click **`Setup-DeepSeek-PC-Host.cmd`**.
+3. Phone: **Scan LAN** or manual URL → activate PC workspace.
+4. Run tests/git under **`Project workspace`** on the PC; approve a tool on an outside path and confirm grant works.

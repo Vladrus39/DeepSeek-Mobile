@@ -301,11 +301,21 @@ pub async fn execute_approved_call_with_pc_gateway(
             })
         }
     };
+    let mut exec_context = context.clone();
+    if let Err(error) =
+        crate::tool_approval_paths::grant_paths_for_approved_call(call, &mut exec_context, pc_gateway)
+            .await
+    {
+        return Ok(ToolResult::error(format!(
+            "Failed to grant path access after approval: {}",
+            error
+        )));
+    }
     let mut coordinator = ToolExecutionCoordinator::new(registry);
     if let Some(client) = pc_gateway {
         coordinator = coordinator.with_pc_gateway(client);
     }
-    let mut result = coordinator.execute(call, context).await?;
+    let mut result = coordinator.execute(call, &exec_context).await?;
     if let Some(snapshot) = pre_snapshot {
         attach_pre_snapshot_metadata(&mut result, snapshot);
     }

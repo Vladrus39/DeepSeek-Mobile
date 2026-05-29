@@ -958,6 +958,10 @@ fn gateway_response_to_tool_result(response: PcGatewayResponse) -> Result<ToolRe
             Ok(ToolResult::success(serde_json::to_string_pretty(&tasks)?)
                 .with_metadata(serde_json::to_value(tasks)?))
         }
+        PcGatewayResponse::TrustedPathGranted { path } => Ok(ToolResult::success(format!(
+            "Trusted path granted on PC: {}",
+            path
+        ))),
         PcGatewayResponse::PathOpened { path } => Ok(ToolResult::success(format!(
             "Opened in system file manager: {}",
             path

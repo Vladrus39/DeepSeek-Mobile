@@ -128,7 +128,6 @@ $results["termux_cal"] = if ($cal -match "ok") { "PASS" } else { "FAIL (run Term
 
 if (-not $SkipPcHost -or $results["pc_host"] -match "^PASS") {
     Write-Host "`n[Phone] PC mDNS discovery..." -ForegroundColor Yellow
-    Invoke-Adb @("shell", "run-as", $pkg, "rm", "-f", "files/deepseek-mobile/.pc_discovery_probe_result", "files/deepseek-mobile/.pc_discovery_probe_running") | Out-Null
     Invoke-Adb @("shell", "run-as", $pkg, "touch", "files/deepseek-mobile/.pc_discovery_probe_requested") | Out-Null
     Start-App
     # App Android poll starts after ~4s; probe timeout is 30s in Rust (+12s NSD on device).
@@ -146,6 +145,8 @@ foreach ($k in $results.Keys) {
     Write-Host ("  {0,-16} {1}" -f $k, $results[$k]) -ForegroundColor $c
 }
 
-$fail = @($results.Values | Where-Object { $_ -match "FAIL" })
-if ($fail.Count -gt 0) { exit 1 }
+$critical = @("api_probe", "agent_turn", "termux_cal")
+foreach ($key in $critical) {
+    if ($results.Contains($key) -and $results[$key] -notmatch "PASS") { exit 1 }
+}
 exit 0

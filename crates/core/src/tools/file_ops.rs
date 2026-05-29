@@ -4,9 +4,10 @@ use super::{
     optional_str, required_str, ApprovalRequirement, ToolCapability, ToolContext, ToolResult,
     ToolSpec,
 };
-use crate::workspace_files::WorkspaceFileService;
+use crate::workspace_files::{WorkspaceFileEntry, WorkspaceFileService};
 use anyhow::{anyhow, Result};
 use serde_json::{json, Value};
+use std::fs;
 
 pub struct ReadFileTool;
 pub struct WriteFileTool;
@@ -38,8 +39,7 @@ impl ToolSpec for ReadFileTool {
 
     fn execute(&self, input: Value, context: &ToolContext) -> Result<ToolResult> {
         let path = required_str(&input, "path")?;
-        let service = WorkspaceFileService::new(context.workspace.clone());
-        let content = service.read_text_file(path)?;
+        let content = read_text_at(context, path)?;
         Ok(ToolResult::success(content))
     }
 }
@@ -79,8 +79,7 @@ impl ToolSpec for WriteFileTool {
     fn execute(&self, input: Value, context: &ToolContext) -> Result<ToolResult> {
         let path = required_str(&input, "path")?;
         let content = required_str(&input, "content")?;
-        let service = WorkspaceFileService::new(context.workspace.clone());
-        service.write_text_file(path, content)?;
+        write_text_at(context, path, content)?;
         Ok(ToolResult::success(format!(
             "Wrote {} bytes to {}",
             content.len(),
@@ -113,9 +112,8 @@ impl ToolSpec for ListDirTool {
 
     fn execute(&self, input: Value, context: &ToolContext) -> Result<ToolResult> {
         let path = optional_str(&input, "path").unwrap_or(".");
-        let service = WorkspaceFileService::new(context.workspace.clone());
-        let entries = service.list_files(path)?;
-        let value = serde_json::to_value(entries)?;
+        let entries = list_dir_at(context, path)?;
+        let value = serde_json::to_value(&entries)?;
         Ok(ToolResult::success(serde_json::to_string_pretty(&value)?).with_metadata(value))
     }
 }
@@ -155,8 +153,7 @@ impl ToolSpec for DeleteFileTool {
 
     fn execute(&self, input: Value, context: &ToolContext) -> Result<ToolResult> {
         let path = required_str(&input, "path")?;
-        let service = WorkspaceFileService::new(context.workspace.clone());
-        service.delete_file(path)?;
+        delete_file_at(context, path)?;
         Ok(ToolResult::success(format!("Deleted {}", path)))
     }
 }
@@ -292,15 +289,14 @@ impl ToolSpec for EditFileTool {
             return Err(anyhow!("search text must not be empty"));
         }
 
-        let service = WorkspaceFileService::new(context.workspace.clone());
-        let content = service.read_text_file(path)?;
+        let content = read_text_at(context, path)?;
         let count = content.matches(search).count();
         if count == 0 {
             return Err(anyhow!("search text not found in {}", path));
         }
 
         let updated = content.replace(search, replace);
-        service.write_text_file(path, &updated)?;
+        write_text_at(context, path, &updated)?;
 
         Ok(ToolResult::success(format!(
             "Replaced {} occurrence(s) in {}",
@@ -416,4 +412,79 @@ impl ToolSpec for FileOpsTool {
             other => Err(anyhow!("unsupported file operation: {}", other)),
         }
     }
+}
+
+fn read_text_at(context: &ToolContext, raw_path: &str) -> Result<String> {
+    if let Ok(service) = workspace_service(context) {
+        if let Ok(content) = service.read_text_file(raw_path) {
+            return Ok(content);
+        }
+    }
+    let path = context.resolve_path(raw_path)?;
+    if !path.is_file() {
+        return Err(anyhow!("path is not a file: {}", path.display()));
+    }
+    Ok(fs::read_to_string(path)?)
+}
+
+fn write_text_at(context: &ToolContext, raw_path: &str, content: &str) -> Result<()> {
+    if let Ok(service) = workspace_service(context) {
+        if service.write_text_file(raw_path, content).is_ok() {
+            return Ok(());
+        }
+    }
+    let path = context.resolve_path(raw_path)?;
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    fs::write(path, content)?;
+    Ok(())
+}
+
+fn list_dir_at(context: &ToolContext, raw_path: &str) -> Result<Vec<WorkspaceFileEntry>> {
+    if let Ok(service) = workspace_service(context) {
+        if let Ok(entries) = service.list_files(raw_path) {
+            return Ok(entries);
+        }
+    }
+    let dir = context.resolve_path(raw_path)?;
+    if !dir.is_dir() {
+        return Err(anyhow!("path is not a directory: {}", dir.display()));
+    }
+    let workspace_root = &context.workspace.root;
+    let mut entries = Vec::new();
+    for entry in fs::read_dir(&dir)? {
+        let entry = entry?;
+        let metadata = entry.metadata()?;
+        let absolute_path = entry.path();
+        let relative_path = absolute_path
+            .strip_prefix(workspace_root)
+            .unwrap_or(&absolute_path)
+            .to_path_buf();
+        entries.push(WorkspaceFileEntry {
+            path: relative_path,
+            is_dir: metadata.is_dir(),
+            size_bytes: metadata.len(),
+        });
+    }
+    entries.sort_by(|a, b| a.path.cmp(&b.path));
+    Ok(entries)
+}
+
+fn delete_file_at(context: &ToolContext, raw_path: &str) -> Result<()> {
+    if let Ok(service) = workspace_service(context) {
+        if service.delete_file(raw_path).is_ok() {
+            return Ok(());
+        }
+    }
+    let path = context.resolve_path(raw_path)?;
+    if !path.is_file() {
+        return Err(anyhow!("path is not a file: {}", path.display()));
+    }
+    fs::remove_file(path)?;
+    Ok(())
+}
+
+fn workspace_service(context: &ToolContext) -> Result<WorkspaceFileService> {
+    Ok(WorkspaceFileService::new(context.workspace.clone()))
 }

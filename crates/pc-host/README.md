@@ -43,3 +43,18 @@ Current first-pass capabilities:
 - git diff
 
 This is intentionally workspace-scoped. It must not expose the whole computer by default.
+
+Optional trusted paths (pipe-separated absolute paths):
+
+```text
+DEEPSEEK_PC_HOST_TRUSTED_PATHS=C:\OtherRepo|D:\Docs
+```
+
+The phone can also grant paths at runtime when the user approves a tool call in chat (`grant_trusted_path`).
+
+## Security (not a VPN)
+
+- Gateway protocol over HTTP/WebSocket with optional `Authorization: Bearer` token — **not** an encrypted VPN tunnel.
+- Default LAN pairing uses **plain HTTP**; configure HTTPS transport for internet-facing hosts.
+- Token in the pairing ZIP is the secret; same-LAN users who know IP:port and token can reach the gateway.
+- Windows pairing setup adds firewall rules on **Private** profile only.

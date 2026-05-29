@@ -72,7 +72,7 @@ PC pairing is not file sync. It grants the phone access to a PC Host workspace. 
    - remaining/optional: Play Store AAB submission.
 3. PC Host packaging:
    - bundled host binaries for pairing ZIP/release package;
-   - optional service/autostart installer.
+   - one-click Windows setup in pairing ZIP (`Setup-DeepSeek-PC-Host.cmd`: firewall + scheduled task).
 4. MCP closure:
    - long-lived stdio session reuse;
    - external MCP tool execution behind explicit approvals and workspace boundaries.

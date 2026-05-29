@@ -268,7 +268,11 @@ mod tests {
     fn default_paths_stay_under_mobile_data_dir() {
         let root = default_phone_workspace_root();
         let export_dir = default_export_dir();
-        assert!(root.ends_with("workspace"));
+        assert!(
+            root.ends_with(deepseek_mobile_core::PROJECT_WORKSPACE_DIR_NAME),
+            "root={}",
+            root.display()
+        );
         assert!(export_dir.ends_with("exports"));
     }
 

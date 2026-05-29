@@ -60,6 +60,7 @@ struct PcHostConfig {
     workspace: PcWorkspaceGrant,
     workspace_root: PathBuf,
     trusted_paths: Vec<PathBuf>,
+    runtime_trusted_paths: Arc<Mutex<Vec<PathBuf>>>,
     security_policy: PcGatewaySecurityPolicy,
 }
 
@@ -137,6 +138,8 @@ impl PcHostConfig {
             host_capabilities(),
         );
 
+        let _ = std::fs::create_dir_all(&workspace_root);
+
         Ok(Self {
             gateway_id,
             gateway_label,
@@ -145,8 +148,29 @@ impl PcHostConfig {
             workspace,
             workspace_root,
             trusted_paths,
+            runtime_trusted_paths: Arc::new(Mutex::new(Vec::new())),
             security_policy: PcGatewaySecurityPolicy::from_preset(preset),
         })
+    }
+
+    async fn grant_trusted_path_for_tool(&self, workspace_id: &str, raw_path: &str) -> Result<PathBuf> {
+        let resolved = self.resolve_workspace_path(workspace_id, raw_path)?;
+        let grant_root = if resolved.is_dir() {
+            resolved
+        } else {
+            resolved
+                .parent()
+                .map(|p| p.to_path_buf())
+                .unwrap_or_else(|| self.workspace_root.clone())
+        };
+        let canonical = grant_root
+            .canonicalize()
+            .with_context(|| format!("canonicalize grant root {}", grant_root.display()))?;
+        let mut runtime = self.runtime_trusted_paths.lock().await;
+        if !runtime.iter().any(|existing| canonical.starts_with(existing) || existing.starts_with(&canonical)) {
+            runtime.push(canonical.clone());
+        }
+        Ok(canonical)
     }
 
     fn response(
@@ -226,6 +250,12 @@ impl PcHostConfig {
             return Ok(canonical);
         }
         for trusted in &self.trusted_paths {
+            if canonical.starts_with(trusted) {
+                return Ok(canonical);
+            }
+        }
+        let runtime = self.runtime_trusted_paths.lock().await;
+        for trusted in runtime.iter() {
             if canonical.starts_with(trusted) {
                 return Ok(canonical);
             }
@@ -638,6 +668,9 @@ async fn handle_gateway_request(
         PcGatewayRequest::OpenPath { workspace_id, path } => {
             open_path_in_os(&state.config, &workspace_id, &path).await
         }
+        PcGatewayRequest::GrantTrustedPath { workspace_id, path } => {
+            grant_trusted_path_handler(&state.config, &workspace_id, &path).await
+        }
         unsupported => Ok(PcGatewayResponse::Error(PcGatewayError::new(
             "unsupported_request",
             format!(
@@ -646,6 +679,16 @@ async fn handle_gateway_request(
             ),
         ))),
     }
+}
+
+async fn grant_trusted_path_handler(
+    config: &PcHostConfig,
+    workspace_id: &str,
+    path: &str,
+) -> Result<PcGatewayResponse> {
+    let granted = config.grant_trusted_path_for_tool(workspace_id, path).await?;
+    let display = config.gateway_relative_path(&granted);
+    Ok(PcGatewayResponse::TrustedPathGranted { path: display })
 }
 
 async fn open_path_in_os(
@@ -2077,6 +2120,7 @@ fn request_operation_name(request: &PcGatewayRequest) -> String {
         PcGatewayRequest::SnapshotRestore { .. } => "snapshot_restore".to_string(),
         PcGatewayRequest::SnapshotList { .. } => "snapshot_list".to_string(),
         PcGatewayRequest::OpenPath { .. } => "open_path".to_string(),
+        PcGatewayRequest::GrantTrustedPath { .. } => "grant_trusted_path".to_string(),
     }
 }
 

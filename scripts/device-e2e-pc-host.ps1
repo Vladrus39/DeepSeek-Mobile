@@ -118,7 +118,7 @@ if ($lanIp) {
 }
 Invoke-Adb @("shell", "run-as", $pkg, "touch", "$data/.pc_discovery_probe_requested") | Out-Null
 Invoke-Adb @("shell", "am", "start", "-n", "$pkg/dev.dioxus.main.MainActivity") | Out-Null
-Start-Sleep 4
+Start-Sleep 8
 
 $deadline = (Get-Date).AddSeconds($DiscoveryTimeoutSec)
 $discovery = $null
