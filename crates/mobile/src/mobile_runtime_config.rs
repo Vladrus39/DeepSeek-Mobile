@@ -123,6 +123,27 @@ pub fn activate_workspace_connection_in_base_dir(
     store.save(&manager)
 }
 
+/// Clear PC as active workspace and prefer Termux (or local sandbox) for agent/files.
+pub fn activate_phone_only_workspace() -> Result<()> {
+    activate_phone_only_workspace_in_base_dir(default_data_dir())
+}
+
+pub fn activate_phone_only_workspace_in_base_dir(base_dir: impl AsRef<Path>) -> Result<()> {
+    let base_dir = base_dir.as_ref();
+    let store = workspace_connection_store_for_base_dir(base_dir);
+    let mut manager = store.load_or_default()?;
+    let termux = crate::termux_state::TermuxWorkspaceState::load_from_base_dir(base_dir);
+    if termux.saved && termux.is_valid() {
+        let connection = termux.to_workspace_connection();
+        let id = connection.id.clone();
+        manager.add_or_update(connection);
+        manager.set_active(id)?;
+    } else {
+        manager.clear_active();
+    }
+    store.save(&manager)
+}
+
 impl Default for MobileRuntimeConfig {
     fn default() -> Self {
         Self::default_mobile()

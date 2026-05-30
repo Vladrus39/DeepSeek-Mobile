@@ -12,6 +12,8 @@ struct PersistedPcPairing {
     request: Option<MobilePcPairingRequest>,
     status: String,
     export_zip: Option<String>,
+    #[serde(default)]
+    phone_only: bool,
 }
 
 fn persist_path() -> PathBuf {
@@ -43,6 +45,7 @@ pub fn load_persisted_pairing() -> Option<PcPairingUiState> {
         reconnect_generation: 0,
         last_reconnect_action: None,
         last_error: None,
+        phone_only: saved.phone_only,
     })
 }
 
@@ -66,6 +69,7 @@ pub fn save_pairing(state: &PcPairingUiState) {
             .export
             .as_ref()
             .map(|export| export.zip_path.display().to_string()),
+        phone_only: state.phone_only,
     };
     let path = persist_path();
     if let Some(parent) = path.parent() {

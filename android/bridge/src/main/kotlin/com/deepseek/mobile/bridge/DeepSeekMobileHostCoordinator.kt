@@ -305,6 +305,11 @@ class DeepSeekMobileHostCoordinator(
             return
         }
 
+        if (tryOpenViaTermuxOpen(dir)) {
+            deliverWorkspaceFolderOpened(path)
+            return
+        }
+
         if (tryOpenAppSandboxFolder(dir)) {
             deliverWorkspaceFolderOpened(path)
             return
@@ -316,6 +321,29 @@ class DeepSeekMobileHostCoordinator(
         }
 
         deliverWorkspaceFolderFailed(path, "no file manager could open $path")
+    }
+
+    private fun tryOpenViaTermuxOpen(dir: File): Boolean {
+        val termuxRoot = "/data/data/com.termux/files"
+        if (!dir.absolutePath.startsWith(termuxRoot)) {
+            return false
+        }
+        val shellPath = dir.absolutePath.replace("'", "'\\''")
+        val script =
+            "command -v termux-open >/dev/null 2>&1 && termux-open -d '$shellPath' || exit 1"
+        val requestId = "workspace-folder-${System.currentTimeMillis()}"
+        val pending = termuxPendingIntentFactory(requestId)
+        val payload =
+            AndroidTermuxCommandPayload(
+                requestId = requestId,
+                commandPath = "$termuxRoot/usr/bin/sh",
+                arguments = listOf("-lc", script),
+                workingDir = dir.absolutePath,
+                background = true,
+                label = "Open folder",
+                description = dir.absolutePath,
+            )
+        return termuxBridge.run(payload, pending) == null
     }
 
     private fun tryOpenTermuxFiles(dir: File): Boolean {
@@ -349,43 +377,57 @@ class DeepSeekMobileHostCoordinator(
             return false
         }
         val authority = "${activity.packageName}.fileprovider"
+        return launchFolderViewIntent(canonicalDir, authority)
+    }
+
+    private fun tryOpenGenericFolder(dir: File): Boolean {
+        val authority = "${activity.packageName}.fileprovider"
         return try {
-            val uri = FileProvider.getUriForFile(activity, authority, canonicalDir)
-            val intent = Intent(Intent.ACTION_VIEW).apply {
-                setDataAndType(uri, DocumentsContract.Document.MIME_TYPE_DIR)
-                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            launchFolderViewIntent(dir.canonicalFile, authority)
+        } catch (_: Throwable) {
+            false
+        }
+    }
+
+    private fun launchFolderViewIntent(dir: File, authority: String): Boolean {
+        return try {
+            val uri = FileProvider.getUriForFile(activity, authority, dir)
+            val mimeCandidates =
+                listOf(
+                    DocumentsContract.Document.MIME_TYPE_DIR,
+                    "vnd.android.document/directory",
+                    "resource/folder",
+                )
+            for (mime in mimeCandidates) {
+                val intent =
+                    Intent(Intent.ACTION_VIEW).apply {
+                        setDataAndType(uri, mime)
+                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                if (launchExternal(intent, useChooser = true)) {
+                    return true
+                }
             }
-            launchExternal(intent)
+            false
         } catch (e: Throwable) {
             Log.w(TAG, "FileProvider folder open failed for ${dir.absolutePath}", e)
             false
         }
     }
 
-    private fun tryOpenGenericFolder(dir: File): Boolean {
-        val authority = "${activity.packageName}.fileprovider"
-        return try {
-            val uri = FileProvider.getUriForFile(activity, authority, dir)
-            val intent = Intent(Intent.ACTION_VIEW).apply {
-                setDataAndType(uri, DocumentsContract.Document.MIME_TYPE_DIR)
-                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            }
-            launchExternal(intent)
-        } catch (_: Throwable) {
-            val fallback = Intent(Intent.ACTION_VIEW).apply {
-                setDataAndType(Uri.fromFile(dir), "resource/folder")
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            }
-            launchExternal(fallback)
-        }
-    }
-
-    private fun launchExternal(intent: Intent): Boolean {
+    private fun launchExternal(intent: Intent, useChooser: Boolean = false): Boolean {
         return try {
             onExternalActivityLaunched()
-            activity.startActivity(intent)
+            val launchIntent =
+                if (useChooser) {
+                    Intent.createChooser(intent, "Open folder").apply {
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                } else {
+                    intent
+                }
+            activity.startActivity(launchIntent)
             true
         } catch (e: Throwable) {
             Log.w(TAG, "External folder launch failed", e)

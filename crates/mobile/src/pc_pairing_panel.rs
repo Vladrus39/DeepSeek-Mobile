@@ -1,6 +1,10 @@
-use crate::mobile_runtime_config::{activate_default_workspace_connection, default_data_dir};
+use crate::locale::{pick, AppLanguage};
+use crate::mobile_runtime_config::{
+    activate_default_workspace_connection, activate_phone_only_workspace, default_data_dir,
+};
 use crate::native_bridge::NativeBridgeState;
 use crate::pc_pairing_manager::MobilePcPairingRequest;
+use crate::pc_pairing_persist::save_pairing;
 use crate::pc_pairing_state::{
     PcPairingUiState, PcPairingUiStatus, PcReconnectAction, PcReconnectEffect,
 };
@@ -10,6 +14,7 @@ use uuid::Uuid;
 pub fn pc_pairing_panel(
     mut state: Signal<PcPairingUiState>,
     mut native_bridge: Signal<NativeBridgeState>,
+    ui_lang: AppLanguage,
 ) -> Element {
     let snapshot = state();
     let status_text = snapshot.status_text();
@@ -25,6 +30,14 @@ pub fn pc_pairing_panel(
     let discovery_rows = snapshot.discovery_rows();
     let reconnect_controls = snapshot.reconnect_controls();
     let mut manual_url = use_signal(String::new);
+    let phone_only = snapshot.phone_only;
+    let phone_only_label = pick(
+        ui_lang,
+        "Режим: только телефон (PC отключён)",
+        "Mode: phone only (PC disconnected)",
+    );
+    let phone_only_btn = pick(ui_lang, "Только телефон", "Phone only");
+    let reconnect_pc_btn = pick(ui_lang, "Снова использовать PC", "Use PC again");
 
     rsx! {
         div {
@@ -305,6 +318,19 @@ pub fn pc_pairing_panel(
                 gap: "8px",
                 flex_wrap: "wrap",
 
+                if phone_only {
+                    div {
+                        flex: "1 1 100%",
+                        background_color: "#14532d",
+                        border: "1px solid #22c55e",
+                        border_radius: "10px",
+                        padding: "8px 10px",
+                        font_size: "12px",
+                        color: "#bbf7d0",
+                        "{phone_only_label}"
+                    }
+                }
+
                 button {
                     background_color: "#2563eb",
                     color: "white",
@@ -391,6 +417,51 @@ pub fn pc_pairing_panel(
                         state.set(next);
                     },
                     "Instructions"
+                }
+
+                if phone_only {
+                    button {
+                        background_color: "#374151",
+                        color: "white",
+                        padding: "10px 14px",
+                        border_radius: "10px",
+                        border: "none",
+                        onclick: move |_| {
+                            let mut next = state();
+                            next.disable_phone_only();
+                            state.set(next);
+                            save_pairing(&state());
+                        },
+                        "{reconnect_pc_btn}"
+                    }
+                } else {
+                    button {
+                        background_color: "#14532d",
+                        color: "#ecfdf5",
+                        padding: "10px 14px",
+                        border_radius: "10px",
+                        border: "1px solid #22c55e",
+                        onclick: move |_| {
+                            match activate_phone_only_workspace() {
+                                Ok(()) => {
+                                    let mut next = state();
+                                    next.enable_phone_only();
+                                    state.set(next);
+                                    save_pairing(&state());
+                                }
+                                Err(error) => {
+                                    let mut next = state();
+                                    next.set_error(format!(
+                                        "Failed to switch to phone-only mode: {}",
+                                        error
+                                    ));
+                                    state.set(next);
+                                    save_pairing(&state());
+                                }
+                            }
+                        },
+                        "{phone_only_btn}"
+                    }
                 }
             }
         }

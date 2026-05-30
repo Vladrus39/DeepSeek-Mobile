@@ -1,9 +1,15 @@
 # DeepSeek-Mobile — Release Notes
 
+## v0.1.4 — 2026-05-30
+
+- **Work log → проводник (fix):** исправлен путь FileProvider (`deepseek-mobile/Project workspace/`); для Termux добавлен fallback `termux-open -d`; chooser для системных файловых менеджеров. Убран автопереход на вкладку «Файлы» при ошибке — сообщение в чате.
+- **Release APK:** сборка под **arm64-v8a** (реальные телефоны; v0.1.3 asset был x86_64-only).
+- Device checklist `RFCNC0PWD4E`: **7/7 PASS** после установки debug 0.1.4.
+
 ## v0.1.3 — 2026-05-30
 
-- **Work log → проводник:** «Открыть в проводнике» открывает системный файловый менеджер (PC Host `open_path`, на телефоне — Termux Files / FileProvider). При ошибке — fallback в раздел «Файлы» с деревом проекта без блока import/export.
-- **Файлы:** флаг `focus_tree` скрывает import/export, пока пользователь смотрит дерево; сбрасывается при уходе из раздела или ручном import/export.
+- **Work log → проводник:** «Открыть в проводнике» — PC Host `open_path`, на телефоне Termux Files / FileProvider (FileProvider path был неверный; см. v0.1.4).
+- **Файлы:** флаг `focus_tree` скрывает import/export при просмотре дерева.
 
 ## v0.1.2 — 2026-05-30
 

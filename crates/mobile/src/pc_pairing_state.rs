@@ -53,6 +53,8 @@ pub struct PcPairingUiState {
     pub reconnect_generation: u64,
     pub last_reconnect_action: Option<PcReconnectAction>,
     pub last_error: Option<String>,
+    /// When true, PC workspace routing is disabled; agent/files use Termux or app sandbox only.
+    pub phone_only: bool,
 }
 
 impl Default for PcPairingUiState {
@@ -67,6 +69,7 @@ impl Default for PcPairingUiState {
             reconnect_generation: 0,
             last_reconnect_action: None,
             last_error: None,
+            phone_only: false,
         }
     }
 }
@@ -224,6 +227,9 @@ impl PcPairingUiState {
     }
 
     pub fn active_workspace_connection(&self) -> Option<WorkspaceConnection> {
+        if self.phone_only {
+            return None;
+        }
         let request = self.request.as_ref()?;
         let active_endpoint = self.active_endpoint.as_ref()?;
         let primary_candidate = self
@@ -262,6 +268,16 @@ impl PcPairingUiState {
         let message = message.into();
         self.last_error = Some(message.clone());
         self.status = PcPairingUiStatus::Error(message);
+    }
+
+    /// Stop routing agent/files through PC Host; persist Termux (or sandbox) as active workspace.
+    pub fn enable_phone_only(&mut self) {
+        self.phone_only = true;
+        self.last_error = None;
+    }
+
+    pub fn disable_phone_only(&mut self) {
+        self.phone_only = false;
     }
 
     pub fn primary_action_label(&self) -> &'static str {
@@ -640,6 +656,20 @@ mod tests {
             Some("http://192.168.1.10:8787")
         );
         assert_eq!(state.endpoint_health.len(), 1);
+    }
+
+    #[test]
+    fn phone_only_mode_suppresses_pc_workspace_connection() {
+        let mut state = PcPairingUiState::default();
+        state.configure(sample_request());
+        state.apply_discovery_report(online_report());
+        assert!(state.active_workspace_connection().is_some());
+
+        state.enable_phone_only();
+        assert!(state.active_workspace_connection().is_none());
+
+        state.disable_phone_only();
+        assert!(state.active_workspace_connection().is_some());
     }
 
     #[test]

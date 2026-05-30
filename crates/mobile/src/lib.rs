@@ -89,7 +89,7 @@ use agent_timeline_panel::{agent_timeline_panel, ChatSnapshotRollbackProps};
 use chat_attachment::ChatComposerState;
 use chat_history_panel::chat_history_panel;
 use chat_quick_actions::chat_quick_actions_bar;
-use chat_scroll::scroll_chat_to_bottom;
+use chat_scroll::{scroll_chat_to_bottom_force, scroll_chat_to_bottom_sticky};
 use chat_session::{clear_active_timeline_display, load_index, start_new_chat, switch_chat_thread};
 use chat_toolbar::chat_toolbar;
 use cockpit_section_panel::cockpit_section_panel;
@@ -812,11 +812,17 @@ fn app() -> Element {
     }
 
     let active_section_scroll = active_section;
+    let mut chat_scroll_item_count = use_signal(|| 0usize);
     use_effect(move || {
         let len = timeline().len();
-        if active_section_scroll() == CockpitSection::Chat && len > 0 {
-            scroll_chat_to_bottom();
+        if active_section_scroll() != CockpitSection::Chat || len == 0 {
+            return;
         }
+        let force = len > chat_scroll_item_count();
+        if force {
+            chat_scroll_item_count.set(len);
+        }
+        scroll_chat_to_bottom_sticky(force);
     });
 
     #[cfg(target_os = "android")]
@@ -866,10 +872,6 @@ fn app() -> Element {
         let mut android_route_pc = pc_pairing_state;
         let mut android_route_timeline = timeline;
         let mut android_last_routed = use_signal(|| 0u64);
-        let android_active_section = active_section;
-        let android_chat_history = chat_history_open;
-        let android_drawer = drawer_open;
-        let android_project_files = project_files_state;
         use_effect(move || {
             if android_poll_started() {
                 return;
@@ -935,10 +937,6 @@ fn app() -> Element {
                             && bridge.last_event_id != android_last_routed()
                         {
                             if let Some(event) = bridge.last_event.clone() {
-                                let folder_open_failed = matches!(
-                                    event,
-                                    NativeMobileEvent::WorkspaceFolderOpenFailed { .. }
-                                );
                                 android_last_routed.set(bridge.last_event_id);
                                 let routed = route_native_mobile_event(
                                     android_route_composer(),
@@ -954,15 +952,6 @@ fn app() -> Element {
                                 android_route_timeline.set(routed.timeline);
                                 bridge = routed.native_bridge;
                                 crate::native_host_runtime::replace(bridge.clone());
-                                if folder_open_failed {
-                                    show_in_app_files_focus_tree(
-                                        android_active_section,
-                                        android_chat_history,
-                                        android_drawer,
-                                        android_project_files,
-                                        &android_route_pc(),
-                                    );
-                                }
                             }
                         }
                         let manual_urls = pc_discovery_probe::tick(&mut bridge);
@@ -2162,6 +2151,7 @@ fn app() -> Element {
                         );
                         chat_session::touch_active_thread();
                         timeline.set(next_timeline);
+                        scroll_chat_to_bottom_force();
 
                         input.set(String::new());
                         composer.set(ChatComposerState::default());

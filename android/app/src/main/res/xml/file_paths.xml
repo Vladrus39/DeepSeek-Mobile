@@ -2,5 +2,6 @@
 <paths>
     <files-path name="exports" path="." />
     <files-path name="attachments" path="attachments/" />
-    <files-path name="project_workspace" path="Project workspace/" />
+    <files-path name="deepseek_mobile" path="deepseek-mobile/" />
+    <files-path name="project_workspace" path="deepseek-mobile/Project workspace/" />
 </paths>

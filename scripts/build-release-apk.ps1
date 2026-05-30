@@ -66,15 +66,27 @@ if ($Serial) {
 }
 if ($LASTEXITCODE -ne 0) { throw "dx build --release failed" }
 
+$gradlew = Join-Path $ProjectRoot "target\dx\deepseek-mobile\release\android\app\gradlew.bat"
+if (Test-Path $gradlew) {
+    if (Test-Path $repoKeystoreProps) {
+        Copy-Item -Force $repoKeystoreProps (Join-Path (Split-Path $gradlew) "keystore.properties")
+    }
+    Write-Host "Running Gradle clean assembleRelease (fresh APK with current jniLibs)..." -ForegroundColor Cyan
+    Push-Location (Split-Path $gradlew)
+    & $gradlew clean assembleRelease
+    if ($LASTEXITCODE -ne 0) { Pop-Location; throw "gradlew clean assembleRelease failed" }
+    Pop-Location
+}
+
 if (-not (Test-Path $releaseApkPath)) {
-    $gradlew = Join-Path $dxReleaseApp "gradlew.bat"
-    if (Test-Path $gradlew) {
+    $gradlewLegacy = Join-Path $dxReleaseApp "gradlew.bat"
+    if (Test-Path $gradlewLegacy) {
         if (Test-Path $repoKeystoreProps) {
             Copy-Item -Force $repoKeystoreProps (Join-Path $dxReleaseApp "keystore.properties")
         }
         Write-Host "Running Gradle assembleRelease (dx bundle did not emit release APK)..." -ForegroundColor Cyan
         Push-Location $dxReleaseApp
-        & $gradlew assembleRelease
+        & $gradlewLegacy assembleRelease
         if ($LASTEXITCODE -ne 0) { Pop-Location; throw "gradlew assembleRelease failed" }
         Pop-Location
     }

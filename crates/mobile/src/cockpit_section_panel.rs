@@ -57,7 +57,7 @@ pub fn cockpit_section_panel(
 ) -> Element {
     match section {
         CockpitSection::Chat => chat_empty_state(lang()),
-        CockpitSection::PcHost => pc_pairing_panel(pc_pairing_state, native_bridge),
+        CockpitSection::PcHost => pc_pairing_panel(pc_pairing_state, native_bridge, lang()),
         CockpitSection::Files => {
             let pc_connection =
                 pc_pairing_state()
