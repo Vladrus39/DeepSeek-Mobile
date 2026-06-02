@@ -3,6 +3,7 @@ package dev.dioxus.main
 import android.app.PendingIntent
 import android.content.Intent
 import android.graphics.Color
+import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import android.view.View
@@ -54,6 +55,23 @@ class MainActivity : WryActivity(), NativeBridgeBindings {
         dataDir.mkdirs()
         NativeBridge.initMobileDataDir(dataDir.absolutePath)
         super.onCreate(savedInstanceState)
+
+        // Proactively request any standard runtime permissions early so the user
+        // sees the system dialogs as soon as possible after first launch.
+        // Note: com.termux.permission.RUN_COMMAND is special — Termux itself shows
+        // the allow dialog the first time we send a RUN_COMMAND intent (we trigger
+        // it from the setup "Test RUN_COMMAND" button + provisioning probe).
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            val toRequest = mutableListOf<String>()
+            if (checkSelfPermission(android.Manifest.permission.INTERNET) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                toRequest += android.Manifest.permission.INTERNET
+            }
+            // Add other runtime permissions here if we declare more dangerous ones in the future.
+            if (toRequest.isNotEmpty()) {
+                requestPermissions(toRequest.toTypedArray(), 1001)
+            }
+        }
+
         configureEdgeToEdgeShell()
         hostCoordinator = DeepSeekMobileHostCoordinator.create(
             activity = this,
