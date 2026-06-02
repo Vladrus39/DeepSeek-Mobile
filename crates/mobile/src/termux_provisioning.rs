@@ -75,3 +75,39 @@ pub fn enqueue_run_command_permission_probe(
 pub fn on_setup_saved_termux_path() {
     request_onboarding_provision();
 }
+
+/// Send commands to Termux to set allow-external-apps (requires the permission already granted via probe).
+/// User will still need to restart Termux once for the property to take effect.
+pub fn enqueue_configure_termux_properties(bridge: &mut NativeBridgeState) -> bool {
+    if bridge.has_pending_commands() || bridge.is_waiting_for_termux_callback() {
+        return false;
+    }
+    let workdir = "/data/data/com.termux/files/home".to_string();
+    // Create the properties file with the needed setting if it doesn't exist or append
+    let cmd = "mkdir -p ~/.termux && echo 'allow-external-apps=true' >> ~/.termux/termux.properties && echo 'allow-external-apps set (restart Termux to apply)'";
+    bridge.enqueue_termux_command(deepseek_mobile_core::TermuxExecRequest {
+        request_id: "deepseek-termux-config-v1".to_string(),
+        command: cmd.to_string(),
+        working_dir: PathBuf::from(workdir),
+        timeout_secs: Some(30),
+    });
+    true
+}
+
+/// Seed a default project directory and a small welcome note.
+pub fn enqueue_seed_default_workspace(bridge: &mut NativeBridgeState, path: &str) -> bool {
+    if bridge.has_pending_commands() || bridge.is_waiting_for_termux_callback() {
+        return false;
+    }
+    let cmd = format!(
+        "mkdir -p '{}' && echo 'Welcome to DeepSeek Mobile! This is your Termux workspace.' > '{}/README.txt' && echo 'Workspace ready'",
+        path, path
+    );
+    bridge.enqueue_termux_command(deepseek_mobile_core::TermuxExecRequest {
+        request_id: "deepseek-termux-seed-v1".to_string(),
+        command: cmd,
+        working_dir: PathBuf::from("/data/data/com.termux/files/home"),
+        timeout_secs: Some(30),
+    });
+    true
+}

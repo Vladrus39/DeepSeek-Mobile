@@ -1131,21 +1131,35 @@ fn app() -> Element {
                     crate::native_host_runtime::replace(bridge.clone());
                 }),
                 EventHandler::new(move |_| {
+                    // "Grant & Auto-configure": set default path, trigger the permission dialog via probe,
+                    // and (after success) we will auto-run configure + seed in the result handler.
                     let mut bridge = setup_native_bridge.write();
-                    let termux = termux_signal();
-                    if !termux.saved {
-                        let mut draft = termux;
-                        draft.set_path(crate::setup_status::DEFAULT_TERMUX_PROJECT_PATH);
-                        draft.set_label("Termux Project");
-                        if draft.is_valid() {
-                            let _ = draft.save();
-                            termux_signal.set(draft);
+                    let mut termux = termux_signal();
+                    if !termux.saved || termux.workspace_path.trim().is_empty() {
+                        termux.set_path(crate::setup_status::DEFAULT_TERMUX_PROJECT_PATH);
+                        termux.set_label("Termux Project");
+                        if termux.is_valid() {
+                            let _ = termux.save();
+                            termux_signal.set(termux.clone());
                         }
                     }
                     termux_provisioning::enqueue_run_command_permission_probe(
                         &mut bridge,
-                        &termux_signal(),
+                        &termux,
                     );
+                    crate::native_host_runtime::replace(bridge.clone());
+                }),
+                // Auto-config Termux (writes allow-external-apps=true). Run after the probe succeeds.
+                EventHandler::new(move |_| {
+                    let mut bridge = setup_native_bridge.write();
+                    termux_provisioning::enqueue_configure_termux_properties(&mut bridge);
+                    crate::native_host_runtime::replace(bridge.clone());
+                }),
+                // Seed default workspace dir + welcome file (one-tap after Termux is ready).
+                EventHandler::new(move |_| {
+                    let path = setup_termux_draft();
+                    let mut bridge = setup_native_bridge.write();
+                    termux_provisioning::enqueue_seed_default_workspace(&mut bridge, &path);
                     crate::native_host_runtime::replace(bridge.clone());
                 }),
             )}

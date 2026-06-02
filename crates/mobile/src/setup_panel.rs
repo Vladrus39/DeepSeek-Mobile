@@ -16,6 +16,8 @@ pub fn setup_panel(
     on_install_termux: EventHandler<()>,
     on_open_termux: EventHandler<()>,
     on_probe_termux: EventHandler<()>,
+    on_configure_termux: EventHandler<()>,
+    on_seed_workspace: EventHandler<()>,
 ) -> Element {
     let layout = screen_layout();
     let card_style = centered_card_style(&layout);
@@ -103,6 +105,21 @@ pub fn setup_panel(
                             style: "flex:1 1 140px;box-sizing:border-box;background:#064e3b;color:#d1fae5;padding:10px 12px;border-radius:12px;border:1px solid #10b981;font-size:{layout.subtitle_font};min-height:44px;",
                             onclick: move |_| on_probe_termux.call(()),
                             "{tr(lang(), Tr::SetupProbeTermux)}"
+                        }
+                    }
+
+                    // Extra one-tap actions for "almost zero manual config" after the permission probe succeeds
+                    div {
+                        style: "display:flex;flex-wrap:wrap;gap:8px;",
+                        button {
+                            style: "flex:1 1 140px;box-sizing:border-box;background:#064e3b;color:#a7f3d0;padding:8px 10px;border-radius:12px;border:1px solid #10b981;font-size:{layout.subtitle_font};min-height:40px;",
+                            onclick: move |_| on_configure_termux.call(()),
+                            "Auto-config (allow-external-apps)"
+                        }
+                        button {
+                            style: "flex:1 1 140px;box-sizing:border-box;background:#1e40af;color:#bfdbfe;padding:8px 10px;border-radius:12px;border:1px solid #3b82f6;font-size:{layout.subtitle_font};min-height:40px;",
+                            onclick: move |_| on_seed_workspace.call(()),
+                            "Seed default workspace"
                         }
                     }
                 }

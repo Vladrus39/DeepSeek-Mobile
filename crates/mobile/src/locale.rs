@@ -76,16 +76,16 @@ pub fn tr(lang: AppLanguage, key: Tr) -> &'static str {
         (AppLanguage::Ru, Tr::SetupTermuxLabel) => "Путь проекта в Termux",
         (AppLanguage::En, Tr::SetupTermuxLabel) => "Termux project path",
         (AppLanguage::Ru, Tr::SetupTermuxHint) => {
-            "В Termux: mkdir -p ~/deepseek-project и allow-external-apps=true в ~/.termux/termux.properties"
+            "Мы поможем настроить автоматически. Нажмите «Проверить RUN_COMMAND», затем используйте кнопки ниже."
         }
         (AppLanguage::En, Tr::SetupTermuxHint) => {
-            "In Termux: mkdir -p ~/deepseek-project and allow-external-apps=true in ~/.termux/termux.properties"
+            "We'll help configure as much as possible automatically. Tap «Test RUN_COMMAND», then use the buttons below."
         }
         (AppLanguage::Ru, Tr::SetupTermuxSteps) => {
-            "1) Установите Termux (F-Droid) 2) В Termux: allow-external-apps=true 3) Нажмите «Проверить RUN_COMMAND»"
+            "1) Установите/откройте Termux 2) Нажмите «Проверить RUN_COMMAND» (даст разрешение) 3) «Auto-config» + «Seed workspace»"
         }
         (AppLanguage::En, Tr::SetupTermuxSteps) => {
-            "1) Install Termux (F-Droid) 2) In Termux: allow-external-apps=true 3) Tap «Test RUN_COMMAND»"
+            "1) Install/open Termux 2) Tap «Test RUN_COMMAND» (grants permission) 3) Use «Auto-config» + «Seed workspace»"
         }
         (AppLanguage::Ru, Tr::SetupInstallTermux) => "Установить Termux",
         (AppLanguage::En, Tr::SetupInstallTermux) => "Install Termux",
