@@ -89,6 +89,16 @@ pub fn setup_panel(
                         style: "color:#6b7280;font-size:{layout.subtitle_font};line-height:1.4;margin:0;",
                         "{tr(lang(), Tr::SetupTermuxSteps)}"
                     }
+
+                    // Visual guided steps for better UX
+                    div {
+                        style: "background:#1f2937;border:1px solid #374151;border-radius:12px;padding:8px;display:flex;flex-direction:column;gap:6px;",
+                        div { style: "font-size:12px;color:#9ca3af;", "Шаги (нажми одну кнопку ниже):" }
+                        div { style: "font-size:11px;color:#4ade80;", "1. Установи/открой Termux" }
+                        div { style: "font-size:11px;color:#4ade80;", "2. Нажми большую зелёную кнопку — даст разрешение + авто-настроит всё" }
+                        div { style: "font-size:11px;color:#60a5fa;", "3. После успеха — путь заполнится, можно Continue" }
+                    }
+
                     div {
                         style: "display:flex;flex-wrap:wrap;gap:8px;",
                         button {
@@ -102,24 +112,24 @@ pub fn setup_panel(
                             "{tr(lang(), Tr::SetupOpenTermux)}"
                         }
                         button {
-                            style: "flex:1 1 140px;box-sizing:border-box;background:#064e3b;color:#d1fae5;padding:10px 12px;border-radius:12px;border:1px solid #10b981;font-size:{layout.subtitle_font};min-height:44px;",
+                            style: "flex:2 1 200px;box-sizing:border-box;background:#064e3b;color:#d1fae5;padding:12px 14px;border-radius:12px;border:2px solid #10b981;font-size:{layout.subtitle_font};min-height:48px;font-weight:bold;",
                             onclick: move |_| on_probe_termux.call(()),
                             "{tr(lang(), Tr::SetupProbeTermux)}"
                         }
                     }
 
-                    // Extra one-tap actions for "almost zero manual config" after the permission probe succeeds
+                    // Extra buttons (still useful as fallback)
                     div {
-                        style: "display:flex;flex-wrap:wrap;gap:8px;",
+                        style: "display:flex;flex-wrap:wrap;gap:8px;opacity:0.9;",
                         button {
-                            style: "flex:1 1 140px;box-sizing:border-box;background:#064e3b;color:#a7f3d0;padding:8px 10px;border-radius:12px;border:1px solid #10b981;font-size:{layout.subtitle_font};min-height:40px;",
+                            style: "flex:1 1 140px;box-sizing:border-box;background:#064e3b;color:#a7f3d0;padding:8px 10px;border-radius:12px;border:1px solid #10b981;font-size:{layout.subtitle_font};min-height:38px;",
                             onclick: move |_| on_configure_termux.call(()),
-                            "Auto-config (allow-external-apps)"
+                            "Auto-config properties"
                         }
                         button {
-                            style: "flex:1 1 140px;box-sizing:border-box;background:#1e40af;color:#bfdbfe;padding:8px 10px;border-radius:12px;border:1px solid #3b82f6;font-size:{layout.subtitle_font};min-height:40px;",
+                            style: "flex:1 1 140px;box-sizing:border-box;background:#1e40af;color:#bfdbfe;padding:8px 10px;border-radius:12px;border:1px solid #3b82f6;font-size:{layout.subtitle_font};min-height:38px;",
                             onclick: move |_| on_seed_workspace.call(()),
-                            "Seed default workspace"
+                            "Seed workspace"
                         }
                     }
                 }

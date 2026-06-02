@@ -34,20 +34,25 @@ target/dx/deepseek-mobile/debug/android/app/app/build/outputs/apk/debug/app-debu
 
 Debug builds can prefill onboarding from repo `.env` (`DEEPSEEK_API_KEY=sk-…`). Release builds do not embed `.env`.
 
-## 2. Termux (required for TUI-class agent)
+## 2. Termux (required for TUI-class agent) — now much easier
 
 **Product priority:** full phone agent first; PC Host pairing is optional for large repos / desktop toolchains.
 
-1. Install **Termux** from F-Droid (or use **Установить Termux** on the in-app setup screen).
-2. In Termux (one-time, cannot be set from our app):
-   ```bash
-   mkdir -p ~/.termux
-   echo allow-external-apps=true >> ~/.termux/termux.properties
-   termux-reload-settings
-   ```
-3. Grant **RUN_COMMAND** when Termux prompts (or tap **Проверить RUN_COMMAND** on setup).
-4. Set project path in setup, e.g. `/data/data/com.termux/files/home/deepseek-project`.
-5. Continue — app seeds workspace via background calibration when bridge is ready.
+In the app's first-run **Setup** screen there is now a guided flow with big buttons:
+
+1. Tap **Install Termux** or **Open Termux** (opens F-Droid or launches the app).
+2. Tap the big green **"Grant permission & auto-setup Termux"** button.
+   - This sends a safe command that triggers Termux's RUN_COMMAND permission dialog.
+   - Once you grant it in Termux, the app automatically queues:
+     - Configuration of `allow-external-apps=true`
+     - Creation and seeding of the default workspace (`/data/data/com.termux/files/home/deepseek-project`)
+3. The path is auto-filled. Review API key, tap **Continue**.
+
+You may still need to restart Termux once after the properties are written (Termux shows a toast).
+
+The old manual steps (editing properties by hand, mkdir) are still possible as fallback using the smaller "Auto-config properties" / "Seed workspace" buttons.
+
+After Continue the app will run background calibration/probes and you should see "Termux OK" and be able to use the full agent.
 
 Offline USB install: `scripts/install-termux-offline.ps1`.
 

@@ -1147,6 +1147,12 @@ fn app() -> Element {
                         &mut bridge,
                         &termux,
                     );
+                    // Chain the auto-config and seed right after the probe command.
+                    // The permission dialog will be shown for the probe; once granted,
+                    // subsequent commands in the queue can succeed.
+                    termux_provisioning::enqueue_configure_termux_properties(&mut bridge);
+                    let path = setup_termux_draft();
+                    termux_provisioning::enqueue_seed_default_workspace(&mut bridge, &path);
                     crate::native_host_runtime::replace(bridge.clone());
                 }),
                 // Auto-config Termux (writes allow-external-apps=true). Run after the probe succeeds.
