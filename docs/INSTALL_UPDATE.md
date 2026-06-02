@@ -124,20 +124,36 @@ Details: [`PC_HOST_E2E.md`](./PC_HOST_E2E.md) (security model, trusted-path gran
 
 ## GitHub Releases (signed APK, optional)
 
-1. Copy `android/keystore.properties.example` to `android/keystore.properties` and create a release keystore (keep secrets out of git).
-2. Build and copy to `dist/`:
+**Important distinction:**
 
-```powershell
-.\scripts\build-release-apk.ps1
-```
+- **Dev signing** (what is currently configured): uses your Android debug keystore. Convenient because "release" APKs can be installed over previous debug builds on your test devices (same signature). See current `android/keystore.properties`.
 
-3. Publish (requires `gh auth login`):
+- **По-настоящему (production signing)**: use a separate, long-lived release keystore generated with `keytool`. This is required for:
+  - Consistent signature for all users (so in-app updates work reliably).
+  - Google Play (if you ever publish AAB).
+  - "Official" releases.
 
-```powershell
-.\scripts\publish-github-release.ps1 -NotesFile RELEASE_NOTES.md
-```
+1. For production signing:
+   - Generate once (keep the `.keystore` file very safe, never commit it):
+     ```powershell
+     keytool -genkey -v -keystore release.keystore -alias deepseek-mobile -keyalg RSA -keysize 2048 -validity 10000
+     ```
+   - Copy `android/keystore.properties.example` → `android/keystore.properties` and fill in the real paths/passwords (this file is gitignored).
 
-CI also builds on tag push `v*` (`.github/workflows/release.yml`) when repository secrets `ANDROID_KEYSTORE_*` are set.
+2. Build the signed APK:
+   ```powershell
+   .\scripts\build-release-apk.ps1
+   ```
+   (Do **not** pass `-AllowUnsigned`.)
+
+3. Publish to GitHub Releases (requires `gh auth login`):
+   ```powershell
+   .\scripts\publish-github-release.ps1 -NotesFile RELEASE_NOTES.md
+   ```
+
+See the updated comments inside `android/keystore.properties.example` for both dev and production examples.
+
+CI also builds on tag push `v*` (`.github/workflows/release.yml`) when repository secrets `ANDROID_KEYSTORE_*` are set (it reconstructs the properties + keystore file from secrets).
 
 **Windows firewall (PC Host LAN):** run from repo root, not `C:\Windows\System32`:
 

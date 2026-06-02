@@ -23,7 +23,7 @@ Automated probes run from repo root with USB debugging enabled.
 
 - **Release:** [v0.1.1](https://github.com/Vladrus39/DeepSeek-Mobile/releases/tag/v0.1.1) — asset `deepseek-mobile-0.1.1.apk`
 - **In-app:** Settings → App update (works when installed version &lt; 0.1.1)
-- **Dev signing:** release APK signed with standard Android debug keystore so it can upgrade debug installs
+- **Dev signing:** release APK is currently signed with the standard Android debug keystore (see android/keystore.properties). This allows easy upgrades over debug installs during development. For real production signing ("по-настоящему") see docs/INSTALL_UPDATE.md.
 
 ## Chat → Files
 
