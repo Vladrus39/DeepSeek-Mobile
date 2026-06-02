@@ -18,9 +18,14 @@ $ErrorActionPreference = "Stop"
 $ProjectRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 Set-Location $ProjectRoot
 
-$version = (Select-String -Path "crates\mobile\Cargo.toml" -Pattern '^version = "([^"]+)"' |
+$version = (Select-String -Path "Cargo.toml" -Pattern '^version = "([^"]+)"' |
     ForEach-Object { $_.Matches.Groups[1].Value } | Select-Object -First 1)
-if (-not $version) { throw "Could not read version from crates/mobile/Cargo.toml" }
+if (-not $version) {
+    # fallback for workspace version
+    $version = (Select-String -Path "crates\mobile\Cargo.toml" -Pattern 'version\.workspace = true' -Context 0,5 |
+        Out-String | Select-String -Pattern 'version = "([^"]+)"' | ForEach-Object { $_.Matches.Groups[1].Value } | Select-Object -First 1)
+}
+if (-not $version) { throw "Could not read version from workspace Cargo.toml" }
 if (-not $Tag) { $Tag = "v$version" }
 
 $buildScript = Join-Path $ProjectRoot "scripts\build-release-apk.ps1"
