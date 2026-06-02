@@ -17,7 +17,7 @@ Verified locally:
 - `cargo +stable-x86_64-pc-windows-msvc test --workspace` — passes.
 - `dx build --android --package deepseek-mobile --device RFCNC0PWD4E --verbose` — passes.
 - APK installs and launches on Samsung `SM_G781B` / serial `RFCNC0PWD4E`.
-- Android UI renders on device. Latest hardware smoke test reaches the setup screen with API/Agent ready and Termux path still pending; with completed setup it opens the main cockpit with `API OK`.
+- Android UI renders on device. Guided setup with visual steps + one-tap "Grant permission & auto-setup Termux" that chains permission + auto config properties + workspace seed. Much less manual work. With completed setup it opens the main cockpit with `API OK`.
 - Custom Android icon/adaptive launcher icon is included.
 - **Signed release APK** `dist/deepseek-mobile-0.1.2.apk` (v0.1.2) built via `scripts/build-release-apk.ps1`; chat rollback, expandable work log, file links, snapshots refresh — see `RELEASE_NOTES.md`.
 - **Live in-app full-agent run on device:** the phone agent created complete Termux projects from chat — a Fibonacci demo and a calculator with assert-based tests — ran them (real differentiated output, e.g. `add(10,5)=15 … divide(10,5)=2.0`), and `git init`/committed each project. Termux's home is app-private (not adb-readable, and Android scoped storage blocks Termux writes to `/sdcard`), so the created files are confirmed through the app's Termux view rather than an external adb dump.

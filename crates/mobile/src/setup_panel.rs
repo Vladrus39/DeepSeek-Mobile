@@ -18,6 +18,8 @@ pub fn setup_panel(
     on_probe_termux: EventHandler<()>,
     on_configure_termux: EventHandler<()>,
     on_seed_workspace: EventHandler<()>,
+    mut setup_wizard_step: Signal<u8>,
+    on_advance_wizard_step: EventHandler<u8>,
 ) -> Element {
     let layout = screen_layout();
     let card_style = centered_card_style(&layout);
@@ -43,6 +45,24 @@ pub fn setup_panel(
                             let _ = crate::locale::save_ui_language(next);
                         },
                         "{lang().label()}"
+                    }
+                }
+
+                // Wizard stepper for more guided experience
+                div {
+                    style: "display:flex;gap:8px;margin-bottom:8px;",
+                    div {
+                        style: if setup_wizard_step() == 0 { "background:#3b82f6;color:white;padding:4px 12px;border-radius:999px;font-size:12px;" } else { "background:#374151;color:#9ca3af;padding:4px 12px;border-radius:999px;font-size:12px;" },
+                        "1. API & Mode"
+                    }
+                    div {
+                        style: if setup_wizard_step() == 1 { "background:#10b981;color:white;padding:4px 12px;border-radius:999px;font-size:12px;" } else { "background:#374151;color:#9ca3af;padding:4px 12px;border-radius:999px;font-size:12px;" },
+                        "2. Termux Setup (guided)"
+                    }
+                    button {
+                        style: "font-size:11px;background:#1f2937;color:#e5e7eb;border:1px solid #4b5563;border-radius:8px;padding:2px 8px;",
+                        onclick: move |_| on_advance_wizard_step.call( if setup_wizard_step() < 1 { 1u8 } else { 0u8 } ),
+                        "Toggle Step"
                     }
                 }
 

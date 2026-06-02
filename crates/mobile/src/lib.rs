@@ -398,6 +398,8 @@ fn app() -> Element {
     let setup_termux_draft =
         use_signal(|| initial_termux_path_draft(&TermuxWorkspaceState::default()));
     let mut setup_error = use_signal(|| None::<String>);
+    // Wizard step for setup: 0 = API + mode, 1 = Termux guided setup (with visual steps), 2 = ready to continue
+    let mut setup_wizard_step = use_signal(|| 0u8);
 
     // Route native bridge terminal events into terminal UI state
     let terminal_event_bridge = native_bridge;
@@ -624,6 +626,20 @@ fn app() -> Element {
                         &mut next_timeline,
                         &AgentEvent::Status("Termux OK (фоновая проверка).".to_string()),
                     );
+                    // Auto-trigger configure + seed if we are still in the initial onboarding provisioning flow.
+                    // This ensures that even if queue chaining was not used, after successful probe (permission granted)
+                    // we auto-config properties and seed the workspace.
+                    if termux_provisioning::is_onboarding_provision_pending() {
+                        let mut b = termux_continuation_bridge();
+                        termux_provisioning::enqueue_configure_termux_properties(&mut b);
+                        termux_provisioning::enqueue_seed_default_workspace(
+                            &mut b,
+                            crate::setup_status::DEFAULT_TERMUX_PROJECT_PATH,
+                        );
+                        crate::native_host_runtime::replace(b.clone());
+                        // Clear so we don't repeat
+                        termux_provisioning::clear_onboarding_provision();
+                    }
                 } else {
                     push_agent_event(
                         &mut next_timeline,
@@ -1078,6 +1094,7 @@ fn app() -> Element {
                             if termux_ready {
                                 termux_provisioning::on_setup_saved_termux_path();
                             }
+                            setup_wizard_step.set(2);
                             setup_complete.set(true);
                         }
                         Err(code) => {
@@ -1108,6 +1125,7 @@ fn app() -> Element {
                             settings_signal.set(settings);
                             termux_signal.set(termux);
                             setup_error.set(None);
+                            setup_wizard_step.set(2);
                             setup_complete.set(true);
                         }
                         Err(code) => {
@@ -1167,6 +1185,10 @@ fn app() -> Element {
                     let mut bridge = setup_native_bridge.write();
                     termux_provisioning::enqueue_seed_default_workspace(&mut bridge, &path);
                     crate::native_host_runtime::replace(bridge.clone());
+                }),
+                setup_wizard_step,
+                EventHandler::new(move |step: u8| {
+                    setup_wizard_step.set(step);
                 }),
             )}
         };
