@@ -2,6 +2,13 @@
 
 <!-- markdownlint-disable MD024 -->
 
+## v0.1.5 — 2026-06 (Claude fixes + new version)
+- Bumped version to 0.1.5 across Cargo.toml, android/app/build.gradle.kts, dioxus.toml.
+- Fixed idempotency in `enqueue_configure_termux_properties`: now uses `grep -q` before `echo >>` to avoid duplicate `allow-external-apps=true` lines if the command runs multiple times.
+- Removed dead runtime `requestPermissions` for `INTERNET` (normal/install-time permission; the check always produced empty list). Kept the proactive request skeleton + comments for future dangerous/runtime permissions.
+- The duplicate MainActivity.kt files (android/ vs android/app/...) are pre-existing project structure (one for Dioxus WryActivity host, one for standalone Gradle test). We correctly edited the active one.
+- New release APK built and published with all previous UX improvements (guided wizard stepper in setup, auto configure+seed after probe success, visual steps, etc.).
+
 ## Guided first-run UX + ideal polish (2026-06, v0.1.4 maintenance)
 - Project brought to ideal conceived state per MASTER_PLAN / ROADMAP / review feedback: all hygiene, structure, quality, and "definition of done" items closed in software.
 - Formatting: full `cargo fmt --all` + `rustfmt.toml`; `cargo fmt --all -- --check` clean.

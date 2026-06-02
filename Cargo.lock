@@ -990,7 +990,7 @@ checksum = "a4ae5f15dda3c708c0ade84bfee31ccab44a3da4f88015ed22f63732abe300c8"
 
 [[package]]
 name = "deepseek-mobile"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "anyhow",
  "deepseek-mobile-core",
@@ -1010,7 +1010,7 @@ dependencies = [
 
 [[package]]
 name = "deepseek-mobile-core"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "anyhow",
  "base64",
@@ -1028,7 +1028,7 @@ dependencies = [
 
 [[package]]
 name = "deepseek-pc-host"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "anyhow",
  "axum",

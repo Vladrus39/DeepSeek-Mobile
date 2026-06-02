@@ -56,17 +56,23 @@ class MainActivity : WryActivity(), NativeBridgeBindings {
         NativeBridge.initMobileDataDir(dataDir.absolutePath)
         super.onCreate(savedInstanceState)
 
-        // Proactively request any standard runtime permissions early so the user
-        // sees the system dialogs as soon as possible after first launch.
-        // Note: com.termux.permission.RUN_COMMAND is special — Termux itself shows
-        // the allow dialog the first time we send a RUN_COMMAND intent (we trigger
-        // it from the setup "Test RUN_COMMAND" button + provisioning probe).
+        // Proactively request any DANGEROUS runtime permissions early.
+        // Note: INTERNET, ACCESS_NETWORK_STATE etc. are normal/install-time permissions
+        // declared in the manifest — they do not need (and cannot be) requested via
+        // requestPermissions() at runtime. That would produce dead code (empty list).
+        // com.termux.permission.RUN_COMMAND is a custom permission; Termux itself shows
+        // the allow dialog the first time we send a RUN_COMMAND intent (triggered from
+        // our setup "Test RUN_COMMAND" / provisioning probe).
+        // REQUEST_INSTALL_PACKAGES for unknown-sources install is handled via
+        // ACTION_MANAGE_UNKNOWN_APP_SOURCES in the host coordinator when needed.
+        //
+        // Skeleton left here for any future dangerous permissions we may declare.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             val toRequest = mutableListOf<String>()
-            if (checkSelfPermission(android.Manifest.permission.INTERNET) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-                toRequest += android.Manifest.permission.INTERNET
-            }
-            // Add other runtime permissions here if we declare more dangerous ones in the future.
+            // Example for future:
+            // if (checkSelfPermission(android.Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+            //     toRequest += android.Manifest.permission.CAMERA
+            // }
             if (toRequest.isNotEmpty()) {
                 requestPermissions(toRequest.toTypedArray(), 1001)
             }

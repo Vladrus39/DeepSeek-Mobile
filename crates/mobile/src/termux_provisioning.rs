@@ -83,8 +83,8 @@ pub fn enqueue_configure_termux_properties(bridge: &mut NativeBridgeState) -> bo
         return false;
     }
     let workdir = "/data/data/com.termux/files/home".to_string();
-    // Create the properties file with the needed setting if it doesn't exist or append
-    let cmd = "mkdir -p ~/.termux && echo 'allow-external-apps=true' >> ~/.termux/termux.properties && echo 'allow-external-apps set (restart Termux to apply)'";
+    // Idempotent: check with grep before appending to avoid duplicate lines if called multiple times.
+    let cmd = "mkdir -p ~/.termux && grep -q '^allow-external-apps=true$' ~/.termux/termux.properties || echo 'allow-external-apps=true' >> ~/.termux/termux.properties && echo 'allow-external-apps set (restart Termux to apply)'";
     bridge.enqueue_termux_command(deepseek_mobile_core::TermuxExecRequest {
         request_id: "deepseek-termux-config-v1".to_string(),
         command: cmd.to_string(),
