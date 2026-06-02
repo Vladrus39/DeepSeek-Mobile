@@ -2,14 +2,15 @@
 
 <!-- markdownlint-disable MD024 -->
 
-## Ideal polish (2026-06, v0.1.4 maintenance)
+## Guided first-run UX + ideal polish (2026-06, v0.1.4 maintenance)
 - Project brought to ideal conceived state per MASTER_PLAN / ROADMAP / review feedback: all hygiene, structure, quality, and "definition of done" items closed in software.
 - Formatting: full `cargo fmt --all` + `rustfmt.toml`; `cargo fmt --all -- --check` clean.
 - .gitattributes added for consistent LF (Rust/Kotlin) / CRLF (bat) across Windows dev + Linux CI + device.
 - Android hygiene: bridge/ is now unambiguous single source (stale duplicate NativeBridge/TermuxResultReceiver removed from app/ module; versions/comments/docs synced; settings.gradle.kts clarified dual :app/:bridge purpose).
 - Code quality: dozens of clippy fixes (derivable Default + #[default], is_some_and, needless ?, sort_by_key, identical ifs, needless borrow, field reassign, etc.). Added minimal allows + crate docs for remaining pedantic style lints. Production error paths already robust.
 - Verification: `cargo check --workspace --all-targets` + `cargo test --workspace` green after all changes.
-- Docs refreshed (CURRENT_STATE, PROGRESS, TROUBLESHOOTING, CAPABILITY, PROJECT_STATUS, this file) declaring software at ideal working state as designed (phone-first Termux agent with full native Android integration, approvals, snapshots, MCP/skills, PC optional, E2E contracts wired).
+- Docs refreshed (CURRENT_STATE, PROGRESS, TROUBLESHOOTING, CAPABILITY, PROJECT_STATUS, DEVICE_SETUP, this file) declaring software at ideal working state as designed (phone-first Termux agent with full native Android integration, approvals, snapshots, MCP/skills, PC optional, E2E contracts wired).
+- **Big UX improvement for first run:** Setup screen now features a clear visual steps guide + one prominent "Grant permission & auto-setup Termux" button. Tapping it chains the RUN_COMMAND permission probe + automatic `allow-external-apps` config + default workspace seeding. Much closer to "install the APK and enjoy the full agent with minimal manual Termux steps". Early runtime permissions requested on app start. Fallback buttons remain. Updated flow documented.
 - No behavior change for users; pure maintainability + "ideal" alignment pass. Next user-visible would be new features or PC bundle.
 
 ## v0.1.4 — 2026-05-30
