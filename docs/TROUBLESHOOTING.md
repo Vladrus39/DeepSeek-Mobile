@@ -106,13 +106,19 @@ The activity must handle the full config-change set, including `assetsPaths`.
 
 ### `cargo fmt --all --check` fails
 
-The workspace currently has pre-existing formatting differences unrelated to this Android checkpoint. For targeted verification of touched Rust files, use:
+The workspace is kept fully formatted (`cargo fmt --all`). If check fails:
 
 ```powershell
-rustfmt --edition 2021 --config skip_children=true --check .\crates\mobile\src\android_plugin.rs .\crates\mobile\src\host_loop.rs .\crates\mobile\src\jni_bridge.rs .\crates\mobile\src\lib.rs
+cargo fmt --all
 ```
 
-Only run `cargo fmt --all` when intentionally accepting a broad formatting-only diff.
+Then verify:
+```powershell
+cargo fmt --all -- --check
+cargo +stable-x86_64-pc-windows-msvc check --workspace --all-targets
+```
+
+A `rustfmt.toml` is present to make the style explicit and stable. Historical checkpoints before the normalization pass used targeted rustfmt only.
 
 ## Android host integration
 

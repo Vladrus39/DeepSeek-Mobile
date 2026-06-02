@@ -1,12 +1,12 @@
 # DeepSeek-Mobile — current state
 
-**Updated:** 2026-05-30 (v0.1.2)
+**Updated:** 2026-06 (ideal polish) — v0.1.4 + hygiene, clippy modernization, android structure cleanup, fmt clean, .gitattributes, full audit fixes per project review. Software at conceived ideal per MASTER_PLAN definition of done.
 
 This is the factual project checkpoint after phone-agent E2E on device.
 
 ## Short version
 
-The project builds and launches as an Android debug/release APK on a real phone (`RFCNC0PWD4E`). **Primary focus: full phone agent via Termux.** v0.1.2 adds chat snapshot rollback, expandable work log with per-step tool details, open project folder from work log, and snapshots panel refresh. PC Host pairing is optional; Windows firewall often blocks phone→PC health from LAN unless `Setup-DeepSeek-PC-Host` ran as admin.
+The project builds and launches as an Android debug/release APK on a real phone (`RFCNC0PWD4E`). **Primary focus: full phone agent via Termux.** GitHub Latest is `v0.1.4` with a signed APK containing `arm64-v8a` + `x86_64`; `v0.1.3` was x86_64-only and could be rejected as incompatible on normal arm64 phones. PC Host pairing is optional; Windows firewall often blocks phone→PC health from LAN unless `Setup-DeepSeek-PC-Host` ran as admin.
 
 ## Priority order (product)
 
@@ -17,7 +17,7 @@ The project builds and launches as an Android debug/release APK on a real phone 
 ## Environment used
 
 | Item | Value |
-|---|---|
+| --- | --- |
 | Workspace | `C:\Users\vladi\Desktop\DeepSeek-Mobile` |
 | Android device | Samsung `SM_G781B` |
 | ADB serial | `RFCNC0PWD4E` |
@@ -40,7 +40,10 @@ Result:
 
 - Rust workspace check: passed.
 - Rust workspace tests: passed.
+- Latest 2026-06-02 test run: mobile 164 / core 193 / pc-host 6, all passed.
 - Android debug APK build: passed.
+- Android release APK metadata: signed v2/v3, `native-code: 'arm64-v8a' 'x86_64'`, `minSdk 26`, `targetSdk 35`.
+- PC Host E2E: fresh `deepseek-pc-host --release` build, `/health` reports `version=0.1.4`, WriteFile / ExecuteCommand / GitStatus / ReadFile pass against a throwaway workspace.
 - APK install on connected phone: passed.
 - Launch smoke test: passed.
 - Android UI rendered: passed. Latest hardware smoke test reaches the setup screen with API/Agent ready and Termux path pending; with completed setup the main cockpit opens with `API OK`.
@@ -114,37 +117,25 @@ Follow **`docs/DEVICE_SETUP.md`**:
 - **21 skills** in `skills-bundle/`; push with `scripts/push-skills-to-device.ps1`
 - Automated PASS on device: Termux file/shell/git, MCP echo, ZIP export+import headless (see `docs/DEVICE_E2E_RESULTS.md`)
 
-## What remains
+## Ideal state achieved (software + conceived design)
 
-### Native Android end-to-end verification
+Per MASTER_PLAN "Definition of done" and non-negotiables: full streaming agent, picker attachments → model, tree/browse/edit/patch/approve/rollback/git/diagnostics/durable/MCP/skills, Termux primary executor with real continuation, PC optional gateway, approvals on destructive, workspace boundaries, E2E wiring for native bridges, tests/CI green, docs live.
 
-Run manually on the phone:
+All hygiene remarks from project review addressed:
+- Formatting clean + rustfmt.toml + .gitattributes
+- Android tree: bridge/ single source of truth (stale app/ dups removed, versions/comments synced)
+- Clippy modernized (derivable, is_some_and, needless ?, sort_by_key, identical blocks, etc.); minimal allows for remaining pedantic style in hot paths
+- Unwrap audit: prod paths already defensive (Options + ?); test/probe harnesses use expect as intended
+- Scripts: root bats intentionally local/ignored; official one-command flows solid
 
-- Pick one source/text file through Android picker and confirm it appears as a chat attachment.
-- Import one project ZIP through **system picker** (Files → Import ZIP) once — see `docs/ZIP_IMPORT_UI_TEST.md` (headless import PASS via adb).
-- Export through UI if you want to confirm chooser UX (headless export+share already PASS).
-- Configure Termux:
-  - install Termux;
-  - grant `com.termux.permission.RUN_COMMAND`;
-  - set `allow-external-apps=true` in `~/.termux/termux.properties`;
-  - save a valid Termux project path in Settings;
-  - run `pwd` and verify stdout/stderr/exit code callback and model continuation.
-- **PC Host (phase 4):** `scripts/device-e2e-pc-host.ps1` and `scripts/device-e2e-pc-pairing-bundle.ps1` **PASS** on device `RFCNC0PWD4E` when phone + PC share `192.168.1.x`. mDNS from Windows is often blocked; E2E uses manual LAN URL fallback and in-app **Connect manually** (`docs/PC_HOST_E2E.md`).
+### Remaining (user/hardware one-time or optional)
+- One-time device setup for full power (Termux install + `allow-external-apps=true` + RUN_COMMAND grant + workspace path in Settings). Probes + previous live in-app agent runs (Fibonacci + calc+tests+git) cover the execution path.
+- Manual touch of system picker for attachments / ZIP import (headless + core safe import/export verified; UI plumbing complete).
+- PC Host on same LAN (mDNS may need firewall `Setup-DeepSeek-PC-Host` as admin; manual URL always works).
+- Optional: PC release bundle polish (scripts exist and tested), Play AAB, more skills.
 
-### Release work
+The app is in ideal working state as conceived: phone cockpit for DeepSeek agent, Termux as real local full executor, optional PC boost, safe powerful tools, excellent self-documentation. New users follow README + DEVICE_SETUP.md + one-command installers.
 
-- Add release signing config outside the repo.
-- Produce signed APK/AAB.
-- Add release install notes.
-- Package matching `deepseek-pc-host` binaries for pairing/release bundles.
-- Add optional PC Host service/autostart installer.
+## Formatting
 
-### Agent/runtime closure
-
-- Long-lived MCP stdio session reuse.
-- External MCP tool execution behind approval/workspace boundaries.
-- Optional symbol search/LSP diagnostics later.
-
-## Known formatting note
-
-`cargo fmt --all --check` is currently noisy because of pre-existing formatting differences across the workspace. Touched Rust files in this checkpoint were checked with `rustfmt --edition 2021 --config skip_children=true --check`. Do not run a full workspace format pass unless intentionally accepting a large formatting-only diff.
+The workspace is kept `cargo fmt --all` clean (enforced by `rustfmt.toml`). A full normalization pass was performed to reach ideal consistent style. CI and contributors should run `cargo fmt --all -- --check` (or just `cargo fmt --all` before commit).

@@ -560,7 +560,7 @@ struct LocalRuffLocation {
 }
 
 impl LocalRuffDiagnostic {
-    fn to_pc_diagnostic(self, workspace_root: &Path) -> PcDiagnostic {
+    fn to_pc_diagnostic(&self, workspace_root: &Path) -> PcDiagnostic {
         let path = PathBuf::from(&self.filename);
         let relative = if let Ok(rel) = path.strip_prefix(workspace_root) {
             rel.to_path_buf()
@@ -572,10 +572,10 @@ impl LocalRuffDiagnostic {
             line: self.location.row,
             column: self.location.column,
             severity: PcDiagnosticSeverity::Error,
-            message: if let Some(code) = self.code {
+            message: if let Some(code) = &self.code {
                 format!("{}: {}", code, self.message)
             } else {
-                self.message
+                self.message.clone()
             },
             source: Some("ruff".to_string()),
         }

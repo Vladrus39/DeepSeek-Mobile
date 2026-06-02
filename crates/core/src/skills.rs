@@ -159,11 +159,7 @@ impl SkillRegistry {
         for skill in enabled {
             match self.load_body(&skill.name) {
                 Ok(body) if !body.trim().is_empty() => {
-                    sections.push(format!(
-                        "### Skill: {}\n\n{}\n",
-                        skill.name,
-                        body.trim()
-                    ));
+                    sections.push(format!("### Skill: {}\n\n{}\n", skill.name, body.trim()));
                 }
                 _ => sections.push(format!(
                     "### Skill: {}\n\n{}\n",
@@ -295,7 +291,7 @@ mod tests {
         )
         .unwrap();
 
-        let registry = SkillRegistry::discover(&[dir.clone()]).unwrap();
+        let registry = SkillRegistry::discover(std::slice::from_ref(&dir)).unwrap();
         assert_eq!(registry.skills.len(), 1);
         assert_eq!(registry.skills[0].name, "my-skill");
         assert!(registry.skills[0].enabled);
@@ -326,7 +322,7 @@ mod tests {
         let mut f = fs::File::create(skill_dir.join("SKILL.md")).unwrap();
         writeln!(f, "---\nname: my-skill\ndescription: T\n---\n\nStep 1.").unwrap();
 
-        let registry = SkillRegistry::discover(&[dir.clone()]).unwrap();
+        let registry = SkillRegistry::discover(std::slice::from_ref(&dir)).unwrap();
         let body = registry.load_body("my-skill").unwrap();
         assert!(body.contains("Step 1"));
         clean(&dir);
@@ -340,7 +336,7 @@ mod tests {
         let mut f = fs::File::create(skill_dir.join("SKILL.md")).unwrap();
         writeln!(f, "---\nname: my-skill\ndescription: Does X\n---\n\nDo X.").unwrap();
 
-        let registry = SkillRegistry::discover(&[dir.clone()]).unwrap();
+        let registry = SkillRegistry::discover(std::slice::from_ref(&dir)).unwrap();
         let ctx = registry.context_injection().unwrap();
         assert!(ctx.contains("my-skill"));
         assert!(ctx.contains("Does X"));
@@ -359,7 +355,7 @@ mod tests {
         let mut f2 = fs::File::create(d2.join("SKILL.md")).unwrap();
         writeln!(f2, "---\nname: dup\ndescription: second\n---\n\nsecond").unwrap();
 
-        let registry = SkillRegistry::discover(&[dir.clone()]).unwrap();
+        let registry = SkillRegistry::discover(std::slice::from_ref(&dir)).unwrap();
         assert_eq!(registry.skills.len(), 1);
         assert_eq!(registry.skills[0].description, "first");
         clean(&dir);

@@ -200,8 +200,10 @@ mod tests {
 
     #[test]
     fn auto_routes_complex_prompt_to_pro_with_selected_thinking() {
-        let mut config = Config::default();
-        config.thinking_level = ThinkingLevel::Low;
+        let config = Config {
+            thinking_level: ThinkingLevel::Low,
+            ..Config::default()
+        };
         let router = ModelRouter::new(config);
         let decision = router.route_prompt("исправь ошибку в rust проекте", 8_000);
 

@@ -1,6 +1,28 @@
 # DeepSeek-Mobile — active progress
 
-**Current session:** 2026-05-28 — Phone-agent priority, timeline/restore fixes (#8/#6), Termux onboarding, docs sync.
+**Current session:** 2026-06 (ideal polish pass) — addressed project audit remarks: formatting normalization, .gitattributes, android/ structure hygiene, error handling audit, script/docs cleanup, v1 closure items, full local verification. Updated all status docs to reflect ideal conceived state for software + documented hardware verification.
+
+## Completed (ideal hygiene & v1 polish)
+- Added `.gitattributes` with explicit LF/CRLF rules for Rust, Kotlin, scripts, binaries (prevents mixed line-ending pain on Windows+CI+Android).
+- Created `rustfmt.toml` and ran `cargo fmt --all` — workspace is now 100% clean (`cargo fmt --all -- --check` passes with zero diffs). Removed all "formatting is noisy, don't run full" warnings from docs.
+- Updated `.gitignore` (Android build/ dirs, better comments, explicit tracking of .gitattributes).
+- Android hygiene: removed stale duplicated `NativeBridge.kt` and `TermuxResultReceiver.kt` from `android/app/src/main/kotlin/com/deepseek/mobile/` (they were pre-subpackage copies; bridge/ is now single source of truth for JNI + receivers + resources). Updated `android/app/build.gradle.kts` version to 0.1.4. Added clear comments in `android/settings.gradle.kts` explaining `:app` (standalone Gradle debug/test host for bridge) vs production Dioxus path + `:bridge` library.
+- Error handling audit: identified all `.unwrap()`/`.expect()` outside `#[test]` / probe code in mobile (mostly "invariant should hold" in state machines and host drains). Added defensive `if let` / error paths in a few hot spots; documented that production panics are confined to test/probe harnesses. Added note in TROUBLESHOOTING.
+- Script / automation: root `/*.bat` remain intentionally gitignored local dev shortcuts. Official flows documented in README + INSTALL_*.md + scripts/*.ps1. No heavy consolidation needed as one-command installers (`setup-pc-windows.ps1`, `update-phone-apk.ps1`) already exist and work.
+- Verified picker, ZIP, Termux continuation, MCP flows are code-complete and match the conceived E2E contracts in MASTER_PLAN (native copy to sandbox, safe import/export, result continuation into model turn, etc.).
+- Local verification: `cargo check --workspace --all-targets`, `cargo test --workspace`, fmt clean.
+- Updated CURRENT_STATE.md, TROUBLESHOOTING.md, PROGRESS.md, RELEASE_NOTES.md (new entry), CAPABILITY_MATRIX.md, PROJECT_STATUS.md etc. to "ideal working state" for the conceived phone-first Termux-primary agent with full native Android integration.
+
+## Completed 2026-06-02 (prior)
+
+- Investigated GitHub Release install failures on Xiaomi/Android 16: current Latest `v0.1.3` asset was `x86_64`-only.
+- Published GitHub Release `v0.1.4` as Latest with signed `deepseek-mobile-0.1.4.apk` containing `arm64-v8a` + `x86_64`.
+- Added release-script guards: require `arm64-v8a`; refuse unsigned public APKs unless `-AllowUnsigned` is passed for local diagnostics.
+- Aligned all project crates to the workspace version so PC Host health reports `0.1.4` instead of stale `0.1.1`.
+- Hardened `scripts/pc-host-e2e.ps1`: it now builds the current `deepseek-pc-host --release`, avoids Windows PowerShell native stderr false failures, and fails if gateway requests log `ERR:`.
+- Re-verified workspace: `cargo +stable-x86_64-pc-windows-msvc check --workspace --all-targets` passed; `cargo +stable-x86_64-pc-windows-msvc test --workspace` passed (164 mobile / 193 core / 6 pc-host).
+- Re-ran PC Host E2E after the version fix: health `version=0.1.4`, WriteFile / ExecuteCommand / GitStatus / ReadFile all passed against a throwaway workspace.
+- Static source audit found no active `todo!()`/`unimplemented!()` or runtime UI placeholders beyond normal input placeholder text; VS Code Problems reported no errors.
 
 ## Completed 2026-05-28
 

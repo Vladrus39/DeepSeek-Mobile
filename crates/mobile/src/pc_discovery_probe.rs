@@ -211,9 +211,11 @@ fn finalize_from_bridge(bridge: &NativeBridgeState, baseline_event_id: u64) -> P
             write_result_from_report(&report, "mdns");
             ProbeTickResult::Finished
         }
-        Some(NativeMobileEvent::PcGatewayDiscoveryUpdated(report)) => manual_after_empty_mdns(&report)
-            .map(ProbeTickResult::ManualProbe)
-            .unwrap_or(ProbeTickResult::Idle),
+        Some(NativeMobileEvent::PcGatewayDiscoveryUpdated(report)) => {
+            manual_after_empty_mdns(&report)
+                .map(ProbeTickResult::ManualProbe)
+                .unwrap_or(ProbeTickResult::Idle)
+        }
         _ => ProbeTickResult::Idle,
     }
 }

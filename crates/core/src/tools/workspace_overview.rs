@@ -72,7 +72,7 @@ fn summarize_workspace(service: &WorkspaceFileService, max_depth: usize) -> Resu
         &mut scanned,
     )?;
 
-    largest.sort_by(|a, b| b.0.cmp(&a.0));
+    largest.sort_by_key(|e| std::cmp::Reverse(e.0));
     let top_large = largest.into_iter().take(8).collect::<Vec<_>>();
 
     let mut lines = vec![

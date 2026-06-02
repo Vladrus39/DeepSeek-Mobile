@@ -1,9 +1,7 @@
 //! In-app update check and APK download (Android sideload via GitHub Releases).
 
 use crate::mobile_runtime_config::default_data_dir;
-use deepseek_mobile_core::{
-    check_github_release_update, AppUpdateOffer, DEFAULT_GITHUB_REPO,
-};
+use deepseek_mobile_core::{check_github_release_update, AppUpdateOffer, DEFAULT_GITHUB_REPO};
 use std::path::PathBuf;
 
 const UPDATE_APK_NAME: &str = "deepseek-mobile-update.apk";
@@ -16,7 +14,10 @@ pub enum AppUpdateUiPhase {
     UpToDate,
     UpdateAvailable(AppUpdateOffer),
     Downloading,
-    Downloaded { path: PathBuf, version: String },
+    Downloaded {
+        path: PathBuf,
+        version: String,
+    },
     Error(String),
 }
 
@@ -40,10 +41,9 @@ impl AppUpdateUiState {
         match &self.phase {
             AppUpdateUiPhase::Idle => format!("Version {}", Self::current_version()),
             AppUpdateUiPhase::Checking => "Checking GitHub for updates…".to_string(),
-            AppUpdateUiPhase::UpToDate => format!(
-                "Version {} is up to date",
-                Self::current_version()
-            ),
+            AppUpdateUiPhase::UpToDate => {
+                format!("Version {} is up to date", Self::current_version())
+            }
             AppUpdateUiPhase::UpdateAvailable(offer) => format!(
                 "Update available: {} → {}",
                 offer.current_version, offer.latest_version
@@ -85,13 +85,10 @@ impl AppUpdateUiState {
             .timeout(std::time::Duration::from_secs(45))
             .build()
             .map_err(|error| error.to_string())?;
-        let offer = check_github_release_update(
-            &client,
-            DEFAULT_GITHUB_REPO,
-            &Self::current_version(),
-        )
-        .await
-        .map_err(|error| error.to_string())?;
+        let offer =
+            check_github_release_update(&client, DEFAULT_GITHUB_REPO, &Self::current_version())
+                .await
+                .map_err(|error| error.to_string())?;
         self.apply_check_result(offer);
         Ok(())
     }

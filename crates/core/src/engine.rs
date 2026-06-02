@@ -681,7 +681,7 @@ impl MobileEngine {
             ReviewDecision::Denied => {
                 self.session.push_message(
                     "user",
-                    &format!(
+                    format!(
                         "[Approval denied for tool `{tool_name}`. Respond to the user without running it.]"
                     ),
                 );
@@ -714,7 +714,7 @@ impl MobileEngine {
                 } else {
                     self.session.push_message(
                         "user",
-                        &format!(
+                        format!(
                             "[Tool `{tool_name}` was approved but produced no output. Continue the turn.]"
                         ),
                     );
@@ -1337,7 +1337,7 @@ mod tests {
         }
         let messages = engine.build_messages_for_turn("new question", "deepseek-v4-flash");
         // Should fit within Flash 128K budget
-        assert!(messages.len() > 0);
+        assert!(!messages.is_empty());
         // Should be less than full session + system messages
         assert!(messages.len() < engine.session().messages.len() + 5);
     }

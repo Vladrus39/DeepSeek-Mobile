@@ -121,9 +121,8 @@ fn normalize_path(path: &str) -> String {
         } else if let Some(idx) = normalized.rfind("/deepseek-mobile/workspace/") {
             normalized = normalized[idx + "/deepseek-mobile/workspace/".len()..].to_string();
         } else if let Some(idx) = normalized.rfind("/files/deepseek-mobile/Project workspace/") {
-            normalized = normalized
-                [idx + "/files/deepseek-mobile/Project workspace/".len()..]
-                .to_string();
+            normalized =
+                normalized[idx + "/files/deepseek-mobile/Project workspace/".len()..].to_string();
         } else if let Some(idx) = normalized.rfind("/files/deepseek-mobile/workspace/") {
             normalized = normalized[idx + "/files/deepseek-mobile/workspace/".len()..].to_string();
         }
@@ -145,11 +144,8 @@ mod tests {
     };
     #[test]
     fn parses_write_file_output() {
-        let paths = extract_paths_from_tool_result(
-            "write_file",
-            "Wrote 12 bytes to src/demo.rs",
-            None,
-        );
+        let paths =
+            extract_paths_from_tool_result("write_file", "Wrote 12 bytes to src/demo.rs", None);
         assert!(paths.contains(&"src/demo.rs".to_string()));
     }
 
@@ -172,7 +168,9 @@ mod tests {
     #[test]
     fn strips_workspace_prefix() {
         assert_eq!(
-            normalize_path("/data/user/0/com.deepseek.mobile/files/deepseek-mobile/workspace/src/a.rs"),
+            normalize_path(
+                "/data/user/0/com.deepseek.mobile/files/deepseek-mobile/workspace/src/a.rs"
+            ),
             "src/a.rs"
         );
     }

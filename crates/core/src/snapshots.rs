@@ -126,7 +126,7 @@ impl WorkspaceSnapshotService {
                 records.push(record);
             }
         }
-        records.sort_by(|left, right| right.created_unix.cmp(&left.created_unix));
+        records.sort_by_key(|r| std::cmp::Reverse(r.created_unix));
         Ok(records)
     }
 
@@ -306,7 +306,7 @@ impl WorkspaceSnapshotService {
         if snapshots.len() <= max_count {
             return Ok(Vec::new());
         }
-        snapshots.sort_by(|a, b| a.created_unix.cmp(&b.created_unix));
+        snapshots.sort_by_key(|s| s.created_unix);
 
         let mut removed = Vec::new();
         for snapshot in &snapshots {

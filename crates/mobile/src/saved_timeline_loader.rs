@@ -59,9 +59,7 @@ pub fn is_benign_restore_error(error: &anyhow::Error) -> bool {
     ];
     error.chain().any(|cause| {
         let message = cause.to_string();
-        BENIGN_NEEDLES
-            .iter()
-            .any(|needle| message.contains(needle))
+        BENIGN_NEEDLES.iter().any(|needle| message.contains(needle))
     })
 }
 

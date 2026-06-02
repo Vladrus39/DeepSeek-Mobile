@@ -1,7 +1,7 @@
 # PC Host live E2E: starts deepseek-pc-host.exe against a throwaway workspace,
 # drives the real gateway HTTP protocol (WriteFile / ExecuteCommand / GitStatus),
 # then reads the created files back from disk to prove real file creation.
-$ErrorActionPreference = 'Continue'
+$ErrorActionPreference = 'Stop'
 $root  = Split-Path -Parent $PSScriptRoot
 Set-Location $root
 $agent = Join-Path $root 'target\agent'
@@ -26,6 +26,10 @@ $env:DEEPSEEK_PC_HOST_WORKSPACE    = $ws
 $env:DEEPSEEK_PC_HOST_WORKSPACE_ID = 'local'
 $env:DEEPSEEK_PC_HOST_POLICY       = 'developer'
 
+Log "--- build deepseek-pc-host --release ---"
+& cmd.exe /c "cargo build -p deepseek-pc-host --release >> `"$out`" 2>&1"
+if ($LASTEXITCODE -ne 0) { throw "cargo build -p deepseek-pc-host --release failed; see $out" }
+
 $exe = Join-Path $root 'target\release\deepseek-pc-host.exe'
 Log "exe=$exe"
 $proc = Start-Process -FilePath $exe -PassThru -WindowStyle Hidden `
@@ -42,8 +46,13 @@ function Req($obj) {
   catch { "ERR: $($_.Exception.Message)" }
 }
 
+function Health {
+        try { Invoke-RestMethod -Uri "$base/health" | ConvertTo-Json -Depth 8 }
+        catch { "ERR: $($_.Exception.Message)" }
+}
+
 Log "--- health ---"
-Log (try { Invoke-RestMethod "$base/health" | ConvertTo-Json -Depth 8 } catch { "ERR: $($_.Exception.Message)" })
+Log (Health)
 
 Log "--- WriteFile hello.py ---"
 Log (Req @{ WriteFile = @{ workspace_id='local'; path='hello.py'; content="print('PC-HOST-OK', sum(range(11)))`n" } })
@@ -71,4 +80,5 @@ Log "--- DISK: hello.py contents ---"
 Log (Get-Content (Join-Path $ws 'hello.py') -Raw)
 Log "--- DISK: pkg/calc.py contents ---"
 Log (Get-Content (Join-Path $ws 'pkg\calc.py') -Raw)
+if ((Get-Content $out -Raw) -match 'ERR:') { throw "PC Host E2E failed; see $out" }
 "done"

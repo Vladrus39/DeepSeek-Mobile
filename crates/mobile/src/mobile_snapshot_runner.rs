@@ -20,9 +20,7 @@ pub async fn list_workspace_snapshots(
                 return Err(anyhow!("PC workspace active but gateway config is missing"));
             };
             let client = PcGatewayClient::new(gateway_config);
-            let response = client
-                .list_snapshots(&connection.workspace_id)
-                .await?;
+            let response = client.list_snapshots(&connection.workspace_id).await?;
             return parse_pc_snapshot_list(&response);
         }
     }
@@ -68,10 +66,7 @@ pub async fn restore_snapshot_by_id(
         deepseek_mobile_core::workspace::ExecutorKind::LocalAndroid,
     );
     let context = ToolContext::new(workspace);
-    let result = tool.execute(
-        json!({ "snapshot_id": snapshot_id }),
-        &context,
-    )?;
+    let result = tool.execute(json!({ "snapshot_id": snapshot_id }), &context)?;
     if !result.success {
         return Err(anyhow!("{}", result.content));
     }

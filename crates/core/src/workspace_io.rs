@@ -85,7 +85,7 @@ fn add_dir_to_zip(
         let path = entry.path();
 
         // Skip the metadata directory
-        if path.is_dir() && path.file_name().map_or(false, |n| n == ".deepseek-mobile") {
+        if path.is_dir() && path.file_name().is_some_and(|n| n == ".deepseek-mobile") {
             continue;
         }
 

@@ -1010,7 +1010,7 @@ dependencies = [
 
 [[package]]
 name = "deepseek-mobile-core"
-version = "0.1.1"
+version = "0.1.4"
 dependencies = [
  "anyhow",
  "base64",
@@ -1028,7 +1028,7 @@ dependencies = [
 
 [[package]]
 name = "deepseek-pc-host"
-version = "0.1.1"
+version = "0.1.4"
 dependencies = [
  "anyhow",
  "axum",

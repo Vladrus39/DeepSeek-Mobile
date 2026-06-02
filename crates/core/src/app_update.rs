@@ -95,13 +95,7 @@ pub async fn check_github_release_update(
         .iter()
         .find(|asset| asset.name == apk_asset_name_for_version(&latest_version))
         .map(|asset| asset.browser_download_url.clone())
-        .or_else(|| {
-            Some(apk_download_url(
-                repo,
-                &release.tag_name,
-                &latest_version,
-            ))
-        });
+        .or_else(|| Some(apk_download_url(repo, &release.tag_name, &latest_version)));
     Ok(Some(AppUpdateOffer {
         current_version: current.to_string(),
         latest_version: latest_version.clone(),
@@ -126,6 +120,9 @@ mod tests {
 
     #[test]
     fn apk_asset_name() {
-        assert_eq!(apk_asset_name_for_version("v0.1.2"), "deepseek-mobile-0.1.2.apk");
+        assert_eq!(
+            apk_asset_name_for_version("v0.1.2"),
+            "deepseek-mobile-0.1.2.apk"
+        );
     }
 }

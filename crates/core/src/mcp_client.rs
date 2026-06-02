@@ -467,7 +467,9 @@ pub async fn load_connected_mcp_tools(path: &std::path::Path) -> Vec<McpToolDesc
 
 #[cfg(test)]
 mod tests {
-    use super::{disconnect_stdio_server, has_stdio_session, mcp_endpoint, shutdown_all_stdio_sessions};
+    use super::{
+        disconnect_stdio_server, has_stdio_session, mcp_endpoint, shutdown_all_stdio_sessions,
+    };
 
     #[test]
     fn mcp_endpoint_appends_suffix_when_missing() {

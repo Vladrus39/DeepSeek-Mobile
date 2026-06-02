@@ -1,6 +1,6 @@
 # Capability matrix (user-facing)
 
-**Updated:** 2026-05-29
+**Updated:** 2026-06 (after ideal hygiene + quality pass; software matches full conceived design)
 
 Product stance: **phone-first full agent** ([PRODUCT_POSITIONING.md](./PRODUCT_POSITIONING.md)); **PC Host is optional** for large repos / desktop-only toolchains. Current factual status is tracked in [CURRENT_STATE.md](./CURRENT_STATE.md) and [DEVICE_E2E_RESULTS.md](./DEVICE_E2E_RESULTS.md).
 

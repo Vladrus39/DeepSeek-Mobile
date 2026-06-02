@@ -139,7 +139,7 @@ fn scope_matches(
             }
             argument_string(&call.arguments, "path")
                 .or_else(|| argument_string(&approval.params, "path"))
-                .map_or(false, |candidate| candidate == *path)
+                .is_some_and(|candidate| candidate == *path)
         }
         ApprovalSessionScope::GitTool => matches!(&approval.category, ToolCategory::Git),
         ApprovalSessionScope::NetworkHost { host } => {
@@ -149,7 +149,7 @@ fn scope_matches(
             argument_string(&call.arguments, "url")
                 .or_else(|| argument_string(&approval.params, "url"))
                 .and_then(|url| host_from_url(&url))
-                .map_or(false, |candidate| candidate == *host)
+                .is_some_and(|candidate| candidate == *host)
         }
         ApprovalSessionScope::ExactTool => true,
     }
@@ -165,7 +165,10 @@ fn argument_string(value: &Value, key: &str) -> Option<String> {
 fn host_from_url(url: &str) -> Option<String> {
     let without_scheme = url.split_once("://").map(|(_, rest)| rest).unwrap_or(url);
     let host_port_path = without_scheme.split('/').next().unwrap_or_default();
-    let host = host_port_path.split('@').last().unwrap_or(host_port_path);
+    let host = host_port_path
+        .split('@')
+        .next_back()
+        .unwrap_or(host_port_path);
     let host = host.split(':').next().unwrap_or(host).trim();
     (!host.is_empty()).then(|| host.to_ascii_lowercase())
 }

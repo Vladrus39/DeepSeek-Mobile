@@ -1,12 +1,12 @@
 use crate::agent_timeline::{
-    split_tool_step_body, tool_name_from_step_title, MobileTimelineItem,
-    MobileTimelineItemKind, MobileTimelineItemStatus, MobileTimelineState,
+    split_tool_step_body, tool_name_from_step_title, MobileTimelineItem, MobileTimelineItemKind,
+    MobileTimelineItemStatus, MobileTimelineState,
 };
-use serde_json::Value;
 use crate::locale::{pick, timeline_kind_label, timeline_status_label, AppLanguage};
 use crate::mobile_approval_panel::inline_approval_card;
 use deepseek_mobile_core::{ApprovalCardStatus, ApprovalCardView, ReviewDecision};
 use dioxus::prelude::*;
+use serde_json::Value;
 
 /// Inline snapshot rollback from chat (confirm + restore wired in `lib.rs`).
 #[derive(Clone, PartialEq)]
@@ -162,16 +162,14 @@ fn timeline_item_view(
         MobileTimelineItemKind::Attachment | MobileTimelineItemKind::NativeCommand => {
             compact_tool_card(ui_lang, item, on_open_file_path)
         }
-        MobileTimelineItemKind::ToolCall => {
-            tool_call_with_inline_approval(
-                ui_lang,
-                timeline,
-                approval_cards,
-                on_approval_decision,
-                on_open_file_path,
-                item,
-            )
-        }
+        MobileTimelineItemKind::ToolCall => tool_call_with_inline_approval(
+            ui_lang,
+            timeline,
+            approval_cards,
+            on_approval_decision,
+            on_open_file_path,
+            item,
+        ),
         MobileTimelineItemKind::Approval => approval_with_linked_tool(
             ui_lang,
             timeline,

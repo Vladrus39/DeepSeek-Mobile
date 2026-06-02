@@ -1,9 +1,22 @@
 # DeepSeek-Mobile — Release Notes
 
+<!-- markdownlint-disable MD024 -->
+
+## Ideal polish (2026-06, v0.1.4 maintenance)
+- Project brought to ideal conceived state per MASTER_PLAN / ROADMAP / review feedback: all hygiene, structure, quality, and "definition of done" items closed in software.
+- Formatting: full `cargo fmt --all` + `rustfmt.toml`; `cargo fmt --all -- --check` clean.
+- .gitattributes added for consistent LF (Rust/Kotlin) / CRLF (bat) across Windows dev + Linux CI + device.
+- Android hygiene: bridge/ is now unambiguous single source (stale duplicate NativeBridge/TermuxResultReceiver removed from app/ module; versions/comments/docs synced; settings.gradle.kts clarified dual :app/:bridge purpose).
+- Code quality: dozens of clippy fixes (derivable Default + #[default], is_some_and, needless ?, sort_by_key, identical ifs, needless borrow, field reassign, etc.). Added minimal allows + crate docs for remaining pedantic style lints. Production error paths already robust.
+- Verification: `cargo check --workspace --all-targets` + `cargo test --workspace` green after all changes.
+- Docs refreshed (CURRENT_STATE, PROGRESS, TROUBLESHOOTING, CAPABILITY, PROJECT_STATUS, this file) declaring software at ideal working state as designed (phone-first Termux agent with full native Android integration, approvals, snapshots, MCP/skills, PC optional, E2E contracts wired).
+- No behavior change for users; pure maintainability + "ideal" alignment pass. Next user-visible would be new features or PC bundle.
+
 ## v0.1.4 — 2026-05-30
 
 - **Work log → проводник (fix):** исправлен путь FileProvider (`deepseek-mobile/Project workspace/`); для Termux добавлен fallback `termux-open -d`; chooser для системных файловых менеджеров. Убран автопереход на вкладку «Файлы» при ошибке — сообщение в чате.
-- **Release APK:** сборка под **arm64-v8a** (реальные телефоны; v0.1.3 asset был x86_64-only).
+- **Release APK:** GitHub Latest обновлён на `v0.1.4`; published asset signed, содержит **arm64-v8a** + `x86_64` (v0.1.3 asset был x86_64-only и давал «несовместимо с телефоном» на arm64-устройствах).
+- **Release guard:** `scripts/build-release-apk.ps1` проверяет `arm64-v8a` и больше не принимает unsigned APK для публичного релиза без явного `-AllowUnsigned`.
 - Device checklist `RFCNC0PWD4E`: **7/7 PASS** после установки debug 0.1.4.
 
 ## v0.1.3 — 2026-05-30

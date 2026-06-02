@@ -2,17 +2,12 @@
 
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Default)]
 pub enum ExecutionMode {
     Plan,
+    #[default]
     Agent,
     Yolo,
-}
-
-impl Default for ExecutionMode {
-    fn default() -> Self {
-        Self::Agent
-    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]

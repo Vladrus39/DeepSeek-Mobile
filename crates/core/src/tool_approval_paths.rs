@@ -109,8 +109,5 @@ pub fn path_outside_workspace(context: &ToolContext, raw_path: &str) -> bool {
     if candidate.is_absolute() {
         return !candidate.starts_with(&context.workspace.root);
     }
-    context
-        .workspace
-        .resolve_relative_path(raw_path)
-        .is_none()
+    context.workspace.resolve_relative_path(raw_path).is_none()
 }

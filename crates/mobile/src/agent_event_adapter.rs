@@ -453,12 +453,10 @@ mod tests {
             })
             .count();
         assert_eq!(running_status, 0);
-        assert!(
-            timeline
-                .items
-                .iter()
-                .any(|item| item.title == "Turn finished")
-        );
+        assert!(timeline
+            .items
+            .iter()
+            .any(|item| item.title == "Turn finished"));
     }
 
     #[test]

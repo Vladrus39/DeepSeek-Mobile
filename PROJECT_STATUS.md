@@ -1,6 +1,6 @@
 # DeepSeek-Mobile — current project status
 
-**Updated:** 2026-05-29
+**Updated:** 2026-06 (ideal polish pass) — see PROGRESS.md and CURRENT_STATE.md for details. All review remarks addressed; software at ideal conceived state.
 
 Canonical checkpoint: [`docs/CURRENT_STATE.md`](docs/CURRENT_STATE.md). Device evidence matrix: [`docs/DEVICE_E2E_RESULTS.md`](docs/DEVICE_E2E_RESULTS.md). Tool evidence matrix: [`docs/TOOL_AUDIT.md`](docs/TOOL_AUDIT.md).
 

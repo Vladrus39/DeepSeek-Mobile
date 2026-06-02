@@ -1,3 +1,4 @@
+use crate::app_update_state::AppUpdateUiState;
 use crate::diagnostics_panel::diagnostics_panel;
 use crate::diagnostics_state::DiagnosticsUiState;
 use crate::document_picker::DocumentPickerState;
@@ -18,7 +19,6 @@ use crate::project_files_panel::{project_files_panel, PcFileBrowserConnection};
 use crate::project_files_state::ProjectFilesUiState;
 use crate::project_transfer_state::ProjectTransferState;
 use crate::runtime_health::RuntimeHealthSnapshot;
-use crate::app_update_state::AppUpdateUiState;
 use crate::settings_panel::settings_panel;
 use crate::settings_state::SettingsFormState;
 use crate::skills_panel::skills_panel;
@@ -81,9 +81,7 @@ pub fn cockpit_section_panel(
                 project_transfer_state,
             )
         }
-        CockpitSection::Snapshots => {
-            snapshots_panel(lang(), snapshots_state, settings_state)
-        }
+        CockpitSection::Snapshots => snapshots_panel(lang(), snapshots_state, settings_state),
         CockpitSection::Diagnostics => diagnostics_panel(&diagnostics_state()),
         CockpitSection::Terminal => terminal_panel(
             terminal_state,
@@ -194,9 +192,13 @@ pub fn cockpit_section_panel(
             ),
             on_health_quick_action,
         ),
-        CockpitSection::Settings => {
-            settings_panel(lang, settings_state, termux_state, app_update_state, native_bridge)
-        }
+        CockpitSection::Settings => settings_panel(
+            lang,
+            settings_state,
+            termux_state,
+            app_update_state,
+            native_bridge,
+        ),
     }
 }
 

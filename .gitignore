@@ -6,9 +6,16 @@ target/
 .env
 *.log
 /dist
+
+# Android signing (never commit real keys)
 /android/keystore.properties
 /android/*.keystore
 /android/release.keystore
+
+# Android Gradle caches and build outputs (bridge + app modules; dx injects into target/dx too)
+/android/.gradle/
+android/app/build/
+android/bridge/build/
 
 # PC host binaries copied for offline pairing ZIP (see scripts/build-pc-host-bundles.ps1)
 /tools/pc-host/bin/**/*
@@ -28,5 +35,5 @@ target/
 /tools/android/sdk/ndk/**
 !tools/android/sdk/ndk/README.md
 
-# Windows system cache files
+# Windows system cache files (from some clean/provision scripts that may write to system locations)
 %SystemDrive%/

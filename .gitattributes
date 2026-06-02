@@ -1,0 +1,53 @@
+# DeepSeek-Mobile .gitattributes
+# Enforce consistent line endings for cross-platform (Windows dev + Linux CI + Android)
+
+# Auto-detect text/binary
+* text=auto
+
+# Source code and configs: LF (Unix style, good for Rust, git diffs, CI)
+*.rs text eol=lf
+*.toml text eol=lf
+*.lock text eol=lf
+*.md text eol=lf
+*.txt text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+*.json text eol=lf
+*.kt text eol=lf
+*.kts text eol=lf
+*.java text eol=lf
+*.xml text eol=lf
+*.gradle text eol=lf
+*.sh text eol=lf
+*.ps1 text eol=lf
+*.py text eol=lf
+
+# Windows scripts: CRLF is traditional and avoids some issues in cmd.exe
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Binary assets and native libs
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.svg text eol=lf
+*.so binary
+*.aar binary
+*.apk binary
+*.zip binary
+*.tar.gz binary
+*.keystore binary
+*.jks binary
+
+# IDE / OS
+.idea/** linguist-generated=true
+*.iml text eol=lf
+.DS_Store binary
+Thumbs.db binary
+
+# Large generated / SDK (already heavily gitignored, but be explicit)
+tools/android/sdk/** binary
+target/** binary
+dist/** binary

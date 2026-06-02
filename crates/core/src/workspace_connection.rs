@@ -44,20 +44,15 @@ impl WorkspaceBackendKind {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Default)]
 pub enum WorkspaceSelectionPolicy {
+    #[default]
     ManualOnly,
     PreferLocal,
     PreferTermux,
     PreferPcGatewayWhenActive,
     PreferRemoteYlitWhenActive,
     BestAvailable,
-}
-
-impl Default for WorkspaceSelectionPolicy {
-    fn default() -> Self {
-        WorkspaceSelectionPolicy::ManualOnly
-    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -244,21 +239,11 @@ impl WorkspaceConnection {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Default)]
 pub struct WorkspaceConnectionManager {
     pub connections: Vec<WorkspaceConnection>,
     pub active_connection_id: Option<String>,
     pub selection_policy: WorkspaceSelectionPolicy,
-}
-
-impl Default for WorkspaceConnectionManager {
-    fn default() -> Self {
-        Self {
-            connections: Vec::new(),
-            active_connection_id: None,
-            selection_policy: WorkspaceSelectionPolicy::default(),
-        }
-    }
 }
 
 impl WorkspaceConnectionManager {

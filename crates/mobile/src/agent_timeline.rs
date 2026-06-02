@@ -148,7 +148,10 @@ fn merge_tool_result_into_call(call: &mut MobileTimelineItem, result: &MobileTim
     }
     call.body = format_tool_step_with_output(&call.body, &result.body);
     call.status = result.status.clone();
-    merge_linked_paths(&mut call.linked_file_paths, result.linked_file_paths.clone());
+    merge_linked_paths(
+        &mut call.linked_file_paths,
+        result.linked_file_paths.clone(),
+    );
     true
 }
 
@@ -667,7 +670,9 @@ mod tests {
         assert_eq!(completed.as_deref(), Some(id.as_str()));
         assert_eq!(timeline.len(), 1);
         assert!(timeline.items[0].body.contains("── Output ──"));
-        assert!(timeline.items[0].linked_file_paths.contains(&"src/a.rs".to_string()));
+        assert!(timeline.items[0]
+            .linked_file_paths
+            .contains(&"src/a.rs".to_string()));
     }
 
     #[test]
@@ -710,7 +715,9 @@ mod tests {
             .find(|item| item.kind == MobileTimelineItemKind::AssistantMessage)
             .expect("assistant bubble");
         assert!(
-            assistant.linked_file_paths.contains(&"pkg/demo.rs".to_string()),
+            assistant
+                .linked_file_paths
+                .contains(&"pkg/demo.rs".to_string()),
             "paths from tools should appear on the assistant reply"
         );
     }

@@ -154,7 +154,10 @@ impl PcPairingUiState {
     pub async fn probe_and_connect_manual_url(&mut self, raw_url: &str) -> Result<(), String> {
         let trimmed = raw_url.trim();
         if trimmed.is_empty() {
-            return Err("Enter PC Host URL (e.g. http://192.168.1.10:8787 or https://your-tunnel)".to_string());
+            return Err(
+                "Enter PC Host URL (e.g. http://192.168.1.10:8787 or https://your-tunnel)"
+                    .to_string(),
+            );
         }
         let service = PcGatewayDiscoveryService::new(true);
         let report = service.from_manual_base_url(trimmed, "manual");

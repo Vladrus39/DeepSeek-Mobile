@@ -1,8 +1,16 @@
 //! DeepSeek Mobile Core
 
+// A few remaining `needless_borrow*` lints in hot paths (format!/json helpers, &str passing)
+// are allowed after bulk modernization. They are harmless; correctness and readability first.
+#![allow(
+    clippy::needless_borrows_for_generic_args,
+    clippy::needless_borrow,
+    clippy::too_many_arguments
+)]
+
 pub mod agent;
-pub mod app_update;
 pub mod api_client;
+pub mod app_update;
 pub mod approval;
 pub mod approval_card;
 pub mod approval_session;
@@ -31,26 +39,26 @@ pub mod runtime_store;
 pub mod session;
 pub mod skills;
 pub mod snapshots;
-pub mod tool_call;
 pub mod tool_approval_paths;
+pub mod tool_call;
 pub mod tool_execution;
 pub mod tool_loop;
 pub mod tools;
 pub mod turn;
 pub mod workspace;
-pub mod workspace_layout;
 pub mod workspace_connection;
 pub mod workspace_connection_store;
 pub mod workspace_diagnostics;
 pub mod workspace_files;
 pub mod workspace_io;
+pub mod workspace_layout;
 
 pub use agent::DeepSeekAgent;
-pub use app_update::{
-    apk_asset_name_for_version, apk_download_url, check_github_release_update,
-    version_is_newer, AppUpdateOffer, APK_ASSET_PREFIX, DEFAULT_GITHUB_REPO,
-};
 pub use api_client::{format_http_transport_error, DeepSeekClient, Message, StreamDelta};
+pub use app_update::{
+    apk_asset_name_for_version, apk_download_url, check_github_release_update, version_is_newer,
+    AppUpdateOffer, APK_ASSET_PREFIX, DEFAULT_GITHUB_REPO,
+};
 pub use approval::{
     categorize_tool, classify_risk, should_request_approval, ApprovalMode, ApprovalRisk,
     MobileApprovalRequest, ReviewDecision, ToolCategory,
@@ -96,8 +104,8 @@ pub use mcp::{
 };
 pub use mcp_client::{
     connect_mcp_server, default_mcp_path, disconnect_stdio_server, has_stdio_session,
-    invoke_mcp_tool, invoke_mcp_tool_at_path, load_connected_mcp_tools, shutdown_all_stdio_sessions,
-    tools_for_server,
+    invoke_mcp_tool, invoke_mcp_tool_at_path, load_connected_mcp_tools,
+    shutdown_all_stdio_sessions, tools_for_server,
 };
 pub use model_router::{ModelRouter, RouteDecision, TaskProfile};
 pub use pc_gateway::{
@@ -148,9 +156,6 @@ pub use tools::{
 };
 pub use turn::{TokenUsage, TurnContext, TurnStatus, TurnToolCall};
 pub use workspace::{ExecutorKind, Workspace};
-pub use workspace_layout::{
-    join_project_workspace, project_workspace_relative_name, PROJECT_WORKSPACE_DIR_NAME,
-};
 pub use workspace_connection::{
     WorkspaceBackendKind, WorkspaceConnection, WorkspaceConnectionManager,
     WorkspaceConnectionStatus, WorkspaceSelectionPolicy,
@@ -160,6 +165,9 @@ pub use workspace_diagnostics::{
     WorkspaceDiagnosticsReport, WorkspaceDiagnosticsService, WorkspaceDiagnosticsStatus,
 };
 pub use workspace_files::{WorkspaceFileEntry, WorkspaceFileService};
+pub use workspace_layout::{
+    join_project_workspace, project_workspace_relative_name, PROJECT_WORKSPACE_DIR_NAME,
+};
 
 pub struct DeepSeekCore {
     agent: DeepSeekAgent,

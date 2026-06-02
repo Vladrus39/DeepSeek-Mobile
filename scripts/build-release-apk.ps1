@@ -14,6 +14,7 @@
 
 param(
     [switch]$SkipTests,
+    [switch]$AllowUnsigned,
     [string]$Serial = ""
 )
 
@@ -97,13 +98,31 @@ if (-not (Test-Path $releaseApkPath)) {
     if (Test-Path $signed) {
         $releaseApkPath = $signed
     } elseif (Test-Path $unsigned) {
+        if (-not $AllowUnsigned) {
+            throw "Only an unsigned release APK was produced. Configure android/keystore.properties for public releases, or pass -AllowUnsigned for local diagnostics only."
+        }
         $releaseApkPath = $unsigned
-        Write-Host "Using unsigned release APK (configure android/keystore.properties for Gradle signing)." -ForegroundColor Yellow
+        Write-Host "Using unsigned release APK for local diagnostics only." -ForegroundColor Yellow
     }
 }
 if (-not (Test-Path $releaseApkPath)) {
     throw "Release APK not found under target/dx/deepseek-mobile/release"
 }
+
+$buildToolsRoot = Join-Path $env:ANDROID_SDK_ROOT "build-tools"
+$aapt = Get-ChildItem -Path $buildToolsRoot -Filter "aapt.exe" -Recurse -ErrorAction SilentlyContinue |
+    Sort-Object FullName -Descending |
+    Select-Object -First 1
+if (-not $aapt) {
+    throw "Android aapt.exe not found under $buildToolsRoot; cannot validate APK ABI compatibility."
+}
+$badging = & $aapt.FullName dump badging $releaseApkPath
+if ($LASTEXITCODE -ne 0) { throw "aapt dump badging failed for $releaseApkPath" }
+$nativeCodeLine = $badging | Where-Object { $_ -like "native-code:*" } | Select-Object -First 1
+if (-not $nativeCodeLine -or $nativeCodeLine -notmatch "'arm64-v8a'") {
+    throw "Release APK is missing arm64-v8a native code. Refusing to publish a phone-incompatible APK. native-code=$nativeCodeLine"
+}
+Write-Host "APK ABI check passed: $nativeCodeLine" -ForegroundColor Green
 
 New-Item -ItemType Directory -Force -Path $distDir | Out-Null
 Copy-Item -Force $releaseApkPath $distApk

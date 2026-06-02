@@ -17,10 +17,7 @@ pub fn active_workspace_folder_path(pc_pairing: &PcPairingUiState) -> String {
 }
 
 /// Try to open the workspace folder on a paired PC via gateway `open_path`.
-pub async fn try_open_pc_workspace_folder(
-    client: &PcGatewayClient,
-    workspace_id: &str,
-) -> bool {
+pub async fn try_open_pc_workspace_folder(client: &PcGatewayClient, workspace_id: &str) -> bool {
     match client.open_path(workspace_id, ".").await {
         Ok(PcGatewayResponse::PathOpened { .. }) => true,
         _ => false,

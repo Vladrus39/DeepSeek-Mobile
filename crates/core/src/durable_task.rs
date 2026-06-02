@@ -112,15 +112,9 @@ impl DurableTaskRecord {
 
 // ── Manager ──
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, Default)]
 struct DurableTaskManagerState {
     tasks: Vec<DurableTaskRecord>,
-}
-
-impl Default for DurableTaskManagerState {
-    fn default() -> Self {
-        Self { tasks: Vec::new() }
-    }
 }
 
 #[derive(Clone, Debug)]

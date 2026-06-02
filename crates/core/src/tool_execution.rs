@@ -6,6 +6,10 @@
 //! workspace, file/shell/git operations are sent to the PC; they are not executed
 //! on Android.
 
+// Allow a few needless_borrows_for_generic_args that appear in hot tool paths
+// with &format! / json helpers; they are harmless and the code is clear.
+#![allow(clippy::needless_borrows_for_generic_args, clippy::needless_borrow)]
+
 use crate::executor::{CommandRequest, TermuxExecRequest};
 use crate::pc_gateway::{CommandStreamEvent, PcDiagnostic, PcGatewayResponse};
 use crate::pc_gateway_client::PcGatewayClient;
@@ -748,7 +752,8 @@ fn termux_file_tool_command(call: &ToolCallRequest) -> Option<String> {
             Some(format!("set -e\ncat -- {}", shell_quote(&path)))
         }
         "list_dir" => {
-            let path = safe_termux_relative_path(optional_str(&call.arguments, "path").unwrap_or("."))?;
+            let path =
+                safe_termux_relative_path(optional_str(&call.arguments, "path").unwrap_or("."))?;
             Some(format!("set -e\nls -la -- {}", shell_quote(&path)))
         }
         "write_file" => {

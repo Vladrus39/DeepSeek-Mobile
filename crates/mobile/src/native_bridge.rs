@@ -193,15 +193,11 @@ impl NativeBridgeState {
     }
 
     pub fn enqueue_install_apk(&mut self, path: impl Into<String>) {
-        self.enqueue(NativeMobileCommand::InstallApk {
-            path: path.into(),
-        });
+        self.enqueue(NativeMobileCommand::InstallApk { path: path.into() });
     }
 
     pub fn enqueue_open_workspace_folder(&mut self, path: impl Into<String>) {
-        self.enqueue(NativeMobileCommand::OpenWorkspaceFolder {
-            path: path.into(),
-        });
+        self.enqueue(NativeMobileCommand::OpenWorkspaceFolder { path: path.into() });
     }
 
     pub fn enqueue_termux_command(&mut self, request: TermuxExecRequest) {

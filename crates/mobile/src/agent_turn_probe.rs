@@ -188,10 +188,7 @@ pub async fn run_if_requested() {
     match run_mobile_turn_with_runtime_and_observer(config, input, runtime, move |event| {
         append_trace(&format!("EVENT {event:?}"));
         if let AgentEvent::TextDelta(text) = &event {
-            if text.contains("PROBE_OK")
-                || text.contains("HELLO_E2E")
-                || text.len() > 2
-            {
+            if text.contains("PROBE_OK") || text.contains("HELLO_E2E") || text.len() > 2 {
                 saw_flag.store(true, std::sync::atomic::Ordering::Relaxed);
             }
         }

@@ -212,21 +212,13 @@ fn localized_pc_status(
         (AppLanguage::En, PcPairingUiStatus::Online) => "Online".to_string(),
         (AppLanguage::Ru, PcPairingUiStatus::Offline) => "Офлайн".to_string(),
         (AppLanguage::En, PcPairingUiStatus::Offline) => "Offline".to_string(),
-        (AppLanguage::Ru, PcPairingUiStatus::WaitingForPc) => {
-            "Ожидание PC host".to_string()
-        }
-        (AppLanguage::En, PcPairingUiStatus::WaitingForPc) => {
-            "Waiting for PC host".to_string()
-        }
-        (AppLanguage::Ru, PcPairingUiStatus::Exported) => {
-            "ZIP создан — запустите PC".to_string()
-        }
+        (AppLanguage::Ru, PcPairingUiStatus::WaitingForPc) => "Ожидание PC host".to_string(),
+        (AppLanguage::En, PcPairingUiStatus::WaitingForPc) => "Waiting for PC host".to_string(),
+        (AppLanguage::Ru, PcPairingUiStatus::Exported) => "ZIP создан — запустите PC".to_string(),
         (AppLanguage::En, PcPairingUiStatus::Exported) => {
             "Bundle exported — start PC host".to_string()
         }
-        (AppLanguage::Ru, PcPairingUiStatus::ReadyToExport) => {
-            "Готов к экспорту ZIP".to_string()
-        }
+        (AppLanguage::Ru, PcPairingUiStatus::ReadyToExport) => "Готов к экспорту ZIP".to_string(),
         (AppLanguage::En, PcPairingUiStatus::ReadyToExport) => {
             "Ready to export pairing".to_string()
         }

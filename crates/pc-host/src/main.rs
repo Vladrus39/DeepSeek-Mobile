@@ -153,7 +153,11 @@ impl PcHostConfig {
         })
     }
 
-    async fn grant_trusted_path_for_tool(&self, workspace_id: &str, raw_path: &str) -> Result<PathBuf> {
+    async fn grant_trusted_path_for_tool(
+        &self,
+        workspace_id: &str,
+        raw_path: &str,
+    ) -> Result<PathBuf> {
         let resolved = self.resolve_workspace_path(workspace_id, raw_path)?;
         let grant_root = if resolved.is_dir() {
             resolved
@@ -167,7 +171,10 @@ impl PcHostConfig {
             .canonicalize()
             .with_context(|| format!("canonicalize grant root {}", grant_root.display()))?;
         let mut runtime = self.runtime_trusted_paths.lock().await;
-        if !runtime.iter().any(|existing| canonical.starts_with(existing) || existing.starts_with(&canonical)) {
+        if !runtime
+            .iter()
+            .any(|existing| canonical.starts_with(existing) || existing.starts_with(&canonical))
+        {
             runtime.push(canonical.clone());
         }
         Ok(canonical)
@@ -686,7 +693,9 @@ async fn grant_trusted_path_handler(
     workspace_id: &str,
     path: &str,
 ) -> Result<PcGatewayResponse> {
-    let granted = config.grant_trusted_path_for_tool(workspace_id, path).await?;
+    let granted = config
+        .grant_trusted_path_for_tool(workspace_id, path)
+        .await?;
     let display = config.gateway_relative_path(&granted);
     Ok(PcGatewayResponse::TrustedPathGranted { path: display })
 }
@@ -703,6 +712,7 @@ async fn open_path_in_os(
     Ok(PcGatewayResponse::PathOpened { path: display })
 }
 
+#[allow(clippy::needless_return)]
 fn launch_path_in_os_shell(path: &Path) -> Result<()> {
     #[cfg(windows)]
     {

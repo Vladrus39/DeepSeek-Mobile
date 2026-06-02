@@ -474,7 +474,9 @@ fn pairing_wizard_strip(state: &PcPairingUiState) -> Element {
     let step3 = state.active_endpoint.is_some()
         || matches!(
             state.status,
-            PcPairingUiStatus::WaitingForPc | PcPairingUiStatus::Online | PcPairingUiStatus::Offline
+            PcPairingUiStatus::WaitingForPc
+                | PcPairingUiStatus::Online
+                | PcPairingUiStatus::Offline
         );
     let step4 = state.active_workspace_connection().is_some();
 

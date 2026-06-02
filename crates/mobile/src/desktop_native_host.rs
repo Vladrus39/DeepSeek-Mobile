@@ -54,9 +54,9 @@ pub fn try_execute(action: &AndroidHostAction, bridge: &mut NativeBridgeState) -
             });
             Some("Desktop document picker completed".to_string())
         }
-        AndroidHostAction::InstallApk { path } => Some(format!(
-            "install_apk is Android-only (path={path})"
-        )),
+        AndroidHostAction::InstallApk { path } => {
+            Some(format!("install_apk is Android-only (path={path})"))
+        }
         AndroidHostAction::ShareFile { path, .. } => {
             if PathBuf::from(path).exists() {
                 rfd::MessageDialog::new()
@@ -93,9 +93,8 @@ pub fn try_execute(action: &AndroidHostAction, bridge: &mut NativeBridgeState) -
                 return Some(format!("Workspace folder not found: {path}"));
             }
             if open::that(&folder).is_ok() {
-                bridge.accept_event(NativeMobileEvent::WorkspaceFolderOpened {
-                    path: path.clone(),
-                });
+                bridge
+                    .accept_event(NativeMobileEvent::WorkspaceFolderOpened { path: path.clone() });
                 Some(format!("Opened workspace folder: {path}"))
             } else {
                 bridge.accept_event(NativeMobileEvent::WorkspaceFolderOpenFailed {

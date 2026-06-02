@@ -47,7 +47,8 @@ fn ensure_minimal_workspace(root: &PathBuf) -> Result<(), String> {
     fs::create_dir_all(root).map_err(|e| format!("workspace mkdir failed: {e}"))?;
     let readme = root.join("README.md");
     if !readme.exists() {
-        fs::write(&readme, "# DeepSeek Mobile E2E\n").map_err(|e| format!("write README failed: {e}"))?;
+        fs::write(&readme, "# DeepSeek Mobile E2E\n")
+            .map_err(|e| format!("write README failed: {e}"))?;
     }
     Ok(())
 }
@@ -105,7 +106,10 @@ pub async fn run_if_requested() {
 
     // The Android coordinator confirms immediately after launching chooser.
     match wait_for_share_callback(Duration::from_secs(15)).await {
-        Ok(kind) => write_result(&format!("PASS export={} share={kind}", report.archive_path.display())),
+        Ok(kind) => write_result(&format!(
+            "PASS export={} share={kind}",
+            report.archive_path.display()
+        )),
         Err(error) => write_result(&format!(
             "FAIL export={} share_error={}",
             report.archive_path.display(),
@@ -131,8 +135,8 @@ fn run_import_probe() {
     }
 
     let mut transfer = ProjectTransferState::default();
-    let document = PickedDocument::new("import-test", "import-test.zip")
-        .with_path(archive_path.clone());
+    let document =
+        PickedDocument::new("import-test", "import-test.zip").with_path(archive_path.clone());
     match transfer.import_documents(&[document], &workspace_root) {
         Ok(report) => {
             let marker_ok = workspace_root.join("import_probe_marker.txt").is_file();
@@ -152,4 +156,3 @@ fn run_import_probe() {
         Err(error) => write_result(&format!("FAIL import {error}")),
     }
 }
-

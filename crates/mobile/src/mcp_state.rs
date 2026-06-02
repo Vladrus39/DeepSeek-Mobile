@@ -48,12 +48,9 @@ impl McpUiState {
     /// Toggle server enabled/disabled.
     pub fn toggle_server(&mut self, name: &str, enabled: bool) {
         if !enabled {
-            if self
-                .registry
-                .servers
-                .iter()
-                .any(|s| s.config.name == name && matches!(s.config.transport, McpTransport::Stdio { .. }))
-            {
+            if self.registry.servers.iter().any(|s| {
+                s.config.name == name && matches!(s.config.transport, McpTransport::Stdio { .. })
+            }) {
                 disconnect_stdio_server(name);
             }
             self.registry

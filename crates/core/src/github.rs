@@ -148,7 +148,7 @@ impl GitHubClient {
             .await
             .context("get repo info")?;
         check_response(&response)?;
-        Ok(response.json().await.context("parse repo info")?)
+        response.json().await.context("parse repo info")
     }
 
     /// List branches
@@ -162,7 +162,7 @@ impl GitHubClient {
             .await
             .context("list branches")?;
         check_response(&response)?;
-        Ok(response.json().await.context("parse branches")?)
+        response.json().await.context("parse branches")
     }
 
     /// Get default branch
@@ -228,7 +228,7 @@ impl GitHubClient {
         }
         let response = request.send().await.context("list contents")?;
         check_response(&response)?;
-        Ok(response.json().await.context("parse directory contents")?)
+        response.json().await.context("parse directory contents")
     }
 
     /// Create or update a file via GitHub API (commits directly)
@@ -299,7 +299,7 @@ impl GitHubClient {
             .await
             .context("create PR")?;
         check_response(&response)?;
-        Ok(response.json().await.context("parse PR")?)
+        response.json().await.context("parse PR")
     }
 
     /// List open pull requests
@@ -315,7 +315,7 @@ impl GitHubClient {
         }
         let response = request.send().await.context("list PRs")?;
         check_response(&response)?;
-        Ok(response.json().await.context("parse PRs")?)
+        response.json().await.context("parse PRs")
     }
 
     /// Create an issue

@@ -47,11 +47,7 @@ pub fn run_if_requested() {
     let context = ToolContext::new(workspace.clone());
     let mut steps: Vec<String> = Vec::new();
 
-    match registry.execute(
-        "workspace_overview",
-        json!({ "max_depth": 2 }),
-        &context,
-    ) {
+    match registry.execute("workspace_overview", json!({ "max_depth": 2 }), &context) {
         Ok(r) if r.success => steps.push("workspace_overview=ok".to_string()),
         Ok(r) => {
             write_result(&format!("FAIL workspace_overview {}", r.content));
@@ -90,11 +86,7 @@ pub fn run_if_requested() {
         return;
     }
 
-    match registry.execute(
-        "read_file",
-        json!({ "path": target }),
-        &context,
-    ) {
+    match registry.execute("read_file", json!({ "path": target }), &context) {
         Ok(r) if r.success && r.content.contains("SMOKE_PATCH_OK") => {
             steps.push("read_file=ok".to_string())
         }

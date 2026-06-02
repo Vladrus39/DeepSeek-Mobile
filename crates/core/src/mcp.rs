@@ -133,11 +133,7 @@ impl McpClientRegistry {
             .into_iter()
             .map(|c| McpServerState {
                 config: c.clone(),
-                status: if c.enabled {
-                    McpServerStatus::Disconnected
-                } else {
-                    McpServerStatus::Disconnected
-                },
+                status: McpServerStatus::Disconnected,
                 tools: Vec::new(),
             })
             .collect();
@@ -161,11 +157,7 @@ impl McpClientRegistry {
         }
         self.servers.push(McpServerState {
             config: config.clone(),
-            status: if config.enabled {
-                McpServerStatus::Disconnected
-            } else {
-                McpServerStatus::Disconnected
-            },
+            status: McpServerStatus::Disconnected,
             tools: Vec::new(),
         });
         Ok(())
@@ -443,6 +435,8 @@ mod tests {
         assert!(registry.validate_tool_invocation("demo", "echo").is_err());
 
         registry.set_enabled("demo", true);
-        assert!(registry.validate_tool_invocation("demo", "missing").is_err());
+        assert!(registry
+            .validate_tool_invocation("demo", "missing")
+            .is_err());
     }
 }

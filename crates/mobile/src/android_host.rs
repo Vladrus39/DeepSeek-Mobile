@@ -426,7 +426,9 @@ mod tests {
     #[test]
     fn drains_open_workspace_folder_action() {
         let mut bridge = NativeBridgeState::default();
-        bridge.enqueue_open_workspace_folder("/data/user/0/com.deepseek.mobile/files/Project workspace");
+        bridge.enqueue_open_workspace_folder(
+            "/data/user/0/com.deepseek.mobile/files/Project workspace",
+        );
         let action = drain_next_host_action(&mut bridge).expect("folder action");
         assert!(matches!(
             action,

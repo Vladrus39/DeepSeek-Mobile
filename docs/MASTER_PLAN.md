@@ -394,7 +394,7 @@ Acceptance criteria:
 ## 3. Original DeepSeek TUI feature transfer tracker
 
 | Original feature | Mobile decision | Status |
-|---|---|---|
+| --- | --- | --- |
 | Ratatui terminal UI | Replace with Dioxus mobile cockpit | In progress |
 | CLI dispatcher | Not priority for phone app | Not ported |
 | OpenAI-compatible DeepSeek streaming | Keep | Done: SSE streaming with reasoning token support |
@@ -459,6 +459,9 @@ The next implementation sequence is fixed:
 34. [x] Add mobile PC running-task reconciliation.
 
 ## 5. Implementation progress log
+
+- 2026-06-02 (Release compatibility audit): Investigated user reports that GitHub Release APK was "incompatible with phone" on Xiaomi/Android 16. Root cause: GitHub Latest `v0.1.3` asset was `native-code: 'x86_64'` only. Published GitHub Release `v0.1.4` as Latest with signed `deepseek-mobile-0.1.4.apk` (`arm64-v8a` + `x86_64`, SHA-256 `77e4d0a12c5d7a6a945739013e59462b80b8796951ea38e8e0aa38876410b102`). Hardened `scripts/build-release-apk.ps1` so release builds validate `arm64-v8a` and refuse unsigned APKs unless `-AllowUnsigned` is passed for local diagnostics. Aligned crate versions to the workspace release version and hardened `scripts/pc-host-e2e.ps1` to build the current PC Host binary before testing. Verification: `cargo +stable-x86_64-pc-windows-msvc check --workspace --all-targets` green; `cargo +stable-x86_64-pc-windows-msvc test --workspace` green (164 mobile / 193 core / 6 pc-host); PC Host E2E green with health `version=0.1.4`; release APK signature and `aapt dump badging` verified.
+
 - 2026-05-26 (Phase L — Android host closure + toolchain isolation): Completed JNI `NativeBridge`, `android_host` callback JSON (picker/PC discovery/Termux), Dioxus `MainActivity` (`WryActivity`), desktop native host drain, encrypted `config_store`, MCP HTTP/stdio client + proxy tools in engine, PC-host install scripts. Added isolated `tools/android/` SDK slice (~255 MB copied locally), `DOWNLOAD_BUDGET.md`, `env.ps1`, and updated project docs. Verification: `cargo test --workspace` 140 mobile / 178 core / 3 pc-host.
 
 - 2026-05-26 (Phase K — PC running-task reconciliation): Added mobile Tasks panel synchronization for active PC-host running tasks through `PcGatewayClient::list_tasks()`, a separate PC running-task card list, `StopTask` controls for active PC processes, and cockpit badge reconciliation so local durable tasks and PC-running tasks with the same id are not double-counted. Added task-state tests for PC task sorting, active-count reconciliation and clearing sync state. Verification: `cargo +stable-x86_64-pc-windows-msvc check --workspace --all-targets` green; `cargo +stable-x86_64-pc-windows-msvc test --workspace` passed with 128 mobile / 166 core / 2 pc-host tests.

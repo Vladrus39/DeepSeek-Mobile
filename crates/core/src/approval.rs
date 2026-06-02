@@ -13,17 +13,12 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 static APPROVAL_COUNTER: AtomicU64 = AtomicU64::new(1);
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Default)]
 pub enum ApprovalMode {
+    #[default]
+    ReviewWritesAndCommands,
     Auto,
     AskEveryTime,
-    ReviewWritesAndCommands,
-}
-
-impl Default for ApprovalMode {
-    fn default() -> Self {
-        Self::ReviewWritesAndCommands
-    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -155,9 +150,8 @@ pub fn approval_request_for_call(call: &ToolCallRequest) -> MobileApprovalReques
             ApprovalRisk::Destructive,
             call.arguments.clone(),
         );
-        request.description = format!(
-            "Run MCP tool '{tool}' on server '{server}' (external process or network)"
-        );
+        request.description =
+            format!("Run MCP tool '{tool}' on server '{server}' (external process or network)");
         request.impacts = vec![
             format!("MCP server: {server}"),
             format!("MCP tool: {tool}"),
@@ -223,7 +217,7 @@ fn quoted_path(params: &Value) -> Option<String> {
 }
 
 fn has_destructive_path(params: &Value) -> bool {
-    quoted_path(params).map_or(false, |path| {
+    quoted_path(params).is_some_and(|path| {
         path == "/"
             || path.contains("../")
             || path.contains(".git/")
@@ -235,7 +229,7 @@ fn has_delete_intent(params: &Value) -> bool {
     params
         .get("operation")
         .and_then(Value::as_str)
-        .map_or(false, |op| matches!(op, "delete" | "remove" | "rm"))
+        .is_some_and(|op| matches!(op, "delete" | "remove" | "rm"))
 }
 
 fn new_approval_id() -> String {

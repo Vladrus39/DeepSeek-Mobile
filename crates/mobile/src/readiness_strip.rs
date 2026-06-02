@@ -43,10 +43,12 @@ impl RuntimeHealthSnapshot {
 
         let pc_ping_level = if self.pc_online {
             ReadinessLevel::Ok
-        } else if self.pc_status_label.contains("Waiting") || self.pc_status_label.contains("Ожидание")
+        } else if self.pc_status_label.contains("Waiting")
+            || self.pc_status_label.contains("Ожидание")
         {
             ReadinessLevel::Warn
-        } else if self.pc_workspace_active || self.pc_status_label.contains("Not configured")
+        } else if self.pc_workspace_active
+            || self.pc_status_label.contains("Not configured")
             || self.pc_status_label.contains("Не настроен")
         {
             ReadinessLevel::Idle

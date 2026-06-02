@@ -3,11 +3,11 @@ mod agent_mode_bar;
 mod agent_timeline;
 mod agent_timeline_panel;
 mod agent_turn_probe;
-mod app_update_state;
 mod android_host;
 #[cfg(target_os = "android")]
 mod android_plugin;
 mod api_probe;
+mod app_update_state;
 mod approval_diff_preview;
 mod attachment_ingestion;
 mod chat_attachment;
@@ -41,6 +41,7 @@ mod mobile_drawer;
 mod mobile_engine_runner;
 mod mobile_git_runner;
 mod mobile_runtime_config;
+mod mobile_snapshot_runner;
 mod native_bridge;
 mod native_document_picker;
 mod native_event_router;
@@ -54,14 +55,13 @@ mod pc_pairing_manager;
 mod pc_pairing_panel;
 mod pc_pairing_persist;
 mod pc_pairing_state;
-mod readiness_strip;
-mod mobile_snapshot_runner;
 mod project_diff;
 mod project_files;
 mod project_files_panel;
 mod project_files_state;
 mod project_folder_open;
 mod project_transfer_state;
+mod readiness_strip;
 mod runtime_health;
 mod saved_timeline_loader;
 mod settings_panel;
@@ -75,12 +75,12 @@ mod snapshots_panel;
 mod snapshots_state;
 mod tasks_panel;
 mod tasks_state;
-mod termux_provisioning;
 mod terminal_panel;
 mod terminal_state;
+mod termux_provisioning;
 mod termux_state;
-mod ui_layout;
 mod tools_smoke_probe;
+mod ui_layout;
 mod zip_transfer_probe;
 
 use agent_event_adapter::push_agent_event;
@@ -102,10 +102,10 @@ use dioxus::prelude::*;
 use document_picker::{DocumentPickerPurpose, DocumentPickerRequest, DocumentPickerState};
 use git_state::GitUiState;
 use health_panel::HealthQuickAction;
-#[cfg(not(target_os = "android"))]
-use host_loop::{run_host_tick, sync_bridge_from_runtime};
 #[cfg(target_os = "android")]
 use host_loop::sync_bridge_from_runtime;
+#[cfg(not(target_os = "android"))]
+use host_loop::{run_host_tick, sync_bridge_from_runtime};
 use locale::{load_ui_language, pick, tr, Tr};
 use mcp_state::McpUiState;
 use mobile_drawer::{bottom_nav_bar, mobile_drawer, CockpitSection, MobileChromeSummary};
@@ -119,8 +119,8 @@ use native_event_router::route_native_mobile_event;
 use pc_pairing_state::{PcPairingUiState, PcPairingUiStatus};
 use project_files_state::ProjectFilesUiState;
 use project_folder_open::{
-    active_workspace_folder_path, clear_files_focus_tree_if_leaving,
-    show_in_app_files_focus_tree, try_open_pc_workspace_folder,
+    active_workspace_folder_path, clear_files_focus_tree_if_leaving, show_in_app_files_focus_tree,
+    try_open_pc_workspace_folder,
 };
 use project_transfer_state::{default_phone_workspace_root, ProjectTransferState};
 use readiness_strip::readiness_strip;
@@ -369,9 +369,8 @@ fn app() -> Element {
     let mut chat_history_open = use_signal(|| false);
     let mut drawer_open = use_signal(|| false);
     let mut active_section = use_signal(|| CockpitSection::Chat);
-    let pc_pairing_state = use_signal(|| {
-        crate::pc_pairing_persist::load_persisted_pairing().unwrap_or_default()
-    });
+    let pc_pairing_state =
+        use_signal(|| crate::pc_pairing_persist::load_persisted_pairing().unwrap_or_default());
     let pc_pairing_persist_signal = pc_pairing_state;
     use_effect(move || {
         let snapshot = pc_pairing_persist_signal();
@@ -666,10 +665,9 @@ fn app() -> Element {
 
                         if let Some(final_text) = result.final_text.clone() {
                             let mut event_messages = messages;
-                            event_messages.write().push((
-                                "assistant".to_string(),
-                                final_text,
-                            ));
+                            event_messages
+                                .write()
+                                .push(("assistant".to_string(), final_text));
                         }
 
                         event_cards.set(result.approval_cards);
@@ -788,10 +786,7 @@ fn app() -> Element {
                     let mut next_timeline = timeline();
                     push_agent_event(
                         &mut next_timeline,
-                        &AgentEvent::Error(format!(
-                            "Failed to restore saved timeline: {}",
-                            error
-                        )),
+                        &AgentEvent::Error(format!("Failed to restore saved timeline: {}", error)),
                     );
                     timeline.set(next_timeline);
                 }
@@ -933,8 +928,7 @@ fn app() -> Element {
                     let manual_discovery_urls = {
                         let mut bridge = android_bridge_poll();
                         sync_bridge_from_runtime(&mut bridge);
-                        if bridge.last_event_id > 0
-                            && bridge.last_event_id != android_last_routed()
+                        if bridge.last_event_id > 0 && bridge.last_event_id != android_last_routed()
                         {
                             if let Some(event) = bridge.last_event.clone() {
                                 android_last_routed.set(bridge.last_event_id);

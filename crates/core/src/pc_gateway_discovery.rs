@@ -218,8 +218,7 @@ impl PcGatewayDiscoveryService {
     ) -> PcGatewayDiscoveryReport {
         let base_url = normalize_manual_base_url(raw_url);
         let transport = infer_transport_mode_for_base_url(&base_url);
-        let endpoint =
-            PcGatewayEndpointCandidate::new(label, base_url, transport);
+        let endpoint = PcGatewayEndpointCandidate::new(label, base_url, transport);
         let mut report = PcGatewayDiscoveryReport::default();
         report
             .candidates
@@ -406,8 +405,7 @@ mod tests {
     #[test]
     fn manual_https_public_is_internet_mode() {
         let service = PcGatewayDiscoveryService::default();
-        let report =
-            service.from_manual_base_url("https://gateway.example.com", "remote");
+        let report = service.from_manual_base_url("https://gateway.example.com", "remote");
         assert_eq!(report.candidates[0].status, PcGatewayDiscoveryStatus::Found);
         assert_eq!(
             report.candidates[0].endpoint.transport_mode,

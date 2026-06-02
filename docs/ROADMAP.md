@@ -1,6 +1,8 @@
 # DeepSeek-Mobile — roadmap
 
-**Updated:** 2026-05-29
+**Updated:** 2026-06 (ideal polish) — Software complete to conceived vision. Remaining items are one-time user hardware setup or optional packaging. See CURRENT_STATE.md "Ideal state achieved".
+
+**Updated:** 2026-05-29 (prior)
 
 ## Phase 0 — Foundation ✅
 
